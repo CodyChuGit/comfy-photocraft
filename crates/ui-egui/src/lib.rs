@@ -1462,6 +1462,9 @@ mod transform_undo_tests;
 mod move_auto_select_tests;
 
 #[cfg(test)]
+mod hidden_layer_tests;
+
+#[cfg(test)]
 mod marquee_tests;
 
 #[cfg(test)]
