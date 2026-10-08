@@ -582,7 +582,6 @@ mod tests {
         assert!((p[0] - p[2]).abs() < 0.01, "{p:?}");
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn camera_raw_rejects_an_area_too_large_to_develop() {
         // #962: `area.width() * area.height()` overflowed u32 on a legal 65536×65536 canvas,
@@ -604,6 +603,7 @@ mod tests {
         s.execute(RAW, json!({"exposure": 1})).unwrap();
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn lens_correction_batch_over_files() {
         let dir = std::env::temp_dir().join(format!("pc-lens-{}", std::process::id()));
