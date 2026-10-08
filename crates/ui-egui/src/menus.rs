@@ -701,6 +701,23 @@ pub fn menu_items(app: &PhotocraftApp) -> Vec<MenuItem> {
         }
     }
     crate::plugin_ui::insert_menu_items(app, &mut items);
+    // The File quick-export command uses the format selected in Export Preferences.
+    // On the web it intentionally downloads PNG until the quick-export service supports
+    // the other formats; the Layer quick-export command also always produces PNG.
+    if let Some(item) = items.iter_mut().find(|i| i.id == "file.export.quickExportAsPng") {
+        use photocraft_engine::prefs::QuickExportFormat;
+        let format = if cfg!(target_arch = "wasm32") {
+            "PNG"
+        } else {
+            match app.session.prefs().export.quick_export_format {
+                QuickExportFormat::Png => "PNG",
+                QuickExportFormat::Jpg => "JPG",
+                QuickExportFormat::Gif => "GIF",
+                QuickExportFormat::Webp => "WebP",
+            }
+        };
+        item.label = format!("Quick Export as {format}");
+    }
     // File › Open Recent: a dynamic submenu of recently opened files (inserted after "Open As…").
     if let Some(after) = items.iter().position(|i| i.id == "file.openAs") {
         let rp: Vec<String> = vec!["File".into(), "Open Recent".into()];
@@ -1459,5 +1476,25 @@ mod open_recent_tests {
         invoke(&mut app, &ctx, "file.openRecent.0", json!({})).unwrap();
         assert_eq!(app.session.documents().len(), 2);
         let _ = std::fs::remove_file(&path);
+    }
+}
+
+#[cfg(test)]
+mod quick_export_label_tests {
+    use super::*;
+
+    #[test]
+    fn file_quick_export_menu_reflects_selected_format_without_renaming_layer_export() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        for (value, expected) in [("png", "PNG"), ("jpg", "JPG"), ("gif", "GIF"), ("webp", "WebP")] {
+            app.run("prefs.set", json!({"values": {"export.quickExportFormat": value}})).unwrap();
+            let items = menu_items(&app);
+            let quick: Vec<_> = items.iter().filter(|i| i.id == "file.export.quickExportAsPng").collect();
+            assert_eq!(quick.len(), 1, "the catalogue and UI command must not create duplicate items");
+            let shown_format = if cfg!(target_arch = "wasm32") { "PNG" } else { expected };
+            assert_eq!(quick[0].label, format!("Quick Export as {shown_format}"));
+            let layer = items.iter().find(|i| i.id == "layer.quickExportAsPng").unwrap();
+            assert_eq!(layer.label, "Quick Export as PNG", "layer export always creates PNG");
+        }
     }
 }
