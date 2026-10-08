@@ -99,6 +99,7 @@
 	Fill…	Riempi…
 	Stroke…	Traccia…
 	Content-Aware Fill…	Riempimento in base al contenuto…
+	Delete and Fill Selection	Elimina e riempi selezione
 	Content-Aware Scale	Scala in base al contenuto
 	Puppet Warp	Altera marionetta
 	Perspective Warp	Altera prospettiva
@@ -1341,6 +1342,7 @@
 	Set background color	Imposta colore sfondo
 	Set foreground color	Imposta colore primo piano
 	Set painting symmetry options	Imposta opzioni simmetria pittura
+	Symmetry Off	Simmetria disattivata
 	Set shape fill type	Imposta tipo riempimento forma
 	Set shape stroke type	Imposta tipo traccia forma
 	Set the text color	Imposta colore testo
@@ -1842,6 +1844,7 @@
 	Show slice numbers	Mostra numeri sezioni
 	Show tooltips	Mostra tooltip
 	Show bounding box when dragging layer	Mostra riquadro selezione al trascinamento livello
+	System title bar	Barra del titolo di sistema
 	Show transformation values	Mostra valori trasformazione
 	Slice color	Colore sezioni
 	Smart guide color	Colore guide intelligenti
@@ -2208,3 +2211,4 @@ cameraRaw	Amount	Quantità
 	Lines +/−	Righe +/−
 	@{login}: {prs} PRs, {commits} commits, +{added} / −{deleted} lines (Δ {delta}), +{binAdded} / −{binDeleted} binary assets, {first} – {last}	@{login}: {prs} PR, {commits} commit, +{added} / −{deleted} righe (Δ {delta}), +{binAdded} / −{binDeleted} risorse binarie, {first} – {last}
 	Convert to Layers	Converti in livelli
+	Apply At Canvas Bounds	Applica effetto ai limiti dell’area di lavoro
