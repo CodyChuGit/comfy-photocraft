@@ -107,6 +107,7 @@
 	Fill…	Vyplnit…
 	Stroke…	Tah…
 	Content-Aware Fill…	Výplň s ohledem na obsah…
+	Delete and Fill Selection	Odstranit a vyplnit výběr
 	Content-Aware Scale	Změna velikosti s ohledem na obsah
 	Puppet Warp	Loutková deformace
 	Perspective Warp	Perspektivní deformace
@@ -2139,3 +2140,4 @@ cameraRaw	Color	Barvy
 	Indigo	Indigová
 	Fuchsia	Fuchsiová
 	Violet	Fialová
+	Apply At Canvas Bounds	Použít efekt na hranicích plátna

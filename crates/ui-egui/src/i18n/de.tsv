@@ -103,6 +103,7 @@
 	Fill…	Füllen…
 	Stroke…	Nachziehen…
 	Content-Aware Fill…	Inhaltsbasiert füllen…
+	Delete and Fill Selection	Auswahl löschen und füllen
 	Content-Aware Scale	Inhaltsbasiert skalieren
 	Puppet Warp	Marionetten-Verkrümmung
 	Perspective Warp	Perspektivisch verkrümmen
@@ -2179,3 +2180,4 @@ layerLabel	No Color	Keine Farbe
 	Indigo	Indigo
 	Fuchsia	Fuchsia
 	Violet	Violett
+	Apply At Canvas Bounds	Effekt an Arbeitsflächenbegrenzungen anwenden
