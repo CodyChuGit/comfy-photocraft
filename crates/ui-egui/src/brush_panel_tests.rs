@@ -654,3 +654,38 @@ fn context_menu_renames_a_preset() {
     assert!(h.state().ui.brushes_panel.renaming.is_none());
     assert_eq!(last_journal(h.state()).unwrap(), ("brush.presets.rename".to_string(), json!({ "name": name, "newName": "Renamed" })));
 }
+
+#[test]
+fn hand_tool_offers_scale_buttons_and_requests_the_right_view() {
+    use egui_kittest::kittest::Queryable;
+
+    let mut app = app();
+    app.run("file.new", json!({"width": 400, "height": 200})).unwrap();
+    app.sync_views();
+    app.ui.tool = crate::state::Tool::Hand;
+    app.ui.views[0].zoom = 2.0;
+    let mut h = Harness::builder().with_size(vec2(1400.0, 60.0)).build_ui_state(
+        |ui, app: &mut PhotocraftApp| {
+            if ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                crate::panels::options_bar(app, ui);
+            }
+        },
+        app,
+    );
+    PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::Studio);
+    h.run_steps(4);
+
+    h.get_by_label("100%").click();
+    h.run_steps(1);
+    assert_eq!(h.state().ui.views[0].zoom, 1.0);
+
+    h.get_by_label("Fit Screen").click();
+    h.run_steps(1);
+    assert!(h.state().ui.views[0].fit_pending);
+    assert!(!h.state().ui.views[0].fill_pending);
+
+    h.get_by_label("Fill Screen").click();
+    h.run_steps(1);
+    assert!(h.state().ui.views[0].fill_pending);
+    assert!(!h.state().ui.views[0].fit_pending);
+}
