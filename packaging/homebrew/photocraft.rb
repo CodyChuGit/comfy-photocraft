@@ -3,8 +3,8 @@
 # Source: https://github.com/storytold/photocraft/tree/main/packaging/homebrew
 # (packaging/homebrew/update.sh sets version and sha256 for each release.)
 cask "photocraft" do
-  version "0.3.0"
-  sha256 "c0b0223cddb18dd7f5607fb4d6cc6a925a62f5b5b47457997d61ad0f72aa5911"
+  version "0.5.0"
+  sha256 "dff8c8105d5938d46fa4ba29559d3efc0f1ea195a5392d36cf62bc14ea2de5e7"
 
   url "https://github.com/storytold/photocraft/releases/download/v#{version}/photocraft-#{version}-macos-universal.dmg",
       verified: "github.com/storytold/photocraft/"
