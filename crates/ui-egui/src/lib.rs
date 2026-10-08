@@ -21,6 +21,7 @@ pub mod adjust_preview;
 pub mod adjust_ui;
 pub mod analysis_ui;
 pub mod artboard_ui;
+pub(crate) mod blend_preview;
 mod brand;
 pub mod brush_panel;
 pub mod brush_picker;
@@ -311,6 +312,8 @@ pub struct PhotocraftApp {
     trail: Option<stroke_trail::Trail>,
     /// Move tool drag shown live (`move_ui`).
     pub(crate) move_preview: Option<move_ui::MovePreview>,
+    /// A blend mode hovered in the Layers panel, shown live (`blend_preview`).
+    pub(crate) blend_preview: Option<blend_preview::BlendPreview>,
     /// Patch Tool drag: the healed document at the pointer (`patch_preview`).
     pub(crate) patch_preview: Option<patch_preview::PatchPreview>,
     /// The pixels a Magnetic Lasso border follows (`magnetic_lasso_ui`).
@@ -469,6 +472,7 @@ impl PhotocraftApp {
             live_stroke: None,
             trail: None,
             move_preview: None,
+            blend_preview: None,
             patch_preview: None,
             magnetic: Default::default(),
             secondary_erase: false,
@@ -1426,6 +1430,18 @@ impl PhotocraftApp {
         }
     }
 
+    /// File › New's fields: the defaults, plus the Clipboard preset (the clipboard image's size,
+    /// selected) when the clipboard holds an image. Opening the dialog is an explicit request, so
+    /// the OS clipboard is read here, as for a paste.
+    pub(crate) fn new_document_fields(&mut self) -> serde_json::Map<String, serde_json::Value> {
+        let mut f = crate::state::UiState::new_document_fields();
+        self.import_os_clipboard();
+        if let Some(c) = self.session.clipboard.as_ref().filter(|c| !c.bounds.is_empty()) {
+            crate::new_doc_ui::set_clipboard(&mut f, c.bounds.width(), c.bounds.height());
+        }
+        f
+    }
+
     /// If the OS clipboard holds an image that isn't the one we put there, make it the session
     /// clipboard (so ⌘V pastes screenshots and images copied in other apps, like Photoshop).
     /// Returns true when a new external image was imported.
@@ -1605,5 +1621,25 @@ mod clipboard_tests {
         }
         assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 0, "the OS clipboard is read only on an explicit paste");
         assert!(h.state().session.clipboard.is_none());
+    }
+
+    /// #1035: with the layer mask targeted (its thumbnail clicked), ⌘V pastes the clipboard's
+    /// luminosity into the mask instead of making a layer.
+    #[test]
+    fn paste_with_the_mask_targeted_goes_into_the_mask() {
+        let (os, reads) = (OsClip::default(), Arc::default());
+        let mut app = app_with_os_clipboard(&os, &reads);
+        app.run("layer.new.layer", serde_json::json!({})).unwrap();
+        app.run("layer.layerMask.hideAll", serde_json::json!({})).unwrap();
+        app.ui.mask_target = true;
+        app.ui.views[0].center = [32.0, 32.0];
+        *os.lock().unwrap() = Some((4, 4, [128u8, 128, 128, 255].repeat(16)));
+        let layers = app.session.active().unwrap().doc.layer_count();
+        crate::menus::invoke(&mut app, &egui::Context::default(), "edit.paste", serde_json::json!({})).unwrap();
+        let st = app.session.active().unwrap();
+        assert_eq!(st.doc.layer_count(), layers, "no new layer");
+        let mask = st.doc.layer(st.active_layer.unwrap()).unwrap().mask.as_ref().unwrap();
+        assert!((mask.value(32, 32) - 128.0 / 255.0).abs() < 2.0 / 255.0, "the grey, centred in the view: {}", mask.value(32, 32));
+        assert_eq!(mask.value(0, 0), 0.0, "the rest of the mask is unchanged");
     }
 }
