@@ -21,6 +21,7 @@ This folder is the fork's own documentation. Everything upstream wrote still app
 | [`models.md`](models.md) | The model catalogue: what each open model does, its licence, VRAM, ComfyUI support and file names. Includes the Firefly feature → model mapping. |
 | [`comfyui-setup.md`](comfyui-setup.md) | Running ComfyUI locally on this machine (RTX 5090), the model files to download, and an API primer (HTTP + WebSocket) with exact field names. |
 | [`roadmap.md`](roadmap.md) | Phases 0–6 with a definition of done each, ordered so every phase ships something usable. |
+| [`ai-integration-proposal.md`](ai-integration-proposal.md) | The full catalogue of what ComfyUI (generation, perception) and a local LLM (assistant, prompts, naming) can add, with value, effort, licence and a recommended order. |
 | [`dev-environment-windows.md`](dev-environment-windows.md) | What is installed on the development PC, how it was installed, build and test commands, timings and gotchas. |
 | [`upstream.md`](upstream.md) | Fork hygiene: syncing with upstream, what to contribute back, brand-licence obligations, naming. |
 | [`devlog.md`](devlog.md) | Dated log of what landed and what is open, so the next session (human or agent) can pick up. |

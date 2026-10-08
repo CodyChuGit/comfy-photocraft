@@ -43,6 +43,10 @@ can pick up.
   comfyui-setup, roadmap, dev-environment-windows, upstream, this log) and a root `CLAUDE.md`;
   a fork notice in the top-level README.
 
+- `ai-integration-proposal.md`: the full catalogue of ComfyUI + local-LLM integrations (17
+  generative, 9 perception, 8 language items, 8 infrastructure items) with a recommended order;
+  adds "Select by text" and the in-app Assistant as new phases 3.5 and 4.5.
+
 **Numbers to carry forward**
 
 | Metric | Value | How |
