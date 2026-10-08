@@ -2208,4 +2208,10 @@ cameraRaw	Amount	Quantità
 	Lines +/−	Righe +/−
 	@{login}: {prs} PRs, {commits} commits, +{added} / −{deleted} lines (Δ {delta}), +{binAdded} / −{binDeleted} binary assets, {first} – {last}	@{login}: {prs} PR, {commits} commit, +{added} / −{deleted} righe (Δ {delta}), +{binAdded} / −{binDeleted} risorse binarie, {first} – {last}
 	Convert to Layers	Converti in livelli
+
+# Layer colour labels.
+	Seafoam	Schiuma marina
+	Indigo	Indaco
+	Fuchsia	Fucsia
+	Violet	Viola
 	Apply At Canvas Bounds	Applica effetto ai limiti dell’area di lavoro
