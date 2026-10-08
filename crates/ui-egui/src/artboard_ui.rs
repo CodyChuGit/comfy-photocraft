@@ -65,8 +65,7 @@ pub fn fit_artboard(app: &mut PhotocraftApp) -> Result<Value, String> {
     let v = &mut app.ui.views[i];
     // Leave room for the name above the board.
     v.zoom = ((area.x - 60.0) / b.width().max(1) as f32).min((area.y - 80.0) / b.height().max(1) as f32).clamp(0.01, 64.0);
-    // Widen before adding: a board near ±2^30, or one whose far edge saturated at i32::MAX,
-    // overflows an i32 sum (#981).
+    // Widen before adding: the edges of a board near ±2^30 or i32::MAX overflow an i32 sum (#981).
     v.center = [((f64::from(b.x0) + f64::from(b.x1)) / 2.0) as f32, ((f64::from(b.y0) + f64::from(b.y1)) / 2.0) as f32];
     v.fit_pending = false;
     Ok(json!({"zoom": v.zoom, "artboard": id.0, "bounds": [b.x0, b.y0, b.x1, b.y1]}))
@@ -196,10 +195,10 @@ mod tests {
 
     #[test]
     fn fit_artboard_centres_a_board_with_large_coordinates() {
-        // #981: `(b.x0 + b.x1) as f32` overflowed i32 for boards near ±2^30 and for a board
-        // whose far edge saturated at i32::MAX, panicking outside any dispatch guard.
+        // #981: `(b.x0 + b.x1) as f32` overflowed i32 for boards near ±2^30 and near i32::MAX,
+        // panicking outside any dispatch guard. (Boards past i32::MAX are refused, #1032.)
         for (params, want) in [
-            (json!({"x": 2147483600, "y": 0, "width": 1000, "height": 1000}), [(2147483600.0 + 2147483647.0) / 2.0, 500.0]),
+            (json!({"x": 2147482000, "y": 0, "width": 1000, "height": 1000}), [(2147482000.0 + 2147483000.0) / 2.0, 500.0]),
             (json!({"x": 1073741824, "width": 50, "height": 20}), [1073741849.0, 10.0]),
             (json!({"y": -1073741840, "width": 50, "height": 20}), [25.0, -1073741830.0]),
         ] {
