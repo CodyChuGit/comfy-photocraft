@@ -3183,3 +3183,5 @@ cameraRaw	Roughness	Chropowatość
 	More documents	Więcej dokumentów
 	Developing {name}	Wywoływanie {name}
 	Camera Raw ({name})	Camera Raw ({name})
+	Could not open	Nie można otworzyć
+	{path}: the path is not valid Unicode; rename the file and open it again.	{path}: ścieżka nie jest prawidłowym Unicode; zmień nazwę pliku i otwórz go ponownie.
