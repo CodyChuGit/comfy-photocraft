@@ -614,6 +614,17 @@ fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
     })
 }
 
+/// Translate the fixed command label and substitute the currently configured export format.
+/// Reuse the existing translated PNG sentence, so dynamic formats work in every UI language.
+fn translated_menu_label(lang: crate::i18n::Lang, item: &MenuItem) -> String {
+    if item.id == "file.export.quickExportAsPng"
+        && let Some(fmt) = item.label.strip_prefix("Quick Export as ")
+    {
+        return crate::i18n::tr_id(lang, &item.id, "Quick Export as PNG").replace("PNG", fmt);
+    }
+    crate::i18n::tr_id(lang, &item.id, &item.label).to_string()
+}
+
 /// Menu tree entry for rendering and for `ui.inspect`.
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct MenuItem {
@@ -955,7 +966,7 @@ pub fn search_items<'a>(items: &'a [MenuItem], query: &str, lang: crate::i18n::L
     let rank = |it: &MenuItem| {
         let english = search_rank(&q, &it.label, &it.path);
         let path: Vec<String> = it.path.iter().map(|p| crate::i18n::tr(lang, p).to_string()).collect();
-        let local = search_rank(&q, crate::i18n::tr_id(lang, &it.id, &it.label), &path);
+        let local = search_rank(&q, &translated_menu_label(lang, it), &path);
         english.into_iter().chain(local).min()
     };
     let mut hits: Vec<(u8, usize, &MenuItem)> =
@@ -995,8 +1006,8 @@ fn help_search(ui: &mut egui::Ui, items: &[MenuItem], clicked: &mut Option<Strin
             ui.weak(crate::i18n::tr(lang, "No matching commands"));
         }
         for it in results {
-            let mut trail: Vec<&str> = it.path.iter().map(|p| crate::i18n::tr(lang, p)).collect();
-            trail.push(crate::i18n::tr_id(lang, &it.id, &it.label));
+            let mut trail: Vec<String> = it.path.iter().map(|p| crate::i18n::tr(lang, p).to_string()).collect();
+            trail.push(translated_menu_label(lang, it));
             let mut b = egui::Button::new(trail.join(" › "));
             if let Some(sc) = &it.shortcut {
                 b = b.shortcut_text(crate::shortcuts::pretty(sc));
@@ -1055,7 +1066,7 @@ fn render_level_rows(ui: &mut egui::Ui, items: &[&MenuItem], depth: usize, click
                 }
                 continue;
             }
-            let mut text = crate::i18n::tr_id(lang, &it.id, &it.label).to_string();
+            let mut text = translated_menu_label(lang, it);
             if let Some(c) = it.checked {
                 text = format!("{} {}", if c { "✔" } else { "  " }, text);
             }
@@ -1493,6 +1504,9 @@ mod quick_export_label_tests {
             assert_eq!(quick.len(), 1, "the catalogue and UI command must not create duplicate items");
             let shown_format = if cfg!(target_arch = "wasm32") { "PNG" } else { expected };
             assert_eq!(quick[0].label, format!("Quick Export as {shown_format}"));
+            let id = crate::i18n::Lang::from_code("id").unwrap();
+            let localized = translated_menu_label(id, quick[0]);
+            assert_eq!(localized, format!("Ekspor Cepat ke {shown_format}"));
             let layer = items.iter().find(|i| i.id == "layer.quickExportAsPng").unwrap();
             assert_eq!(layer.label, "Quick Export as PNG", "layer export always creates PNG");
         }
