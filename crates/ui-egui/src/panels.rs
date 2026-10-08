@@ -95,7 +95,10 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 ui.data_mut(|d| d.remove::<egui::Id>(held_id));
             }
             let mut slot_index = 0usize;
-            for (si, section) in TOOL_SECTIONS.iter().enumerate() {
+            // Pro has no group dividers, so its two columns fill every row across groups.
+            let flat: Vec<&[Tool]> = TOOL_SECTIONS.iter().flat_map(|s| s.iter().copied()).collect();
+            let sections: Vec<&[&[Tool]]> = if t.pro { vec![&flat[..]] } else { TOOL_SECTIONS.to_vec() };
+            for (si, section) in sections.iter().enumerate() {
                 // Photoshop 2026 draws one uninterrupted column (no group dividers).
                 if si > 0 && !t.pro {
                     ui.add_space(4.0);
