@@ -120,10 +120,18 @@ upstream  https://github.com/storytold/photocraft.git
 
 - scoop's git ships a system `credential.helper=helper-selector`, a GUI chooser that blocks a
   non-interactive push (git runs every configured helper in order). The repo's local config
-  therefore resets the list and uses gh only:
-  `git config --local credential.helper ""` then
-  `git config --local --add credential.helper "!gh auth git-credential"`. For a one-off command
-  elsewhere: `git -c credential.helper= -c credential.helper='!gh auth git-credential' push …`.
+  therefore resets the list and uses gh only; an empty helper entry is the reset, and Windows
+  PowerShell 5.1 drops empty-string arguments to native programs, so write it with the
+  stop-parsing token:
+
+  ```powershell
+  git --% config --local --add credential.helper ""
+  git config --local --add credential.helper "!gh auth git-credential"
+  git config --show-origin --get-all credential.helper    # expect: helper-selector, (empty), !gh auth git-credential
+  ```
+
+  For a one-off command elsewhere:
+  `git -c credential.helper= -c credential.helper='!gh auth git-credential' push …`.
   `gh auth setup-git` would do the same globally.
 - The SSH key in `~/.ssh` is not registered with GitHub; stay on HTTPS.
 
