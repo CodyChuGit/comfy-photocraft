@@ -18,7 +18,7 @@ cask "photocraft" do
   end
 
   # LSMinimumSystemVersion in packaging/macos/Info.plist.in.
-  depends_on macos: ">= :big_sur"
+  depends_on macos: :big_sur
 
   app "PhotoCraft.app"
 
