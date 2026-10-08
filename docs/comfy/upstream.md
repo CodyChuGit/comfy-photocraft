@@ -7,8 +7,8 @@ nobody has to rediscover them.
 ## Remotes and syncing
 
 ```text
-upstream  https://github.com/storytold/photocraft.git   (read-only; their main)
-origin    the fork on the owner's GitHub account         (our branches)
+upstream  https://github.com/storytold/photocraft.git          (read-only; their main)
+origin    https://github.com/CodyChuGit/comfy-photocraft.git   (the fork; our branches)
 ```
 
 - `main` on the fork mirrors upstream `main`; never commit to it directly.

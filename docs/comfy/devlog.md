@@ -52,11 +52,13 @@ can pick up.
 | Upstream menu parity | 627/627 | `docs/parity.md` |
 | Generative commands | 0 | — |
 
+- Published: fork **https://github.com/CodyChuGit/comfy-photocraft** created with `gh repo fork`,
+  `comfy-photocraft` pushed (`5aed6c2`), `upstream` → storytold/photocraft. The push first hung on
+  scoop git's `helper-selector` credential GUI; the repo now uses gh as its only credential
+  helper (`dev-environment-windows.md` › Remotes and pushing).
+
 **Still open**
 
-- Publish the branch: `gh auth login`, then fork or create the repo and push
-  (`docs/comfy/dev-environment-windows.md` › Publishing). The SSH key on this PC is not registered
-  with GitHub and no HTTPS credential is stored.
 - Install ComfyUI (portable build) and the Phase 1 model files; record versions and VRAM here.
 - Decide the published product name and the brand-asset removal before any public build
   (`docs/comfy/upstream.md`).

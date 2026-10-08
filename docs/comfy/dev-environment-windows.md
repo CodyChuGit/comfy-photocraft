@@ -105,17 +105,29 @@ Codex (repo analysis, tests, git) and agy/Gemini (research, visual QA). Findings
   Passing a multi-line prompt as an argument also breaks on PowerShell quoting; pipe it on stdin.
 - ComfyUI is not installed yet; see [`comfyui-setup.md`](comfyui-setup.md).
 
-## Publishing the branch
+## Remotes and pushing
 
-The SSH key in `~/.ssh` is not registered with GitHub (`ssh -T git@github.com` → permission
-denied) and no HTTPS credential is stored, so pushing needs a one-time login:
+Published 2026-10-08: the fork is **https://github.com/CodyChuGit/comfy-photocraft** (a public
+GitHub fork of storytold/photocraft, created from the checkout with
+`gh repo fork --fork-name comfy-photocraft --remote`, which renamed the old `origin` to `upstream`).
 
-```powershell
-gh auth login --git-protocol https --web
-gh repo fork storytold/photocraft --fork-name comfy-photocraft --remote --default-branch-only=false
-git push -u origin comfy-photocraft
+```text
+origin    https://github.com/CodyChuGit/comfy-photocraft.git
+upstream  https://github.com/storytold/photocraft.git
 ```
 
-`gh repo fork --remote` renames the existing `origin` (upstream) to `upstream` and adds the fork
-as `origin`. If the fork should be a fresh repository instead of a GitHub fork, use
-`gh repo create comfy-photocraft --private --source . --remote origin --push` from the checkout.
+`gh` is logged in as `CodyChuGit` (HTTPS, keyring). Two gotchas on this PC:
+
+- scoop's git ships a system `credential.helper=helper-selector`, a GUI chooser that blocks a
+  non-interactive push (git runs every configured helper in order). The repo's local config
+  therefore resets the list and uses gh only:
+  `git config --local credential.helper ""` then
+  `git config --local --add credential.helper "!gh auth git-credential"`. For a one-off command
+  elsewhere: `git -c credential.helper= -c credential.helper='!gh auth git-credential' push …`.
+  `gh auth setup-git` would do the same globally.
+- The SSH key in `~/.ssh` is not registered with GitHub; stay on HTTPS.
+
+```powershell
+git fetch upstream                 # upstream main moves several times a day
+git push                           # comfy-photocraft tracks origin/comfy-photocraft
+```
