@@ -852,7 +852,10 @@ fn front(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Val
             json!({"from": "any", "to": "rgb"}),
             json!({"from": ["any", "rgb", "grayscale", "cmyk", "lab", "indexed", "bitmap", "duotone", "multichannel"], "to": ["rgb", "grayscale", "cmyk", "lab"]}),
         ),
-        "view.newGuideLayout" => dialog(app, app.ui.view.guide_layout.clone(), json!({})),
+        "view.newGuideLayout" => {
+            let fields = app.ui.view.guide_layout.clone();
+            dialog(app, fields, json!({}))
+        }
         "type.warpText" => {
             let styles: Vec<&str> = std::iter::once("none").chain(photocraft_text::warp::STYLES.iter().map(|(_, s)| *s)).collect();
             dialog(
