@@ -82,3 +82,16 @@ fn painting_a_hidden_layer_is_refused_at_the_press() {
         assert!(!app.ui.status.contains("hidden"), "{tool:?}");
     }
 }
+
+#[test]
+fn the_live_gradient_still_works_over_a_hidden_layer() {
+    // The live Gradient adds a Gradient Fill layer rather than painting the target, so a hidden
+    // target doesn't stop it; the hidden layer's pixels stay as they were.
+    let (mut app, id) = app(Tool::Gradient);
+    app.ui.tool_options.gradient_classic = false;
+    let layers = app.session.active().unwrap().doc.layers.len();
+    drag(&mut app, [4.0, 30.0], [60.0, 30.0]);
+    assert!(!app.ui.status.contains("hidden"), "{}", app.ui.status);
+    assert_eq!(app.session.active().unwrap().doc.layers.len(), layers + 1, "a Gradient Fill layer was added");
+    assert_eq!(bounds(&app, id), Rect::new(8, 8, 24, 24));
+}
