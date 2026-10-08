@@ -36,3 +36,30 @@ fn filters_still_run_on_an_unlocked_layer() {
     s.execute("filter.blur.gaussianBlur", json!({"radius": 4})).unwrap();
     assert_ne!(px(&s), before);
 }
+
+#[test]
+fn render_filters_and_fill_path_refuse_a_locked_layer() {
+    for (cmd, p) in [("filter.render.tree", json!({})), ("filter.render.pictureFrame", json!({})), ("path.fill", json!({"color": "#0000ff"}))] {
+        let mut s = layered();
+        s.execute("path.set", json!({"path": {"subpaths": [{"knots": [[2, 2], [38, 2], [38, 28], [2, 28]]}]}})).unwrap();
+        s.execute("layer.lockLayers", json!({"pixels": true})).unwrap();
+        let before = px(&s);
+        let r = s.execute(cmd, p);
+        assert!(r.is_err(), "{cmd} drew on a locked layer: {r:?}");
+        assert_eq!(px(&s), before);
+    }
+}
+
+#[test]
+fn filters_keep_alpha_on_a_transparency_locked_layer() {
+    let mut s = layered();
+    s.execute("layer.lockLayers", json!({"transparency": true})).unwrap();
+    let alpha = |s: &Session, x, y| {
+        let st = s.active().unwrap();
+        st.active_layer.and_then(|id| st.doc.layer(id)).unwrap().surface().unwrap().rgba(x, y)[3]
+    };
+    let (edge, outside) = (alpha(&s, 12, 6), alpha(&s, 12, 2));
+    s.execute("filter.blur.gaussianBlur", json!({"radius": 4})).unwrap();
+    assert_eq!(alpha(&s, 12, 6), edge, "the blur changed alpha at the stroke edge");
+    assert_eq!(alpha(&s, 12, 2), outside, "the blur spread into the transparent area");
+}
