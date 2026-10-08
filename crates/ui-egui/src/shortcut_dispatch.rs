@@ -54,7 +54,7 @@ pub fn bindings(app: &PhotocraftApp) -> Vec<(String, KeyboardShortcut)> {
     // in place of the shell command it runs (`window.toggle.*`, see `menus::panel_alias`), so an
     // edit to that row reassigns or removes the shell command's default too (#1272).
     let aliased = |id: &str, sc: Option<&str>| {
-        prefs.shortcuts.get(id).is_none()
+        !prefs.shortcuts.contains_key(id)
             && prefs.shortcuts.keys().any(|k| {
                 crate::menus::panel_alias(k) == Some(id) && crate::menu_catalog::CATALOG.iter().any(|c| c.3 == k.as_str() && c.2.is_some() && c.2 == sc)
             })
