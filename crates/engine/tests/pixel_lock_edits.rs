@@ -38,6 +38,19 @@ fn locked_layer_edits_are_refused() {
 }
 
 #[test]
+fn a_refused_cut_leaves_the_clipboard_alone() {
+    let mut s = locked();
+    // Copy the whole canvas first, then select a smaller area: a Cut that went through would
+    // replace the clipboard with a smaller clip.
+    s.execute("edit.copy", json!({})).unwrap();
+    let before = s.clipboard.as_ref().map(|c| c.bounds);
+    assert!(before.is_some());
+    s.execute("select.rect", json!({"x": 2, "y": 2, "width": 10, "height": 10})).unwrap();
+    assert!(s.execute("edit.cut", json!({})).is_err());
+    assert_eq!(s.clipboard.as_ref().map(|c| c.bounds), before, "a refused Cut replaced the clipboard");
+}
+
+#[test]
 fn unlocked_layer_edits_still_work() {
     let mut s = locked();
     s.execute("layer.lockLayers", json!({"pixels": false})).unwrap();

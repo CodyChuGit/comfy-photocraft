@@ -493,8 +493,10 @@ pub fn specs() -> Vec<CommandSpec> {
     }
     vec![
         spec!("edit.cut", "Cut", &["Edit"], Some("Cmd+X"), "{}", has_pixels, |s, _| {
-            let r = copy(s, false)?;
+            // Refuse a locked layer before copying, so a refused Cut leaves the clipboard alone.
             let id = active_id(s)?;
+            crate::commands::check_pixels_unlocked(&s.active().ok_or(EngineError::NoDocument)?.doc, id)?;
+            let r = copy(s, false)?;
             let bg = s.tools.background;
             s.edit("Cut Pixels", |doc, _| clear_selected(doc, id, bg))?;
             Ok(r)
