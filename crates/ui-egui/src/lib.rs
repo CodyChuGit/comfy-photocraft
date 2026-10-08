@@ -39,6 +39,7 @@ pub mod channel_view;
 pub mod channels_panel;
 pub mod chrome_ui;
 pub mod cjk_fonts;
+pub mod clip_line_ui;
 pub mod color_picker_ui;
 pub mod color_range_ui;
 pub mod comps_ui;
@@ -296,6 +297,10 @@ pub struct Services {
     pub native_menu: Option<native_menu::NativeMenu>,
 }
 
+/// A document histogram being computed off the UI thread: (document, revision, receiver of
+/// (document, compute ms, histograms)).
+pub(crate) type HistJob = (DocId, u64, std::sync::mpsc::Receiver<(DocId, f64, std::sync::Arc<tone::Histograms>)>);
+
 pub struct PhotocraftApp {
     pub session: Session,
     pub ui: UiState,
@@ -395,6 +400,8 @@ pub struct PhotocraftApp {
     pub(crate) tone_hist: Option<(DocId, photocraft_doc::LayerId, u64, std::sync::Arc<tone::Histograms>)>,
     /// Histogram panel cache: (document, revision, computed at ms, histograms).
     pub(crate) doc_hist: Option<(DocId, u64, f64, std::sync::Arc<tone::Histograms>)>,
+    /// The document histogram being computed on a worker thread: (document, revision, receiver).
+    pub(crate) hist_job: Option<HistJob>,
     /// Free Transform preview (document without the moving pixels + their texture).
     pub(crate) transform_preview: Option<transform_tool::TransformPreview>,
     /// Move-tool ⇧/⌥ drag state (move_mods).
@@ -407,6 +414,11 @@ pub struct PhotocraftApp {
     pub(crate) gradient: gradient_ui::LiveGradient,
     /// Filter › Camera Raw Filter dialog (camera_raw_ui).
     pub(crate) camera_raw: Option<camera_raw_ui::CameraRawDialog>,
+    /// A raw file just opened interactively, waiting for the open-time Camera Raw dialog (shown
+    /// on the next frame, which has the egui context).
+    pub(crate) pending_raw_open: Option<camera_raw_ui::RawOpen>,
+    /// The open-time re-develop (or its Camera Raw step) running in the background.
+    pub(crate) raw_redevelop: Option<camera_raw_ui::Redevelop>,
     /// Filter › Adaptive Wide Angle dialog (wide_angle_ui).
     pub(crate) wide_angle: Option<wide_angle_ui::WideAngleDialog>,
     /// Signature of the image we last put on the OS clipboard (to tell ours from other apps').
@@ -419,6 +431,7 @@ pub struct PhotocraftApp {
     pub(crate) clip_read_for_paste: bool,
     /// Pointer position over the canvas (document px), for the Info panel and status bar.
     pub(crate) hover_doc: Option<[f64; 2]>,
+    pub(crate) clone_preview: Option<crate::canvas::ClonePreviewCache>,
     /// Info panel sample cache: ((x, y, revision), composite RGBA).
     info_sample: Option<((i32, i32, u64), [f32; 4])>,
     /// Guide being dragged (from a ruler or with the Move tool).
@@ -518,6 +531,7 @@ impl PhotocraftApp {
             guide_drag: None,
             crop: Default::default(),
             hover_doc: None,
+            clone_preview: None,
             info_sample: None,
             os_clip_sig: None,
             clip_external: false,
@@ -528,9 +542,12 @@ impl PhotocraftApp {
             distort: Default::default(),
             gradient: Default::default(),
             camera_raw: None,
+            pending_raw_open: None,
+            raw_redevelop: None,
             wide_angle: None,
             tone_hist: None,
             doc_hist: None,
+            hist_job: None,
             gpu: None,
             started: None,
             perf: Default::default(),
@@ -765,7 +782,12 @@ impl PhotocraftApp {
         self.sync_views();
         self.ui.status = format!("Opened {name}");
         self.ui.status_error = false;
-        notices::io_warnings(self, &format!("Opened {name}"), &warnings);
+        if camera_raw_ui::wants_open_dialog(self, &warnings) {
+            camera_raw_ui::queue_open_dialog(self, name, None, Some(bytes));
+            notices::io_warnings(self, &format!("Opened {name}"), &camera_raw_ui::without_develop_note(&warnings));
+        } else {
+            notices::io_warnings(self, &format!("Opened {name}"), &warnings);
+        }
         // Script events bound to "Open Document".
         photocraft_engine::automate_cmds::document_opened(&mut self.session);
         self.sync_views();
@@ -840,8 +862,15 @@ impl PhotocraftApp {
             return Ok(("smart object".into(), Vec::new()));
         }
         let st = self.session.active().ok_or("no document")?;
-        // Documents are named after their file ("cat.png"): suggest "cat.psd", not "cat.png.psd".
-        let suggested = st.path.clone().unwrap_or_else(|| format!("{}.psd", st.doc.name.rsplit_once('.').map_or(st.doc.name.as_str(), |(stem, _)| stem)));
+        // Suggest the file's own name if Save As can write its format, otherwise switch to .psd.
+        let ext = st.path.as_deref().and_then(|p| std::path::Path::new(p).extension()).map(|e| e.to_string_lossy().to_ascii_lowercase());
+        let writable = ext.is_some_and(|e| {
+            matches!(e.as_str(), photocraft_format::EXTENSION | "psd" | "psb") || photocraft_codecs::from_extension(&e).is_some_and(|f| f.caps().write)
+        });
+        let suggested = match &st.path {
+            Some(p) if writable => p.clone(),
+            p => std::path::Path::new(p.as_deref().unwrap_or(&st.doc.name)).with_extension("psd").to_string_lossy().into_owned(),
+        };
         let path = match path {
             Some(p) => p,
             None => self.services.pick_save.as_mut().and_then(|f| f(&suggested)).ok_or("cancelled")?,
@@ -1043,6 +1072,10 @@ impl eframe::App for PhotocraftApp {
             menu.raw_input(raw_input);
         }
         shortcuts::clipboard_keys(ctx, ctx.text_edit_focused() || self.ui.text_edit.is_some(), raw_input);
+        // Windows sends a touchpad pinch as Ctrl + wheel; make it a pinch again (wheel_nav.rs).
+        if cfg!(target_os = "windows") {
+            wheel_nav::fold_legacy_pinch(ctx, raw_input);
+        }
         raw_input.events.extend(self.take_synthetic_step());
     }
 
@@ -1314,6 +1347,8 @@ impl PhotocraftApp {
         // egui's own ⌘+ / ⌘- / ⌘0 scale the whole interface; PhotoCraft zooms the canvas instead
         // (shortcuts.rs), like Photoshop.
         ctx.options_mut(|o| o.zoom_with_keyboard = false);
+        // ⌘/Ctrl + wheel scrolls sideways, as in Photoshop; only a pinch zooms (wheel_nav.rs).
+        wheel_nav::configure(ctx);
     }
 }
 
@@ -1477,6 +1512,9 @@ mod transform_undo_tests;
 
 #[cfg(test)]
 mod move_auto_select_tests;
+
+#[cfg(test)]
+mod hidden_layer_tests;
 
 #[cfg(test)]
 mod marquee_tests;

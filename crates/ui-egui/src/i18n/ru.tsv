@@ -1521,6 +1521,7 @@
 	{mode} Color · {bits} bit	{mode}, {bits} бит
 	Drag to move the layer	Перетащите, чтобы переместить слой
 	Fit Screen	По размеру экрана
+	Fill Screen	Заполнить экран
 	Scrubby Zoom	Масштаб перетаскиванием
 	Auto Erase	Автостирание
 	Color Adaptation	Адаптация цвета
@@ -2206,6 +2207,7 @@
 	Never	Никогда
 	Normal tip	Контур кисти (50%)
 	Open as smart object	Открывать как смарт-объект
+	Open in camera raw	Открывать в Camera Raw
 	Open documents as tabs	Открывать документы во вкладках
 	OpenGL	OpenGL
 	Orange	Оранжевая
@@ -2248,6 +2250,7 @@
 	Show slice numbers	Показывать номера фрагментов
 	Show tooltips	Показывать подсказки
 	Show bounding box when dragging layer	Показывать рамку при перетаскивании слоя
+	System title bar	Системная строка заголовка
 	Show transformation values	Показывать значения трансформации
 	Slice color	Цвет фрагмента
 	Smart guide color	Цвет умных направляющих
@@ -2287,6 +2290,7 @@
 	No path to make a selection from: draw one with the Pen tool or select one in the Paths panel.	Нет контура для создания выделения: нарисуйте его инструментом «Перо» или выберите на панели «Контуры».
 	Cancel opening	Отменить открытие
 	Cancelled opening {name}	Открытие {name} отменено
+	Developing {name}	Обработка {name}
 	Cancelled {label}	{label}: отменено
 	Esc to cancel	Esc — отмена
 	Opening {name}	Открытие {name}
@@ -2325,6 +2329,7 @@
 cameraRaw	Light	Свет
 # Camera Raw: contextual controls and window title
 	Camera Raw Filter ({layer})	Фильтр Camera Raw ({layer})
+	Camera Raw ({name})	Camera Raw ({name})
 	Aqua	Голубой
 cameraRaw	Amount	Интенсивность
 cameraRaw	Blacks	Чёрные

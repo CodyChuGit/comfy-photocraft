@@ -1001,6 +1001,7 @@
 	Fisheye	Fisheye
 	Fit	Adapter
 	Fit Screen	Adapter à l'écran
+	Fill Screen	Remplir l’écran
 	Fit in View	Adapter à la vue
 	Fixed	Fixe
 	Fixed Ratio	Proportions fixes
@@ -1786,6 +1787,7 @@
 	Never	Jamais
 	Normal tip	Pointe normale
 	Open as smart object	Ouvrir en tant qu'objet intelligent
+	Open in camera raw	Ouvrir dans Camera Raw
 	Open documents as tabs	Ouvrir les documents dans des onglets
 	Overscroll	Défilement au-delà des bords
 	Performance	Performances
@@ -1978,6 +1980,7 @@
 	No path to make a selection from: draw one with the Pen tool or select one in the Paths panel.	Aucun tracé à partir duquel créer une sélection : dessinez-en un avec l'outil Plume ou sélectionnez-en un dans le panneau Tracés.
 	Cancel opening	Annuler l'ouverture
 	Cancelled opening {name}	Ouverture de {name} annulée
+	Developing {name}	Développement de {name}
 	Cancelled {label}	{label} : annulé
 	Esc to cancel	Échap pour annuler
 	Opening {name}	Ouverture de {name}
@@ -2464,6 +2467,7 @@
 	Invalid {mode} profile	Profil {mode} non valide
 	Unnamed {mode} profile	Profil {mode} sans nom
 	Show bounding box when dragging layer	Afficher le cadre de sélection lors du déplacement du calque
+	System title bar	Barre de titre du système
 	Freeze Lasso: drag to freeze an area, Alt-drag to thaw it (L)	Lasso de figeage : faites glisser pour figer une zone, Alt+glisser pour la libérer (L)
 	Rendering Mode	Mode de rendu
 	Automatic (recommended)	Automatique (recommandé)
@@ -2490,6 +2494,7 @@
 	Show Selected Region	Afficher la zone sélectionnée
 cameraRaw	Light	Lumière
 	Camera Raw Filter ({layer})	Filtre Camera Raw ({layer})
+	Camera Raw ({name})	Camera Raw ({name})
 cameraRaw	Lights	Tons clairs
 cameraRaw	Darks	Tons sombres
 cameraRaw	Blacks	Noirs

@@ -115,7 +115,7 @@ the same commands work in the app, the CLI and headless MCP. Paths are dotted ca
 |---|---|
 | `prefs.get` | `{"path":"performance.historyStates"}`; no path returns everything |
 | `prefs.set` | `{"path":"cursors.painting","value":"precise"}` or `{"values":{"unitsAndRulers.rulers":"cm","guidesGridAndSlices.gridColor":"#ff8800"}}`. Values are validated (choices, ranges, `#rrggbb` colours, shortcut syntax); a batch applies all or nothing. A section path takes an object and merges it key by key |
-| `prefs.reset` | `{"path":"performance"}` (a section or key); no path resets everything |
+| `prefs.reset` | `{"path":"performance"}` (a section or key); no path resets everything. An individual `shortcuts.<id>` or `menus.colors.<id>` reset removes the override and returns `null`, including when it is already absent |
 | `edit.preferences.<section>` | the section's values; in the app (no params) it opens the Preferences dialog on that section |
 | `edit.keyboardShortcuts` | `{"set":{"edit.fill":"Cmd+Shift+F"},"reset":true\|["id",…],"removeConflicts":true,"filter":"blur","list":false}`: returns overrides, matching commands and conflicts. A shortcut moved to another command is removed from its old owner unless `removeConflicts` is false. `""` removes a shortcut, `null` restores the default. The held temporary tools are bindable too: `tools.temporary.hand` (Space; also repositions a selection being drawn), `tools.temporary.zoomIn` (Cmd+Space), `tools.temporary.zoomOut` (Cmd+Alt+Space); they list with `"hold": true`. In the app it opens Keyboard Shortcuts and Menus |
 | `edit.menus` / `edit.toolbar` | `{"hide":["edit.fade"],"show":[…],"color":{"edit.fill":"red"},"reset":false}` / `{"hidden":["Sponge"],"order":[…]}` |
@@ -316,6 +316,17 @@ opened). Unknown `ui` or settings properties, non-boolean `before` / `commit` / 
 `pointCurveGreen`, `pointCurveBlue`) are empty or 2–16 finite points in 0–255 with inputs at
 least one level apart. Commit dispatches one `filter.cameraRaw` engine command; a failed commit
 keeps the dialog open for correction. Nothing else writes document history.
+
+**Opening a raw file.** An interactive open (File › Open, Open Recent, drag and drop, the
+command line) of a camera raw developed from its sensor data shows this dialog first, titled
+"Camera Raw (name)", with **Open** and **Cancel**, as Photoshop opens raws in Adobe Camera Raw.
+`ui.inspect.cameraRaw.openingRaw` is then `{name, path}`. Commit (Open) re-develops the raw when
+Temperature, Tint or Exposure changed (as-shot white-balance gains and develop exposure on the
+sensor data; without an as-shot white balance, or without the file's bytes, they stay RGB
+adjustments), applies the remaining settings as one `filter.cameraRaw` step and leaves the
+document unmodified; its result is `{document, redeveloped, filter?}`. Cancel closes the
+document. `app.open` and other automation opens never show the dialog. The preference
+`rawDefaults.openInCameraRaw` (default `true`) turns it off.
 
 Imported PSD Camera Raw filters whose processing settings are all mapped or neutral use this
 same editor. `params.__cameraRawPsd` is reserved import/export metadata: preserve it when editing

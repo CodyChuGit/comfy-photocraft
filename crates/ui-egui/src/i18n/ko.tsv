@@ -996,6 +996,7 @@
 	Fisheye	어안
 	Fit	맞추기
 	Fit Screen	화면에 맞추기
+	Fill Screen	화면 채우기
 	Fit in View	보기에 맞추기
 	Fixed	고정
 	Fixed Ratio	고정 비율
@@ -1781,6 +1782,7 @@
 	Never	안 함
 	Normal tip	표준 브러시 끝
 	Open as smart object	스마트 오브젝트로 열기
+	Open in camera raw	Camera Raw에서 열기
 	Open documents as tabs	문서를 탭으로 열기
 	Overscroll	캔버스 밖으로 스크롤
 	Performance	성능
@@ -1972,6 +1974,7 @@
 	No path to make a selection from: draw one with the Pen tool or select one in the Paths panel.	선택 영역으로 만들 패스가 없습니다: 펜 도구로 그리거나 패스 패널에서 선택하세요.
 	Cancel opening	열기 취소
 	Cancelled opening {name}	{name} 열기를 취소했습니다
+	Developing {name}	{name} 현상 중
 	Cancelled {label}	{label} 작업을 취소했습니다
 	Esc to cancel	Esc 키로 취소
 	Opening {name}	{name} 여는 중
@@ -1993,6 +1996,7 @@
 	Invalid {mode} profile	유효하지 않은 {mode} 프로파일
 	Unnamed {mode} profile	이름 없는 {mode} 프로파일
 	Show bounding box when dragging layer	레이어를 드래그할 때 테두리 상자 표시
+	System title bar	시스템 제목 표시줄
 	Mixer Brush Tool	혼합 브러시 도구
 	Rendering Mode	렌더링 모드
 	Automatic (recommended)	자동(권장)
@@ -2019,6 +2023,7 @@
 	Show Selected Region	선택한 영역 표시
 cameraRaw	Light	밝게
 	Camera Raw Filter ({layer})	Camera Raw 필터 ({layer})
+	Camera Raw ({name})	Camera Raw ({name})
 cameraRaw	Lights	밝은 중간 영역
 cameraRaw	Blending	혼합
 cameraRaw	Blacks	검정 계열

@@ -1019,6 +1019,7 @@
 	Fisheye	魚眼
 	Fit	合わせる
 	Fit Screen	画面に合わせる
+	Fill Screen	画面いっぱいに表示
 	Fit in View	表示に合わせる
 	Fixed	固定
 	Fixed Ratio	縦横比を固定
@@ -1813,6 +1814,7 @@
 	Never	しない
 	Normal tip	通常の先端
 	Open as smart object	スマートオブジェクトとして開く
+	Open in camera raw	Camera Raw で開く
 	Open documents as tabs	ドキュメントをタブで開く
 	Overscroll	オーバースクロール
 	Performance	パフォーマンス
@@ -1851,6 +1853,7 @@
 	Show slice numbers	スライス番号を表示
 	Show tooltips	ツールチップを表示
 	Show bounding box when dragging layer	レイヤーのドラッグ中にバウンディングボックスを表示
+	System title bar	システムのタイトルバー
 	Show transformation values	変形値を表示
 	Slice color	スライスの色
 	Smart guide color	スマートガイドの色
@@ -2010,6 +2013,7 @@
 	No path to make a selection from: draw one with the Pen tool or select one in the Paths panel.	選択範囲を作成するパスがありません。ペンツールで描くか、パスパネルでパスを選択してください。
 	Cancel opening	開くのをキャンセル
 	Cancelled opening {name}	{name} を開くのをキャンセルしました
+	Developing {name}	{name} を現像中
 	Cancelled {label}	{label} をキャンセルしました
 	Esc to cancel	Esc キーでキャンセル
 	Opening {name}	{name} を開いています
@@ -2048,6 +2052,7 @@
 cameraRaw	Light	ライト
 # Camera Raw: contextual controls and window title
 	Camera Raw Filter ({layer})	Camera Raw フィルター ({layer})
+	Camera Raw ({name})	Camera Raw ({name})
 cameraRaw	Lights	明部
 cameraRaw	Blending	ブレンド
 cameraRaw	Blacks	黒レベル
