@@ -1165,4 +1165,3 @@ pub(crate) fn translate_layer(doc: &Document, l: &mut Layer, dx: i32, dy: i32) {
         _ => {}
     }
 }
-
