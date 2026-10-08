@@ -1014,6 +1014,7 @@
 	Fisheye	Fisheye
 	Fit	Adatta
 	Fit Screen	Adatta a schermo
+	Fill Screen	Riempi schermo
 	Fit in View	Adatta in vista
 	Fixed	Fisso
 	Fixed Ratio	Proporzione fissa
@@ -1807,6 +1808,7 @@
 	Never	Mai
 	Normal tip	Punta normale
 	Open as smart object	Apri come oggetto avanzato
+	Open in camera raw	Apri in Camera Raw
 	Open documents as tabs	Apri documenti come schede
 	Overscroll	Overscroll
 	Performance	Prestazioni
@@ -1928,6 +1930,7 @@
 	System Info…	Info sistema…
 	System Info	Info sistema
 	More panels	Altri pannelli
+	More documents	Altri documenti
 	These settings aren't available in PhotoCraft yet.	Queste impostazioni non sono ancora disponibili in PhotoCraft.
 	Graphics	Grafica
 	Reset GPU Backend	Reimposta backend GPU
@@ -2005,6 +2008,7 @@
 	No path to make a selection from: draw one with the Pen tool or select one in the Paths panel.	Nessun tracciato da cui creare selezione: disegnane uno con Penna o selezionane uno nel pannello Tracciati.
 	Cancel opening	Annulla apertura
 	Cancelled opening {name}	Apertura {name} annullata
+	Developing {name}	Sviluppo di {name}
 	Cancelled {label}	{label} annullato
 	Esc to cancel	Esc per annullare
 	Opening {name}	Apertura {name}
@@ -2137,6 +2141,7 @@ cameraRaw	Light	Luce
 
 # Camera Raw: contextual controls and window title
 	Camera Raw Filter ({layer})	Filtro Camera Raw ({layer})
+	Camera Raw ({name})	Camera Raw ({name})
 cameraRaw	Lights	Toni chiari
 cameraRaw	Darks	Toni scuri
 cameraRaw	Red	Rossi
