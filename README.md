@@ -41,6 +41,14 @@
   <i>The Great Wave off Kanagawa</i>, Katsushika Hokusai, c. 1831</sub>
 </p>
 
+> [!TIP]
+> **This checkout is the Comfy PhotoCraft fork.** It adds a fully local, open-source generative
+> toolset (Generative Fill, Expand, text-to-image, instruction editing, background removal) on top
+> of PhotoCraft, driven by a ComfyUI server running open-weight models such as Krea 2 and
+> Qwen-Image-Edit on your own GPU. The fork's documentation starts at
+> [`docs/comfy/README.md`](docs/comfy/README.md); agents start at [`CLAUDE.md`](CLAUDE.md).
+> Everything below this note is upstream PhotoCraft's README, kept verbatim.
+
 > [!NOTE]
 > **ArtCraft is a community of artists from all walks of life.** Digital, generative, music,
 > games &mdash; if you make things, you're one of us. **[Come say hi on Discord](https://discord.gg/artcraft).**
