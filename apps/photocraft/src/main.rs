@@ -390,9 +390,9 @@ fn main() -> eframe::Result {
             Ok(Box::new(app))
         }),
     );
-    // Closed before the first frames rendered: not a driver crash. (A start that failed to
-    // create its device keeps the marker, so the next one tries a safer backend.)
-    if result.is_ok()
+    // Closed or failed outside graphics initialization: not a driver crash. A renderer
+    // error keeps the marker, so the next start tries a safer backend.
+    if !gpu_startup::keep_marker_after_run(&result)
         && let Some(s) = sentinel.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take()
     {
         s.finish();
