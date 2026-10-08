@@ -757,8 +757,12 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
 
 fn humanize(key: &str) -> String {
     // These controls appear only for WebP, so reuse the existing translated labels.
-    if key == "webpLossless" { return "Lossless".into() }
-    if key == "webpQuality" { return "Quality".into() }
+    if key == "webpLossless" {
+        return "Lossless".into();
+    }
+    if key == "webpQuality" {
+        return "Quality".into();
+    }
     let mut s = String::new();
     for (i, ch) in key.chars().enumerate() {
         if i == 0 {
