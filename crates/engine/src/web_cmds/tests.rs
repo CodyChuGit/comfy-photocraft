@@ -169,9 +169,7 @@ fn webp_export_preferences_select_lossless_or_lossy_output() {
     assert!(restored.export.webp_lossless);
     assert_eq!(restored.export.webp_quality, 85);
 
-    let r = s
-        .execute("file.export.exportPreferences", json!({"quickExportFormat": "webp", "webpLossless": true, "webpQuality": 40}))
-        .unwrap();
+    let r = s.execute("file.export.exportPreferences", json!({"quickExportFormat": "webp", "webpLossless": true, "webpQuality": 40})).unwrap();
     assert_eq!(r["values"]["webpLossless"], true);
     assert_eq!(r["values"]["webpQuality"], 40);
     let lossless_path = format!("{dir}/lossless.webp");
