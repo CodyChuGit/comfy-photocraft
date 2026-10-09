@@ -134,6 +134,8 @@ pub static CATALOG: &[(&[&str], &str, Option<&str>, &str)] = &[
     (&["Edit", "Purge"], "Clipboard", None, "edit.purge.clipboard"),
     (&["Edit", "Purge"], "Histories", None, "edit.purge.histories"),
     (&["Edit", "Purge"], "Video Cache", None, "edit.purge.videoCache"),
+    // comfy-photocraft: unload the generative server's models (`generate.free`).
+    (&["Edit", "Purge"], "Generative Models", None, "generate.free"),
     (&["Edit", "Purge"], "---", None, "---"),
     (&["Edit", "Purge"], "All", None, "edit.purge.all"),
     (&["Edit"], "---", None, "---"),

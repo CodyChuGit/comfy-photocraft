@@ -82,14 +82,43 @@ blends the edge; the layer mask stays the selection. `fill-guided` remains in th
 the cases where placement matters more than time. Qwen-Image-2.1 put the boat on the water at
 every seed tried; it is the research-licensed option.
 
-## 4. Where the time goes, and what is left
+## 4. Native-size sampling (shipped)
 
-- A 2511 fill at the 1 MP working size is sampling-bound: ~2 s per Lightning step on the 5090,
-  the encoder 3–5 s when the pixels change, everything on the PhotoCraft side under 0.5 s.
-- Next levers, in order of expected gain: sampling at the request's own size instead of the
-  forced 1 MP for small selections (needs a graph without `FluxKontextImageScale` and a check
-  that the reference latent at 1 MP still conditions well), a working FP8-tensor-core
-  checkpoint, SageAttention once a wheel exists for this torch build, and TeaCache/EasyCache
-  style step caching for the 40-step base.
+The official 2511 graph encodes the `FluxKontextImageScale` output, so every request is sampled
+at ~1 MP whatever its size. The shipped templates now VAE-encode the uploaded image itself: the
+text encoder still sees the 1 MP reference, the sampling latent has the request's own size
+(the engine grows the request rectangle to the 16-px grid, caps it at 1 MP and floors it at
+512 px on the longer side). Same three cases, Lightning 8, same seeds:
+
+| Case | 1 MP latent | native latent | result |
+|---|---|---|---|
+| edge, seed 7 | 16.2 s | 11.2 s | boat on the water (was on the rocks) |
+| edge, seed 11 | 16.5 s | 9.2 s | boat on the water, no seam |
+| sky, seed 7 | 16.4 s | 11.0 s | balloon, no seam |
+| 120×90 selection (192×160 rect, sent at 512×416) | — | 10.4 s steady, 16.3 s with a model reload | a crisp seagull on the rock |
+| 56×70 selection (96×112 rect, sent at 432×512) | — | 10.4 s | a brass porthole on the door |
+
+35–45 % faster, and better: with the latent at the request's size the mask lands exactly
+where the selection is, and both boat cases came out on the water.
+
+## 5. Server memory pressure
+
+After several checkpoints had been loaded in one server session (the 2511 base, its LoRA
+tiers, Qwen-Image-2.1, the scaled fp8 file), the small-selection fills took 36 and 58 s with
+2.5 GB of VRAM free: ComfyUI was staging the 19.6 GB model on every run. `POST /free`
+(unload models) brought 30 GB back and the next fills took 16 s (reload included) and 10 s.
+That is **Edit › Purge › Generative Models** (`generate.free`) in PhotoCraft. The steady state
+with 2511 fp8 is ~1.6–2.5 GB free on a 32 GB card (UNET 19.6 GB + text encoder 7.9 GB + VAE),
+which is fine as long as nothing else is resident.
+
+## 6. Where the time goes, and what is left
+
+- A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP
+  on the 5090; the encoder 3–5 s when the pixels change; everything on the PhotoCraft side
+  under 0.5 s.
+- Next levers, in order of expected gain: a working FP8-tensor-core checkpoint (the scaled
+  file gave noise here), SageAttention once a wheel exists for this torch build,
+  TeaCache/EasyCache-style step caching for the 40-step base, and detecting the
+  memory-pressure state from `timings` to suggest the purge.
 - On a 24 GB Ampere card (RTX 3090) the same tiers apply with roughly 2–3× the step times and
-  no FP8 gain; the Lightning 8-step tier is the one to install.
+  no FP8 gain; the text encoder will live in RAM; the Lightning 8-step tier is the one to install.

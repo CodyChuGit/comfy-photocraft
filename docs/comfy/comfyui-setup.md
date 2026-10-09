@@ -50,6 +50,10 @@ than passing a bare `--fast`, which also turns on whatever a later version adds.
 The development PC's recommended launch is `C:\Users\5090\ComfyUI\start-comfyui-fast.ps1`
 (`--fast fp8_matrix_mult`); the plain `start-comfyui.ps1` stays as the baseline.
 
+If fills become several times slower than usual after switching between model families (the
+server then streams weights on every run with ~2 GB of VRAM free), **Edit › Purge › Generative
+Models** (`generate.free`, `POST /free`) unloads everything; the next run reloads one family.
+
 ### Other cards (RTX 3090 / 24 GB class)
 
 - Ampere has no FP8 tensor cores: fp8 weights still load (they are upcast for compute), so

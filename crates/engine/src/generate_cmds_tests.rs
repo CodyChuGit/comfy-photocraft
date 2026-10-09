@@ -76,8 +76,9 @@ fn fill_adds_a_masked_layer_above_the_active_one() {
     assert_eq!(r["seed"], 5);
     // The preference is `auto`, and the fake "has" the Lightning LoRA: the 8-step tier runs.
     assert_eq!(r["template"], AUTO_FILL_ORDER[0]);
-    // Selection 20×16 at (10, 8), margin 25 % of 20 = 5 → the request is 30×26 at (5, 3).
-    assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(30), Some(26)));
+    // Selection 20×16 at (10, 8), margin 25 % of 20 = 5 → a 30×26 rect at (5, 3), grown to the
+    // 16-px grid: 32×32.
+    assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(32), Some(32)));
     let id = LayerId(r["layer"].as_u64().unwrap());
 
     let d = s.active().unwrap();
@@ -88,7 +89,7 @@ fn fill_adds_a_masked_layer_above_the_active_one() {
     let l = d.doc.layer(id).unwrap();
     assert_eq!(l.name, "Generative Fill: a red bicycle");
     let surf = l.surface().unwrap();
-    assert_eq!(surf.content_bounds(), Rect::new(5, 3, 35, 29), "the result covers the request rectangle");
+    assert_eq!(surf.content_bounds(), Rect::new(5, 3, 37, 35), "the result covers the request rectangle (grown to the 16-px grid)");
     let px = surf.read_region(Rect::new(15, 12, 16, 13));
     assert!(close([px[0], px[1], px[2], px[3]], FAKE_COLOR), "{px:?}");
     let mask = l.mask.as_ref().expect("a layer mask cut from the selection");
@@ -108,16 +109,14 @@ fn fill_adds_a_masked_layer_above_the_active_one() {
     let st = fake.state();
     assert_eq!(st.uploads.len(), 2);
     let sent = photocraft_genai::png::decode_rgba8(&st.uploads[0].1).unwrap();
-    assert_eq!((sent.width, sent.height), (30, 26));
-    let b = before.get(15, 12);
-    assert_eq!(
-        sent.get(10, 9),
-        Some([(b[0] * 255.0 + 0.5) as u8, (b[1] * 255.0 + 0.5) as u8, (b[2] * 255.0 + 0.5) as u8, 255]),
-        "document (15,12) is request (10,9)"
-    );
+    // The 30×26 rect (selection + 5 px margin) is grown to the 16-px grid, 32×32 from (5, 3),
+    // and a request that small goes out upscaled to 512 px (the model samples at that size).
+    assert_eq!((sent.width, sent.height), (512, 512));
+    assert_eq!((r["requestWidth"].as_u64(), r["requestHeight"].as_u64()), (Some(512), Some(512)));
     let mask_png = photocraft_genai::png::decode_rgba8(&st.uploads[1].1).unwrap();
-    assert_eq!(mask_png.get(5, 5).map(|p| p[0]), Some(255), "document (10,8) is selected");
-    assert!(mask_png.get(0, 0).map(|p| p[0]) < Some(128), "document (5,3) is margin: at most the outward feather's tail");
+    // Request pixel (x, y) is document (5 + x / 16, 3 + y / 16): (88, 88) is inside the selection.
+    assert_eq!(mask_png.get(88, 88).map(|p| p[0]), Some(255), "document (10,8) is selected");
+    assert!(mask_png.get(8, 8).map(|p| p[0]) < Some(128), "document (5,3) is margin: at most the outward feather's tail");
     let prompt = st.prompts[0].1["6"]["inputs"]["prompt"].as_str().unwrap_or_default().to_string();
     assert!(prompt.starts_with("Add a red bicycle to this image"), "the description is wrapped as an edit instruction: {prompt}");
     drop(st);
@@ -291,7 +290,7 @@ fn a_sixteen_bit_document_gets_a_sixteen_bit_layer() {
     s.execute("select.rect", json!({"x": 8, "y": 8, "width": 8, "height": 8})).unwrap();
     s.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
     let r = s.execute(FILL, json!({"prompt": "x", "margin": 0})).unwrap();
-    assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(8), Some(8)));
+    assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(16), Some(16)), "an 8×8 selection goes out on the 16-px grid");
     let d = s.active().unwrap();
     let l = d.doc.layer(LayerId(r["layer"].as_u64().unwrap())).unwrap();
     assert_eq!(l.surface().unwrap().format().sample, SampleType::U16);
@@ -410,10 +409,38 @@ fn auto_takes_the_lightning_tier_when_its_lora_is_installed_and_the_base_otherwi
 }
 
 #[test]
+fn purge_generative_models_asks_the_server_to_free() {
+    let fake = FakeComfy::start().unwrap();
+    let mut s = Session::new();
+    s.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
+    assert!(s.is_enabled(FREE), "no document needed");
+    let r = s.execute(FREE, json!({})).unwrap();
+    assert_eq!(r["freed"], true);
+    assert!(fake.state().requests.iter().any(|r| r == "POST /free"), "{:?}", fake.state().requests);
+    assert_eq!(s.journal.iter().filter(|(id, _)| id.as_str() == FREE).count(), 0, "not journaled");
+    // No server configured: a clear error.
+    s.edit_prefs(|p| p.integrations.comfy_server = String::new());
+    assert!(s.execute(FREE, json!({})).unwrap_err().to_string().contains("no generative server"));
+}
+
+#[test]
+fn request_rects_grow_to_the_sixteen_pixel_grid_inside_the_canvas() {
+    let canvas = Rect::new(0, 0, 64, 48);
+    assert_eq!(align_to_grid(Rect::new(5, 3, 35, 29), canvas), Rect::new(5, 3, 37, 35), "right and down first");
+    assert_eq!(align_to_grid(Rect::new(50, 40, 64, 48), canvas), Rect::new(48, 32, 64, 48), "left and up at the canvas edge");
+    assert_eq!(align_to_grid(Rect::new(0, 0, 64, 48), canvas), Rect::new(0, 0, 64, 48), "aligned already");
+    assert_eq!(align_to_grid(Rect::new(2, 2, 8, 8), Rect::new(0, 0, 10, 10)), Rect::new(2, 2, 8, 8), "a canvas too small keeps the rect");
+    assert_eq!(align_to_grid(Rect::new(0, 0, 40, 34), canvas), Rect::new(0, 0, 48, 48));
+}
+
+#[test]
 fn large_areas_are_sent_at_one_megapixel_and_come_back_full_size() {
     assert_eq!(request_size(1024, 1024), (1024, 1024));
-    assert_eq!(request_size(4000, 100), (4000, 100), "under the cap: untouched");
+    assert_eq!(request_size(4000, 100), (4000, 100), "under the cap, long enough: untouched");
     assert_eq!(request_size(2048, 1536), (1168, 880));
+    assert_eq!(request_size(200, 150), (512, 384), "small requests go out at 512 px on the longer side");
+    assert_eq!(request_size(100, 100), (512, 512));
+    assert_eq!(request_size(512, 300), (512, 300), "exactly the floor: untouched");
     let (w, h) = request_size(8000, 8000);
     assert!(w % 16 == 0 && h % 16 == 0 && u64::from(w) * u64::from(h) <= 1024 * 1024, "{w}×{h}");
     let (w, h) = request_size(20_000, 64);
@@ -426,7 +453,8 @@ fn large_areas_are_sent_at_one_megapixel_and_come_back_full_size() {
     s.execute("select.rect", json!({"x": 100, "y": 100, "width": 1400, "height": 1000})).unwrap();
     s.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
     let r = s.execute(FILL, json!({"prompt": "x", "margin": 0})).unwrap();
-    assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(1400), Some(1000)));
+    // 1400×1000 grown to the grid: 1408×1008 from (100, 100).
+    assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(1408), Some(1008)));
     let (rw, rh) = (r["requestWidth"].as_u64().unwrap(), r["requestHeight"].as_u64().unwrap());
     assert!(rw * rh <= 1024 * 1024 && rw % 16 == 0 && rh % 16 == 0, "{rw}×{rh}");
     let st = fake.state();
@@ -437,7 +465,7 @@ fn large_areas_are_sent_at_one_megapixel_and_come_back_full_size() {
     drop(st);
     let d = s.active().unwrap();
     let l = d.doc.layer(LayerId(r["layer"].as_u64().unwrap())).unwrap();
-    assert_eq!(l.surface().unwrap().content_bounds(), Rect::new(100, 100, 1500, 1100), "placed at full size");
+    assert_eq!(l.surface().unwrap().content_bounds(), Rect::new(100, 100, 1508, 1108), "placed at full size");
     let px = l.surface().unwrap().read_region(Rect::new(800, 600, 801, 601));
     assert!(close([px[0], px[1], px[2], px[3]], FAKE_COLOR), "{px:?}");
     assert!(r["timings"][0]["encodeMs"].is_u64() && r["timings"][0]["runMs"].is_u64(), "{}", r["timings"]);
@@ -471,12 +499,13 @@ fn the_request_mask_is_feathered_outward_and_the_layer_mask_is_not() {
     let st = fake.state();
     let sent = photocraft_genai::png::decode_rgba8(&st.uploads[1].1).unwrap();
     // The selection is x 10..30, y 8..24 on the canvas; a 50 % margin of the longer side (10 px)
-    // makes the request rect (0, 0)..(40, 34), so the selection sits at x 10..30, y 8..24 of it.
-    assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(40), Some(34)));
-    assert_eq!((sent.width, sent.height), (40, 34));
-    assert_eq!(sent.get(10, 16).map(|p| p[0]), Some(255), "the selection itself");
-    assert!(sent.get(8, 16).unwrap()[0] > 0, "feathered beyond the selection's edge");
-    assert_eq!(sent.get(1, 16).map(|p| p[0]), Some(0), "the tail ends well inside the margin");
+    // makes the request rect (0, 0)..(40, 34), grown to the grid as (0, 0)..(48, 48) and sent
+    // upscaled to 512×512 (scale 10.67), so the selection sits at x 107..320, y 85..256 of it.
+    assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(48), Some(48)));
+    assert_eq!((sent.width, sent.height), (512, 512));
+    assert_eq!(sent.get(200, 170).map(|p| p[0]), Some(255), "the selection itself");
+    assert!(sent.get(90, 170).unwrap()[0] > 0, "feathered beyond the selection's edge");
+    assert_eq!(sent.get(5, 170).map(|p| p[0]), Some(0), "the tail ends well inside the margin");
     drop(st);
     let d = s.active().unwrap();
     let l = d.doc.layer(LayerId(r["layer"].as_u64().unwrap())).unwrap();

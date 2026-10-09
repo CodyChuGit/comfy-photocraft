@@ -588,6 +588,10 @@ impl GenerativeBackend for ComfyBackend {
     fn model_files(&self, folder: &str) -> Result<Vec<String>> {
         self.client.models(folder)
     }
+
+    fn free(&self) -> Result<()> {
+        self.client.free()
+    }
 }
 
 trait CheckCancel {

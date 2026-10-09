@@ -248,6 +248,11 @@ pub trait GenerativeBackend: Send + Sync {
     fn run(&self, req: &Request, progress: &dyn Progress) -> Result<Response>;
     /// Model files the server has in `folder` (`diffusion_models`, `text_encoders`, `vae`, …).
     fn model_files(&self, folder: &str) -> Result<Vec<String>>;
+    /// Ask the server to unload its models and free their memory (the next run reloads them).
+    /// Backends without resident models do nothing.
+    fn free(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Random bytes: the OS source on native targets; on wasm (no client, so seeds never reach a

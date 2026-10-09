@@ -31,6 +31,7 @@ pub const IMAGE: &str = "generate.image";
 pub const HEALTH: &str = "generate.health";
 pub const MODELS: &str = "generate.models";
 pub const VARIATION: &str = "generate.variation";
+pub const FREE: &str = "generate.free";
 /// Most results one `generate.fill` call makes (`variations`).
 pub const MAX_VARIATIONS: u32 = 4;
 /// The template value (and preference) that picks a fill template by what the server has.
@@ -42,6 +43,9 @@ pub const AUTO_FILL_ORDER: &[&str] = &["qwen-edit-2511/fill-lightning-8", DEFAUL
 /// at about one megapixel, Photoshop's Generative Fill renders at most 1024 px on a side) and
 /// the result is resampled back; the layer mask keeps the selection's full-resolution edge.
 const MAX_FILL_REQUEST_PIXELS: u64 = 1024 * 1024;
+/// A small request is upscaled until its longer side is this long: the 2511 templates sample at
+/// the request's own size, and a handful of latent tokens cannot carry structure.
+const MIN_FILL_REQUEST_SIDE: u32 = 512;
 /// Seeds stay below 2^53 so they survive a round trip through JSON numbers.
 const MAX_SEED: u64 = 1 << 53;
 pub const DEFAULT_FILL_TEMPLATE: &str = "qwen-edit-2511/fill";
@@ -219,6 +223,9 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
     if rect.is_empty() {
         return Err(EngineError::Other("the selection is empty".into()));
     }
+    // Sides on the 16-px grid the VAE and the patch grid want, so a template that samples at
+    // the request's own size needs no padding and the result needs no resampling.
+    let rect = align_to_grid(rect, canvas);
     let pixels = u64::from(rect.width()) * u64::from(rect.height());
     if pixels > MAX_REQUEST_PIXELS {
         return Err(EngineError::Other(format!(
@@ -248,10 +255,39 @@ pub(crate) fn resolve_auto(backend: &dyn GenerativeBackend, candidates: &[&str],
     fallback.to_string()
 }
 
-/// The size a `w`×`h` fill request is sent at: unchanged up to [`MAX_FILL_REQUEST_PIXELS`], else
-/// scaled down (aspect kept) to multiples of 16, never below 64 on a side.
+/// Grow `rect` inside `canvas` until its sides are multiples of [`SIZE_STEP`], extending right
+/// and down first, then left and up. A canvas too small for a side leaves that side as it is
+/// (the server crops to its grid and the result is resampled back).
+pub(crate) fn align_to_grid(rect: Rect, canvas: Rect) -> Rect {
+    let step = SIZE_STEP as i32;
+    let grow = |lo: i32, hi: i32, clo: i32, chi: i32| -> (i32, i32) {
+        let len = (hi - lo).max(1) as u32;
+        let want = (len.div_ceil(SIZE_STEP) * SIZE_STEP) as i32;
+        if want > chi - clo {
+            return (lo, hi);
+        }
+        let hi2 = (lo + want).min(chi);
+        let lo2 = (hi2 - want).max(clo);
+        (lo2, lo2 + want)
+    };
+    let _ = step;
+    let (x0, x1) = grow(rect.x0, rect.x1, canvas.x0, canvas.x1);
+    let (y0, y1) = grow(rect.y0, rect.y1, canvas.y0, canvas.y1);
+    Rect::new(x0, y0, x1, y1)
+}
+
+/// The size a `w`×`h` fill request is sent at: scaled down (aspect kept, multiples of 16) over
+/// [`MAX_FILL_REQUEST_PIXELS`], scaled up when the longer side is under
+/// [`MIN_FILL_REQUEST_SIDE`], otherwise unchanged.
 pub(crate) fn request_size(w: u32, h: u32) -> (u32, u32) {
-    fit_pixels(w, h, MAX_FILL_REQUEST_PIXELS)
+    let (w, h) = fit_pixels(w, h, MAX_FILL_REQUEST_PIXELS);
+    let longer = w.max(h);
+    if longer == 0 || longer >= MIN_FILL_REQUEST_SIDE {
+        return (w, h);
+    }
+    let scale = f64::from(MIN_FILL_REQUEST_SIDE) / f64::from(longer);
+    let fit = |v: u32| (((f64::from(v) * scale).round() as u32) / SIZE_STEP * SIZE_STEP).max(MIN_SIDE);
+    (fit(w), fit(h))
 }
 
 /// `w`×`h` shrunk (aspect kept, multiples of 16, at least 64 on a side) until it has at most
@@ -751,6 +787,14 @@ fn doc_enabled(s: &Session) -> std::result::Result<(), String> {
     s.active().map(|_| ()).ok_or_else(|| "no document open".into())
 }
 
+/// Edit › Purge › Generative Models: the server unloads its models and frees their memory. A
+/// server that has had several model families loaded can end up streaming weights on every run
+/// (2 GB of VRAM free, fills three times slower); this resets it, at the price of one reload.
+fn run_free(s: &mut Session, _p: &Value) -> Result<Value> {
+    backend(s)?.free().map_err(gen_err)?;
+    Ok(json!({"freed": true}))
+}
+
 fn run_health(s: &mut Session, _p: &Value) -> Result<Value> {
     let h = match backend(s) {
         Ok(b) => b.health(),
@@ -831,6 +875,17 @@ pub fn specs() -> Vec<CommandSpec> {
             enabled: doc_enabled,
             run: run_variation,
             journal: true,
+        },
+        CommandSpec {
+            id: FREE,
+            label: "Generative Models",
+            // Placed by the menu catalogue under Edit › Purge.
+            menu: &[],
+            shortcut: None,
+            params: r#"{} → {"freed"} (asks the ComfyUI server to unload its models and free their VRAM and RAM; the next generation reloads what it needs. Use it when fills have become several times slower than usual: a server that has loaded more than one model family may be streaming weights on every run)"#,
+            enabled: |_| web_unavailable(),
+            run: run_free,
+            journal: false,
         },
         CommandSpec {
             id: HEALTH,

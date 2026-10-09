@@ -40,6 +40,14 @@ can pick up.
   stays the selection. Opt-in `qwen-edit-2511/fill-guided` passes the mask as a second
   reference image for the best placement at 1.5–3× the time.
 
+- **Native-size sampling** (second pass, same day): the 2511 templates VAE-encode the uploaded
+  image instead of the Kontext-scaled one, so the sampling latent has the request's own size
+  while the text encoder keeps its 1 MP reference. The engine grows the request rectangle to
+  the 16-px grid (`align_to_grid`), caps it at 1 MP and floors it at 512 px on the longer side
+  (`request_size`). 35–45 % faster and better placed (benchmarks §4). `generate.free`
+  (Edit › Purge › Generative Models) asks the server to unload its models after a measured
+  memory-pressure state made fills three times slower (benchmarks §5).
+
 **Measured** (all tables and the method in `benchmarks.md`; the lighthouse, a 576×512 request):
 
 | Fill, warm | default flags, unique uploads | `fp8_matrix_mult`, cached encoder (re-roll) |
@@ -49,8 +57,9 @@ can pick up.
 | 2511 Lightning 4 | 12–16 s | 8.1 s |
 | Qwen-Image-2.1, 25 steps | 4.5 s | 2.6 s |
 
-A 2511 fill is sampling-bound at the model's 1 MP working size (~2 s per Lightning step, ~4 s
-per base step with CFG 4); the client's share is 2 ms encode, 5 ms upload, under 0.4 s download.
+A 2511 fill is sampling-bound (~2 s per Lightning step at 1 MP, ~4 s per base step with CFG 4);
+the client's share is 2 ms encode, 5 ms upload, under 0.4 s download. With native-size sampling
+the three A/B cases went from 16.2–16.5 s to 9.2–11.2 s, and a 120×90 selection fills in 10 s.
 
 **Findings**
 

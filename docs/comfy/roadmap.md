@@ -102,9 +102,11 @@ test of the DoD, installed-model badges in the picker, preview frames.
 for 2511 with `defaultFillTemplate = auto` picking the 8-step tier when its LoRA is installed, a
 1 MP request cap with Lanczos resampling, content-addressed uploads (the encoder is cached across
 variations), prompt wrapping and an outward-feathered request mask against seams, `--fast
-fp8_matrix_mult` on the server. A Lightning-8 fill is 16 s on the 5090, a Qwen-Image-2.1 re-roll
-2.6 s. Next levers are listed in `benchmarks.md` §4 (sampling at the request's own size for
-small selections, a working FP8-tensor-core checkpoint, SageAttention, step caching).
+fp8_matrix_mult` on the server, then native-size sampling (the latent at the request's own size,
+16-px alignment, a 512-px floor) and Edit › Purge › Generative Models. A Lightning-8 fill is
+9–11 s on the 5090 at the test selection, a small selection 10 s, a Qwen-Image-2.1 re-roll
+2.6 s. Next levers are listed in `benchmarks.md` §6 (a working FP8-tensor-core checkpoint,
+SageAttention, step caching, purge suggestions from the timings).
 
 ## Phase 3: The Firefly core set
 
