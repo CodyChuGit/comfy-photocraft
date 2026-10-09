@@ -1073,8 +1073,15 @@ fn check_value(path: &str, v: &Value) -> std::result::Result<(), String> {
         }
     }
     if path == "integrations.defaultFillTemplate" || path == "integrations.defaultImageTemplate" {
-        let ok =
-            v.as_str().is_some_and(|s| s.len() <= 100 && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '.' | '/' | '_')));
+        // `family/task` ids: no path tricks (`..`, leading or trailing slashes, double slashes).
+        let ok = v.as_str().is_some_and(|s| {
+            s.len() <= 100
+                && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '.' | '/' | '_'))
+                && !s.contains("..")
+                && !s.contains("//")
+                && !s.starts_with(['/', '.'])
+                && !s.ends_with(['/', '.'])
+        });
         if !ok {
             return Err(format!("`{path}` must be a template id such as qwen-edit-2511/fill (see generate.models)"));
         }
