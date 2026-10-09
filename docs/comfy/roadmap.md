@@ -10,7 +10,7 @@ code map is in [`codebase-orientation.md`](codebase-orientation.md).
 | Phase | Status | Ships |
 |---|---|---|
 | 0 Foundation | ✅ 2026-10-08 | This documentation, the Windows toolchain, a green release build, the `comfy-photocraft` branch |
-| 1 Backend + headless Generative Fill | 🟡 2026-10-08: code complete against the fake server; live run against a real ComfyUI pending | `photocraft-genai` crate, ComfyUI client, `generate.fill` / `generate.health` / `generate.models` from the CLI and MCP |
+| 1 Backend + headless Generative Fill | 🟡 2026-10-08: code complete against the fake server; live run against a real ComfyUI pending | `photocraft-genai` crate, ComfyUI client, `generate.fill` / `generate.image` (Krea 2 Turbo, pulled forward from Phase 3) / `generate.health` / `generate.models` from the CLI and MCP |
 | 2 Generative Fill in the app | ⬜ | Prompt bar, progress, variations, generative layers with masks, model picker, preferences |
 | 3 The Firefly core set | ⬜ | Expand, Generate Image, instruction Edit, Remove Background |
 | 3.5 Select by text (SAM 3.1) | ⬜ | `select.byText`, ML Select Subject, point/box object selection, SAM-backed mattes for Remove Background |

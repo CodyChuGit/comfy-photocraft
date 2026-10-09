@@ -254,7 +254,7 @@ no new section, menu row or dialog page is needed:
 | `defaultEditModel` | `""` (the template's default file) | `generate_cmds::plan_fill` | **Phase 1, implemented** |
 | `generativeTimeoutSecs` | 600 | `generate_cmds::backend` → the backend's deadline | **Phase 1, implemented** |
 | `allowResearchModels` | false | `plan_fill` refuses research-only templates unless on; `generate.models` reports `allowed` | **Phase 1, implemented** |
-| `defaultGenerateModel` | first installed permissive model | `generate.image` | Phase 3 |
+| `defaultGenerateModel` | `""` (the template's default file) | `generate_cmds::plan_image` | **Phase 1, implemented** |
 | `generativePreviews` | true | task bar overlay | Phase 2 |
 | `freeVramAfterRun` | false | client (`POST /free`) | Phase 2 |
 | `generativeContentFilter` | true | the moderation hook required by community licences | Phase 2 |

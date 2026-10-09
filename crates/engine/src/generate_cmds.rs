@@ -14,8 +14,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use photocraft_color::PixelFormat;
-use photocraft_doc::{Layer, LayerMask};
+use photocraft_color::{ColorMode, PixelFormat, SampleType};
+use photocraft_doc::{Document, Layer, LayerMask, Size};
 use photocraft_genai::template::{self, License, Template};
 use photocraft_genai::{GenerativeBackend, Gray8, Health, Request, Rgba8, Task};
 use photocraft_geom::Rect;
@@ -27,9 +27,15 @@ use crate::jobs::JobCtx;
 use crate::{EngineError, Result, Session};
 
 pub const FILL: &str = "generate.fill";
+pub const IMAGE: &str = "generate.image";
 pub const HEALTH: &str = "generate.health";
 pub const MODELS: &str = "generate.models";
 pub const DEFAULT_FILL_TEMPLATE: &str = "qwen-edit-2511/fill";
+pub const DEFAULT_IMAGE_TEMPLATE: &str = "krea2-turbo/image";
+/// Text-to-image sizes are rounded down to this grid (latent patches); the smallest side allowed.
+const SIZE_STEP: u32 = 16;
+const MIN_SIDE: u32 = 64;
+const MAX_SIDE: u32 = 4096;
 /// Largest request image sent to a backend; the selection plus its margin is refused above it.
 const MAX_REQUEST_PIXELS: u64 = 16 * 1024 * 1024;
 const MAX_PROMPT_CHARS: usize = 4000;
@@ -236,6 +242,187 @@ fn resize_rgba8(src: &Rgba8, w: u32, h: u32) -> Result<Rgba8> {
     Rgba8::new(w, h, out).map_err(gen_err)
 }
 
+/// Write RGBA8 pixels into a raster layer over `rect`, converting to the layer's own format
+/// (gray, CMYK, 16-bit, float…); `src` must have `rect`'s size.
+fn write_rgba8(layer: &mut Layer, src: &Rgba8, rect: Rect) -> Result<()> {
+    if (src.width, src.height) != (rect.width(), rect.height()) {
+        return Err(EngineError::Other("internal error: the image and its rectangle differ in size".into()));
+    }
+    let surf = crate::pixels_mut(layer)?;
+    let fmt = surf.format();
+    let n = fmt.channels();
+    let mut px = vec![0.0f32; src.width as usize * src.height as usize * n];
+    let mut tmp = [0.0f32; 8];
+    for (i, s4) in src.data.as_chunks::<4>().0.iter().enumerate() {
+        let rgba = [f32::from(s4[0]) / 255.0, f32::from(s4[1]) / 255.0, f32::from(s4[2]) / 255.0, f32::from(s4[3]) / 255.0];
+        let used = photocraft_raster::from_rgba_into(&fmt, rgba, &mut tmp).min(n);
+        if let (Some(dst), Some(src)) = (px.get_mut(i * n..i * n + used), tmp.get(..used)) {
+            dst.copy_from_slice(src);
+        }
+    }
+    surf.write_region(rect, &px);
+    Ok(())
+}
+
+/// Everything `generate.image` needs, validated before any network work.
+struct ImagePlan {
+    template: Template,
+    prompt: String,
+    negative: String,
+    seed: u64,
+    steps: u32,
+    guidance: f32,
+    name: String,
+    models: Vec<(String, String)>,
+    /// The size asked of the model (rounded to the latent grid).
+    width: u32,
+    height: u32,
+    /// `true`: a new document of the result's size; `false`: a new layer over the whole canvas.
+    to_document: bool,
+}
+
+/// Shared validation of the prompt, template, licence gate, seed, steps, guidance and model
+/// override for both generative commands.
+struct Common {
+    template: Template,
+    prompt: String,
+    negative: String,
+    seed: u64,
+    steps: u32,
+    guidance: f32,
+    models: Vec<(String, String)>,
+    name: Option<String>,
+}
+
+fn plan_common(s: &Session, cmd: &str, p: &Value, default_template: &str, task: Task, default_model: &str) -> Result<Common> {
+    let prompt = opt_str(cmd, p, "prompt", MAX_PROMPT_CHARS)?
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| bad(cmd, "`prompt` is required: describe what to generate"))?
+        .to_string();
+    let negative = opt_str(cmd, p, "negative", MAX_PROMPT_CHARS)?.unwrap_or("").to_string();
+    let template_id = opt_str(cmd, p, "template", 100)?.unwrap_or(default_template);
+    let template = template::find(template_id).map_err(|e| bad(cmd, e.to_string()))?;
+    if template.meta.task != task {
+        return Err(bad(cmd, format!("template `{template_id}` is a {:?} template, not {task:?}", template.meta.task)));
+    }
+    let integrations = &s.prefs().integrations;
+    if template.meta.license == License::Research && !integrations.allow_research_models {
+        return Err(EngineError::Other(format!(
+            "`{}` uses a research-only model; turn on Allow Research-Only Models in Preferences › AI Integrations to use it",
+            template.meta.id
+        )));
+    }
+    let seed = match p.get("seed") {
+        None | Some(Value::Null) => photocraft_genai::random_seed(),
+        Some(v) => {
+            let x = v
+                .as_f64()
+                .filter(|x| x.is_finite() && *x >= 0.0 && x.fract() == 0.0 && *x < 9_007_199_254_740_992.0)
+                .ok_or_else(|| bad(cmd, "`seed` must be a non-negative integer below 2^53"))?;
+            x as u64
+        }
+    };
+    let steps = opt_num(cmd, p, "steps", 1.0, 250.0)?.map_or(0, |x| x.round() as u32);
+    let guidance = opt_num(cmd, p, "guidance", 0.0, 30.0)?.map_or(0.0, |x| x as f32);
+    let name = opt_str(cmd, p, "name", 200)?.map(str::to_string);
+    let mut models = Vec::new();
+    let model = opt_str(cmd, p, "model", 200)?.map(str::to_string).or_else(|| Some(default_model.trim().to_string()).filter(|m| !m.is_empty()));
+    if let Some(m) = model {
+        let slot =
+            template.meta.models.first().map(|s| s.placeholder.clone()).ok_or_else(|| bad(cmd, format!("template `{template_id}` has no model slot")))?;
+        models.push((slot, m));
+    }
+    template.model_bindings(&models).map_err(|e| bad(cmd, e.to_string()))?;
+    Ok(Common { template, prompt, negative, seed, steps, guidance, models, name })
+}
+
+/// A side length rounded down to the latent grid, within the allowed range.
+fn side(cmd: &str, p: &Value, key: &str, default: u32) -> Result<u32> {
+    let v = opt_num(cmd, p, key, f64::from(MIN_SIDE), f64::from(MAX_SIDE))?.map_or(default, |x| x.round() as u32);
+    Ok((v / SIZE_STEP * SIZE_STEP).clamp(MIN_SIDE, MAX_SIDE))
+}
+
+fn plan_image(s: &Session, p: &Value) -> Result<ImagePlan> {
+    let default_model = s.prefs().integrations.default_generate_model.clone();
+    let Common { template, prompt, negative, seed, steps, guidance, models, name } =
+        plan_common(s, IMAGE, p, DEFAULT_IMAGE_TEMPLATE, Task::Image, &default_model)?;
+    let doc_size = s.active().map(|d| (d.doc.bounds().width(), d.doc.bounds().height()));
+    let to_document = match opt_str(IMAGE, p, "target", 20)? {
+        None => doc_size.is_none(),
+        Some("layer") => {
+            if doc_size.is_none() {
+                return Err(EngineError::Other("open or create a document first, or use \"target\": \"document\"".into()));
+            }
+            false
+        }
+        Some("document") => true,
+        Some(other) => return Err(bad(IMAGE, format!("`target` must be \"layer\" or \"document\" (got `{other}`)"))),
+    };
+    let (dw, dh) = if to_document { (1024, 1024) } else { doc_size.unwrap_or((1024, 1024)) };
+    let width = side(IMAGE, p, "width", dw)?;
+    let height = side(IMAGE, p, "height", dh)?;
+    let name = name.unwrap_or_else(|| format!("Generated: {}", short(&prompt)));
+    Ok(ImagePlan { template, prompt, negative, seed, steps, guidance, name, models, width, height, to_document })
+}
+
+fn image_enabled(_: &Session) -> std::result::Result<(), String> {
+    web_unavailable()
+}
+
+fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
+    let plan = plan_image(s, p)?;
+    let backend = backend(s)?;
+    let ImagePlan { template, prompt, negative, seed, steps, guidance, name, models, width, height, to_document } = plan;
+    let label = name.clone();
+    let tid = template.meta.id.clone();
+    let req =
+        Request { template: template.meta.id.clone(), prompt, negative, seed, steps, guidance, image: None, mask: None, models, size: Some((width, height)) };
+    if to_document {
+        let doc_name = name.clone();
+        return crate::jobs::run(
+            s,
+            &label,
+            false,
+            move |ctx| {
+                let resp = backend.run(&req, &JobProgress(ctx)).map_err(gen_err)?;
+                ctx.check()?;
+                Ok(resp)
+            },
+            move |s, resp| {
+                let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
+                let mut doc = Document::new(doc_name, Size::new(out.width, out.height), ColorMode::Rgb, SampleType::U8);
+                let mut layer = Layer::raster("Generated", doc.pixel_format());
+                write_rgba8(&mut layer, &out, doc.bounds())?;
+                doc.layers.push(layer);
+                let index = s.add_document(doc, None);
+                Ok(
+                    json!({"document": index, "seed": resp.seed, "template": tid, "runId": resp.run_id, "width": out.width, "height": out.height, "ms": resp.elapsed_ms}),
+                )
+            },
+        );
+    }
+    crate::jobs::edit_job(
+        s,
+        &label,
+        move |doc, active, ctx| {
+            let resp = backend.run(&req, &JobProgress(ctx)).map_err(gen_err)?;
+            ctx.check()?;
+            let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
+            let canvas = doc.bounds();
+            let (w, h) = (canvas.width(), canvas.height());
+            let out = if (out.width, out.height) == (w, h) { out } else { resize_rgba8(&out, w, h)? };
+            ctx.progress(0.96, "Placing");
+            let mut layer = Layer::raster(name, doc.pixel_format());
+            write_rgba8(&mut layer, &out, canvas)?;
+            let nid = doc.insert_above(*active, layer);
+            *active = Some(nid);
+            Ok((nid, resp.seed, resp.run_id, resp.elapsed_ms, w, h))
+        },
+        move |(nid, seed, run_id, ms, w, h)| json!({"layer": nid.0, "seed": seed, "template": tid, "runId": run_id, "width": w, "height": h, "ms": ms}),
+    )
+}
+
 fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_fill(s, p)?;
     let backend = backend(s)?;
@@ -256,27 +443,15 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
             let coverage: Vec<f32> = sel.read_region(rect).chunks_exact(k).map(|c| c.first().copied().unwrap_or(0.0).clamp(0.0, 1.0)).collect();
             let mask = Gray8::new(w, h, coverage.iter().map(|c| (c * 255.0 + 0.5) as u8).collect()).map_err(gen_err)?;
             ctx.check()?;
-            let req = Request { template: template_id, prompt, negative, seed, steps, guidance, image: Some(image), mask: Some(mask), models };
+            let req = Request { template: template_id, prompt, negative, seed, steps, guidance, image: Some(image), mask: Some(mask), models, size: None };
             let resp = backend.run(&req, &JobProgress(ctx)).map_err(gen_err)?;
             ctx.check()?;
             let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
             let out = if (out.width, out.height) == (w, h) { out } else { resize_rgba8(&out, w, h)? };
             ctx.progress(0.96, "Placing");
             // The result becomes a layer in the document's own format, masked to the selection.
-            let fmt = doc.pixel_format();
-            let mut layer = Layer::raster(name, fmt);
-            let surf = crate::pixels_mut(&mut layer)?;
-            let n = fmt.channels();
-            let mut px = vec![0.0f32; w as usize * h as usize * n];
-            let mut tmp = [0.0f32; 8];
-            for (i, s4) in out.data.as_chunks::<4>().0.iter().enumerate() {
-                let rgba = [f32::from(s4[0]) / 255.0, f32::from(s4[1]) / 255.0, f32::from(s4[2]) / 255.0, f32::from(s4[3]) / 255.0];
-                let used = photocraft_raster::from_rgba_into(&fmt, rgba, &mut tmp).min(n);
-                if let (Some(dst), Some(src)) = (px.get_mut(i * n..i * n + used), tmp.get(..used)) {
-                    dst.copy_from_slice(src);
-                }
-            }
-            surf.write_region(rect, &px);
+            let mut layer = Layer::raster(name, doc.pixel_format());
+            write_rgba8(&mut layer, &out, rect)?;
             let mut mask_surface = Surface::with_default(PixelFormat::GRAY8, &[0.0]);
             mask_surface.write_region(rect, &coverage);
             layer.mask = Some(LayerMask { surface: mask_surface, enabled: true, linked: true, density: 1.0, feather: 0.0 });
@@ -342,6 +517,16 @@ pub fn specs() -> Vec<CommandSpec> {
             journal: true,
         },
         CommandSpec {
+            id: IMAGE,
+            label: "Generate Image…",
+            menu: &[],
+            shortcut: None,
+            params: r#"{"prompt":str,"negative":str?="","template":id?="krea2-turbo/image","model":file?=Preferences,"seed":u64?=random,"steps":1..250?=template,"guidance":0..30?=template,"width":64..4096?=document or 1024,"height":64..4096?=document or 1024,"target":"layer|document"?=layer when a document is open,"name":str?} → {"layer"|"document","seed","template","runId","width","height","ms"} (a background job; sizes round down to multiples of 16; a layer covers the whole canvas; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            enabled: image_enabled,
+            run: run_image,
+            journal: true,
+        },
+        CommandSpec {
             id: HEALTH,
             label: "Generative Server Status",
             menu: &[],
@@ -367,3 +552,7 @@ pub fn specs() -> Vec<CommandSpec> {
 #[cfg(test)]
 #[path = "generate_cmds_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "generate_image_tests.rs"]
+mod image_tests;

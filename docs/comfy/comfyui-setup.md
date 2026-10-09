@@ -87,7 +87,16 @@ Once the server runs, PhotoCraft's own commands check it (headless, no window):
 ```
 
 `generate.health` reports `ok`, the server version and free VRAM; `generate.models` lists the
-templates and whether each model file is installed. A Generative Fill from the command line:
+templates and whether each model file is installed. The smallest live test is Krea 2 Turbo
+text-to-image (about 17 GB of downloads: `krea2_turbo_fp8_scaled.safetensors` ≈ 12 GB,
+`qwen3vl_4b_fp8_scaled.safetensors` ≈ 4.5 GB, `qwen_image_vae.safetensors` < 1 GB, all from the
+ungated `Comfy-Org/Krea-2` repack; Krea 2 Community License):
+
+```powershell
+.\target\release\photocraft-cli.exe --% run --new "{\"width\":1024,\"height\":1024}" --cmd generate.image --params "{\"prompt\":\"a lighthouse at dusk, film photograph\"}" --out lighthouse.png
+```
+
+A Generative Fill from the command line (Qwen-Image-Edit-2511, about 30 GB of downloads):
 
 ```powershell
 .\target\release\photocraft-cli.exe run photo.png --cmd select.rect --params '{"x":200,"y":150,"width":400,"height":300}' --cmd generate.fill --params '{"prompt":"a red bicycle leaning on the wall"}' --out filled.psd

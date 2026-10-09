@@ -302,12 +302,19 @@ fn route(method: &str, path: &str, body: &[u8], ctype: &str, opts: &Options, sta
             let id = format!("fake-prompt-{n}");
             // The output: a solid colour the size of the uploaded image the graph loads.
             let graph_text = graph.to_string();
+            // Text-to-image graphs have no upload: their EmptyLatentImage node gives the size.
+            let latent_size = graph
+                .as_object()
+                .and_then(|nodes| nodes.values().find(|n| n["class_type"] == "EmptyLatentImage"))
+                .and_then(|n| Some((n["inputs"]["width"].as_u64()? as u32, n["inputs"]["height"].as_u64()? as u32)))
+                .filter(|(w, h)| (1..=8192).contains(w) && (1..=8192).contains(h));
             let size = st
                 .uploads
                 .iter()
                 .filter(|(name, _)| graph_text.contains(name.as_str()))
                 .find_map(|(_, bytes)| png::decode_rgba8(bytes).ok())
                 .map(|i| (i.width, i.height))
+                .or(latent_size)
                 .unwrap_or((64, 64));
             let out = Rgba8::solid(size.0, size.1, opts.color).and_then(|i| png::encode_rgba8(&i)).unwrap_or_default();
             st.outputs.insert(format!("{id}.png"), out);

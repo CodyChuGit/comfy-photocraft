@@ -504,6 +504,18 @@ impl GenerativeBackend for ComfyBackend {
             let name = self.client.upload_image(&format!("photocraft-{client_id}-mask.png"), &png::encode_gray8(mask)?)?;
             bindings.insert("mask".into(), Value::String(name));
         }
+        let wants_size = tpl.placeholders().iter().any(|p| *p == "width" || *p == "height");
+        match req.size {
+            Some((w, h)) => {
+                if w == 0 || h == 0 || w > 16_384 || h > 16_384 {
+                    return Err(Error::Request(format!("{w}×{h} is not a usable output size")));
+                }
+                bindings.insert("width".into(), Value::from(w));
+                bindings.insert("height".into(), Value::from(h));
+            }
+            None if wants_size => return Err(Error::Request(format!("template `{}` needs an output size", tpl.meta.id))),
+            None => {}
+        }
         progress.check_cancel()?;
         let graph = tpl.fill(&bindings)?;
 

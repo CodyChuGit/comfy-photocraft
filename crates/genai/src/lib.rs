@@ -149,6 +149,8 @@ pub struct Request {
     /// Model-file overrides by placeholder name (`unet`, `clip`, `vae`, …); the template's
     /// defaults apply otherwise.
     pub models: Vec<(String, String)>,
+    /// Output size for text-to-image templates (`width`/`height` placeholders).
+    pub size: Option<(u32, u32)>,
 }
 
 impl Request {
@@ -164,6 +166,7 @@ impl Request {
             image: None,
             mask: None,
             models: Vec::new(),
+            size: None,
         }
     }
 }

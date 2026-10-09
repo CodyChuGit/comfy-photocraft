@@ -23,23 +23,33 @@ can pick up.
   layer in the document's own depth, above the active layer, with a layer mask equal to the
   selection**; one undo step; background job with progress and Esc-cancel), `generate.health`,
   `generate.models`. Commands have `menu: &[]` until Phase 2 (so parity and i18n are untouched).
-- Preferences › AI Integrations: `comfyServer`, `defaultEditModel`, `generativeTimeoutSecs`,
-  `allowResearchModels`, each read by the commands and validated.
+- `generate.image` (pulled forward from Phase 3 on request): text to image with the built-in
+  `krea2-turbo/image` template (from ComfyUI's official `image_krea2_turbo_t2i.json`: UNETLoader,
+  CLIPLoader type `krea2`, CLIPTextEncode, ConditioningZeroOut negative, EmptyLatentImage,
+  KSampler euler/simple 8 steps CFG 1, VAEDecode). `target: "layer"` covers the whole canvas
+  (size defaults to the document, rounded down to the 16-px grid, min 64, resampled back),
+  `target: "document"` opens a new RGB 8-bit document of the result's size (default 1024²).
+  Krea 2 is a community-licence model: the catalogue says so and nothing pre-selects it for fill.
+- Preferences › AI Integrations: `comfyServer`, `defaultEditModel`, `defaultGenerateModel`,
+  `generativeTimeoutSecs`, `allowResearchModels`, each read by the commands and validated.
 - Tests: 25 in the genai crate (unit + the client against the fake server: upload/queue/wait/
   download, polling without a socket, overrides, server failure, rejected prompt, cancellation
   interrupts within 3 s, deadline, unreachable server, old server version, health/model files,
-  request validation) and 12 engine command tests (masked layer geometry and pixels, undo, the
-  uploaded crop and mask, background job parity with inline, cancel leaves the document alone,
-  server failure, unreachable server, health/models, parameter validation, enablement, model
-  overrides, a 16-bit document, resampling). `cargo test -p photocraft-engine --test prefs_usage`
-  green.
+  request validation) and 18 engine command tests (fill: masked layer geometry and pixels, undo,
+  the uploaded crop and mask, background job parity with inline, cancel leaves the document
+  alone, server failure, unreachable server, health/models, parameter validation, enablement,
+  model overrides, a 16-bit document, resampling; image: canvas layer, new document, size
+  rounding and validation, background job, template/task checks, model preference).
+  `cargo test -p photocraft-engine --test prefs_usage` green.
 - Gates on 2026-10-08: `cargo fmt`, `cargo clippy --all-targets -- -D warnings` on both crates,
   `cargo xtask layers` (29 crates, no violations), `cargo xtask wasm` (genai and engine check for
   wasm32; the client is native-only and seeds fall back to a counter there), `cargo xtask parity`
   (unchanged: 627/627, the commands have no menu rows yet), `cargo xtask scorecard` (57 unread
-  settings of 143; the four new preferences are read), `panic_hunt --ignored` green in 25 s with
+  settings of 144; the five new preferences are read), `panic_hunt --ignored` green in 25 s with
   the new commands, release `photocraft-cli` built (1 min 43 s); `photocraft-cli commands --filter
-  generate` lists the three commands.
+  generate` lists the four commands. Headless `generate.health` / `generate.fill` without a server
+  return "cannot reach the ComfyUI server at http://127.0.0.1:8188 … start ComfyUI or change the
+  server URL in Preferences › AI Integrations".
 
 **Still open**
 

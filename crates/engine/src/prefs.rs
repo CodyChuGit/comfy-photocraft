@@ -717,6 +717,8 @@ pub struct Integrations {
     pub comfy_server: String,
     /// Diffusion model file for the edit templates (empty = each template's default).
     pub default_edit_model: String,
+    /// Diffusion model file for the text-to-image templates (empty = each template's default).
+    pub default_generate_model: String,
     /// Seconds a generation may take before it is interrupted.
     pub generative_timeout_secs: u32,
     /// Offer models whose licence allows research use only (never pre-selected).
@@ -730,6 +732,7 @@ impl Default for Integrations {
             control_port: 0,
             comfy_server: "http://127.0.0.1:8188".into(),
             default_edit_model: String::new(),
+            default_generate_model: String::new(),
             generative_timeout_secs: 600,
             allow_research_models: false,
         }
@@ -1056,10 +1059,10 @@ fn check_value(path: &str, v: &Value) -> std::result::Result<(), String> {
             return Err("`integrations.comfyServer` must be an http:// or https:// URL such as http://127.0.0.1:8188 (or empty to disable)".into());
         }
     }
-    if path == "integrations.defaultEditModel" {
+    if path == "integrations.defaultEditModel" || path == "integrations.defaultGenerateModel" {
         let ok = v.as_str().is_some_and(|s| s.len() <= 512 && !s.contains(['/', '\\', '\0']) && !s.contains(".."));
         if !ok {
-            return Err("`integrations.defaultEditModel` must be a plain model file name (no folders)".into());
+            return Err(format!("`{path}` must be a plain model file name (no folders)"));
         }
     }
     if let Some((lo, hi)) = range(path) {
