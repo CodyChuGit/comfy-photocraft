@@ -46,8 +46,11 @@ Use a separate `CARGO_TARGET_DIR` per parallel agent. ComfyUI is a separate proc
   `crates/engine/src/generate_cmds.rs`; UI in `crates/ui-egui`. Shared upstream files
   (`commands.rs`, `menus.rs`, `state.rs`, `menu_catalog.rs`) get surgical one-line edits so
   upstream merges stay clean.
-- Commands are `generate.<verb>`; preferences live under the existing `integrations` section
-  (Edit › Preferences › AI Integrations…); every preference is read by code in the same change.
+- Commands are `generate.<verb>` (pixels) and `select.<verb>` for model-backed selection
+  (`crates/engine/src/select_ml_cmds.rs`); preferences live under the existing `integrations`
+  section (Edit › Preferences › AI Integrations…); every preference is read by code in the same
+  change. Workflow templates are JSON files in `crates/genai/workflows/`, taken from ComfyUI's
+  official templates and verified against a live server's `/object_info` before they ship.
 - Model and licence facts go in [`docs/comfy/models.md`](docs/comfy/models.md) with a source and a
   date; research-only models are never defaults.
 - Keep the fork MIT OR Apache-2.0; ship no model weights. Before any published build, follow the

@@ -486,7 +486,9 @@ impl GenerativeBackend for ComfyBackend {
         progress.check_cancel()?;
 
         let client_id = crate::random_id();
-        let mut bindings: BTreeMap<String, Value> = tpl.model_bindings(&req.models)?;
+        // Template-specific values first; the standard bindings below win on a clash.
+        let mut bindings: BTreeMap<String, Value> = req.params.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        bindings.extend(tpl.model_bindings(&req.models)?);
         bindings.insert("prompt".into(), Value::String(tpl.format_prompt(&req.prompt)));
         bindings.insert("negative".into(), Value::String(req.negative.clone()));
         bindings.insert("seed".into(), Value::from(req.seed & ((1u64 << 53) - 1)));
@@ -533,7 +535,7 @@ impl GenerativeBackend for ComfyBackend {
             images.push(png::decode_rgba8(&bytes)?);
         }
         if images.is_empty() {
-            return Err(Error::Protocol(format!("the workflow finished without producing an image (prompt {prompt_id})")));
+            return Err(Error::NoOutput(format!("prompt {prompt_id} finished without an image")));
         }
         progress.report(1.0, "Done");
         Ok(Response { images, seed: req.seed, run_id: prompt_id, elapsed_ms: started.elapsed().as_millis() as u64 })

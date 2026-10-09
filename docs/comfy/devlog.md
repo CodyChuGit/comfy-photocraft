@@ -4,6 +4,48 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-09 (later): Phase 3.5, Select by Text with SAM 3.1, live
+
+**Landed**
+
+- Template `sam3.1/segment` (community licence: the SAM License) from ComfyUI's official
+  "Image Segment (SAM3)" template: `CheckpointLoaderSimple` (MODEL + CLIP from the 1.75 GB
+  `sam3.1_multiplex_fp16.safetensors`), `CLIPTextEncode` on that CLIP, `SAM3_Detect`
+  (threshold, 2 refinement passes, `individual_masks` on), `MaskToImage` → `SaveImage`, so the
+  server answers with one PNG per instance. The server's `object_info` confirmed the node set.
+- `Request.params` (template-specific placeholder values such as `threshold`) and
+  `Error::NoOutput` (a detector that finds nothing) in the genai crate; the fake server answers
+  `SAM3_Detect` graphs with one mask per configured rectangle.
+- `crates/engine/src/select_ml_cmds.rs`: `select.byText` (phrase → instances → coverage →
+  `sel::combine` with `replace|add|subtract|intersect`, `instance` picks one, `threshold`,
+  `sampleAllLayers`; a background job and one undo step; reports each instance's bounds and
+  pixel count) and `select.subjectML` (`what`: subject, person, face, hair, sky, animal, vehicle,
+  text → a fixed phrase). Shared plumbing with `generate_cmds` (`plan_common`, backend, job
+  progress, resampling), now `pub(crate)`.
+- 7 command tests and 3 crate tests against the fake; clippy, wasm gate green.
+
+**Live, on the 1024² lighthouse from the morning** (`photocraft-cli run … --cmd select.byText`):
+
+| Phrase | Found | Bounds `[x, y, w, h]` | Pixels | Time |
+|---|---|---|---|---|
+| "the lighthouse" | 1 | `[695, 322, 111, 287]` (the tower, exactly) | 17 555 | 4.6 s, cold checkpoint load |
+| "sky" | 1 | `[0, 0, 1024, 612]` (down to the horizon) | 601 550 | 1.8 s, warm |
+
+Then `generate.fill` with `qwen-2.1/fill` on the lighthouse selection ("bold red and white
+horizontal stripes", margin 0.4 → a 341×517 request) took 8.2 s and repainted only the tower
+(`sam-lighthouse.psd/.png` in `C:\Users\5090\ComfyUI\photocraft-tests`). Select → describe →
+generate, with no lasso, is now a two-command script.
+
+**Still open**
+
+- Point and box prompts (`select.byPoint`, the Object Selection tool's ML mode): `SAM3_Detect`
+  takes `positive_coords`/`negative_coords` strings and `bboxes`; the coordinate string format
+  needs reading from the node source before wiring.
+- `panic_hunt` on a machine with ComfyUI running at the default URL will make real calls for
+  `select.subjectML {}` (every other command fails validation first); run the hunt with the
+  server stopped, as CI effectively does.
+- Soft mattes for hair/glass (BiRefNet refinement) remain Phase 3.5's second half.
+
 ## 2026-10-09: first live runs against a real ComfyUI (Phase 1 DoD met)
 
 **Setup on the dev PC** (nothing of this is in the repo; the app ships no weights, BYO models):

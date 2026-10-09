@@ -47,6 +47,9 @@ pub enum Error {
     Cancelled,
     #[error("the generation did not finish within {0} s")]
     Timeout(u64),
+    /// The workflow ran but produced no image (a detector found nothing, for instance).
+    #[error("the workflow produced no output ({0})")]
+    NoOutput(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -129,6 +132,8 @@ pub enum Task {
     /// Foreground matte / background removal.
     Matte,
     Upscale,
+    /// Instance masks for a text (or point) prompt; the result images are coverage, not pictures.
+    Segment,
 }
 
 /// One generation, backend-agnostic. The engine builds it; a backend runs it.
@@ -151,6 +156,9 @@ pub struct Request {
     pub models: Vec<(String, String)>,
     /// Output size for text-to-image templates (`width`/`height` placeholders).
     pub size: Option<(u32, u32)>,
+    /// Template-specific placeholder values (`threshold`, …). The standard bindings win on a
+    /// name clash.
+    pub params: std::collections::BTreeMap<String, serde_json::Value>,
 }
 
 impl Request {
@@ -167,6 +175,7 @@ impl Request {
             mask: None,
             models: Vec::new(),
             size: None,
+            params: std::collections::BTreeMap::new(),
         }
     }
 }

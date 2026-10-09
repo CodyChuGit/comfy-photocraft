@@ -40,11 +40,11 @@ const MAX_SIDE: u32 = 4096;
 const MAX_REQUEST_PIXELS: u64 = 16 * 1024 * 1024;
 const MAX_PROMPT_CHARS: usize = 4000;
 
-fn bad(cmd: &str, msg: impl Into<String>) -> EngineError {
+pub(crate) fn bad(cmd: &str, msg: impl Into<String>) -> EngineError {
     EngineError::BadParams { cmd: cmd.into(), msg: msg.into() }
 }
 
-fn gen_err(e: photocraft_genai::Error) -> EngineError {
+pub(crate) fn gen_err(e: photocraft_genai::Error) -> EngineError {
     match e {
         photocraft_genai::Error::Cancelled => EngineError::Cancelled,
         e => EngineError::Other(e.to_string()),
@@ -52,7 +52,7 @@ fn gen_err(e: photocraft_genai::Error) -> EngineError {
 }
 
 /// The backend the preferences point at. The web build has none yet.
-fn backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> {
+pub(crate) fn backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> {
     let integrations = &s.prefs().integrations;
     let url = integrations.comfy_server.trim();
     if url.is_empty() {
@@ -71,7 +71,7 @@ fn backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> {
     }
 }
 
-fn web_unavailable() -> std::result::Result<(), String> {
+pub(crate) fn web_unavailable() -> std::result::Result<(), String> {
     if cfg!(target_arch = "wasm32") { Err("not available in the web build yet".into()) } else { Ok(()) }
 }
 
@@ -85,7 +85,7 @@ fn fill_enabled(s: &Session) -> std::result::Result<(), String> {
 }
 
 /// Maps the backend's progress onto the job's bar after the render step.
-struct JobProgress<'a>(&'a JobCtx);
+pub(crate) struct JobProgress<'a>(pub(crate) &'a JobCtx);
 
 impl photocraft_genai::Progress for JobProgress<'_> {
     fn report(&self, fraction: f32, message: &str) {
@@ -110,7 +110,7 @@ struct FillPlan {
     rect: Rect,
 }
 
-fn opt_str<'a>(cmd: &str, p: &'a Value, key: &str, max: usize) -> Result<Option<&'a str>> {
+pub(crate) fn opt_str<'a>(cmd: &str, p: &'a Value, key: &str, max: usize) -> Result<Option<&'a str>> {
     match p.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) => {
@@ -123,7 +123,7 @@ fn opt_str<'a>(cmd: &str, p: &'a Value, key: &str, max: usize) -> Result<Option<
     }
 }
 
-fn opt_num(cmd: &str, p: &Value, key: &str, lo: f64, hi: f64) -> Result<Option<f64>> {
+pub(crate) fn opt_num(cmd: &str, p: &Value, key: &str, lo: f64, hi: f64) -> Result<Option<f64>> {
     match p.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(v) => {
@@ -137,7 +137,7 @@ fn opt_num(cmd: &str, p: &Value, key: &str, lo: f64, hi: f64) -> Result<Option<f
 }
 
 /// The first 40 characters of a prompt, for layer names and job labels.
-fn short(prompt: &str) -> String {
+pub(crate) fn short(prompt: &str) -> String {
     let mut s: String = prompt.chars().take(40).collect();
     if prompt.chars().count() > 40 {
         s.push('…');
@@ -185,7 +185,7 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
 }
 
 /// Bilinear resize, for a backend that returns a different size than it was given.
-fn resize_rgba8(src: &Rgba8, w: u32, h: u32) -> Result<Rgba8> {
+pub(crate) fn resize_rgba8(src: &Rgba8, w: u32, h: u32) -> Result<Rgba8> {
     let (sw, sh) = (src.width as usize, src.height as usize);
     if sw == 0 || sh == 0 || w == 0 || h == 0 {
         return Err(EngineError::Other("cannot resize an empty image".into()));
@@ -253,18 +253,18 @@ struct ImagePlan {
 
 /// Shared validation of the prompt, template, licence gate, seed, steps, guidance and model
 /// override for both generative commands.
-struct Common {
-    template: Template,
-    prompt: String,
-    negative: String,
-    seed: u64,
-    steps: u32,
-    guidance: f32,
-    models: Vec<(String, String)>,
-    name: Option<String>,
+pub(crate) struct Common {
+    pub(crate) template: Template,
+    pub(crate) prompt: String,
+    pub(crate) negative: String,
+    pub(crate) seed: u64,
+    pub(crate) steps: u32,
+    pub(crate) guidance: f32,
+    pub(crate) models: Vec<(String, String)>,
+    pub(crate) name: Option<String>,
 }
 
-fn plan_common(s: &Session, cmd: &str, p: &Value, default_template: &str, task: Task, default_model: &str) -> Result<Common> {
+pub(crate) fn plan_common(s: &Session, cmd: &str, p: &Value, default_template: &str, task: Task, default_model: &str) -> Result<Common> {
     let prompt = opt_str(cmd, p, "prompt", MAX_PROMPT_CHARS)?
         .map(str::trim)
         .filter(|t| !t.is_empty())
@@ -348,8 +348,19 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
     let ImagePlan { template, prompt, negative, seed, steps, guidance, name, models, width, height, to_document } = plan;
     let label = name.clone();
     let tid = template.meta.id.clone();
-    let req =
-        Request { template: template.meta.id.clone(), prompt, negative, seed, steps, guidance, image: None, mask: None, models, size: Some((width, height)) };
+    let req = Request {
+        template: template.meta.id.clone(),
+        prompt,
+        negative,
+        seed,
+        steps,
+        guidance,
+        image: None,
+        mask: None,
+        models,
+        size: Some((width, height)),
+        params: BTreeMap::new(),
+    };
     if to_document {
         let doc_name = name.clone();
         return crate::jobs::run(
@@ -415,7 +426,19 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
             let coverage: Vec<f32> = sel.read_region(rect).chunks_exact(k).map(|c| c.first().copied().unwrap_or(0.0).clamp(0.0, 1.0)).collect();
             let mask = Gray8::new(w, h, coverage.iter().map(|c| (c * 255.0 + 0.5) as u8).collect()).map_err(gen_err)?;
             ctx.check()?;
-            let req = Request { template: template_id, prompt, negative, seed, steps, guidance, image: Some(image), mask: Some(mask), models, size: None };
+            let req = Request {
+                template: template_id,
+                prompt,
+                negative,
+                seed,
+                steps,
+                guidance,
+                image: Some(image),
+                mask: Some(mask),
+                models,
+                size: None,
+                params: BTreeMap::new(),
+            };
             let resp = backend.run(&req, &JobProgress(ctx)).map_err(gen_err)?;
             ctx.check()?;
             let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;

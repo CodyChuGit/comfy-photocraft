@@ -73,7 +73,7 @@ or map the engine already understands.
 | P8 | **Auto crop / composition suggestions** | saliency + VLM | crop presets offered in the Crop tool | nice-to-have | S |
 | P9 | **Smart tagging and metadata** | VLM | XMP keywords; alt text for export | accessibility, LightCraft hand-off | S |
 
-### 2.1 Select by text with SAM 3.1 (design sketch)
+### 2.1 Select by text with SAM 3.1 (design sketch; `select.byText` and `select.subjectML` shipped 2026-10-09)
 
 SAM 3.1 (Meta, 2026-03-27) segments every instance of a short text concept, optionally refined by
 points or boxes, and ComfyUI runs it natively from one 1.75 GB checkpoint

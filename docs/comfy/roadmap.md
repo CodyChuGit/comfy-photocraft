@@ -13,7 +13,7 @@ code map is in [`codebase-orientation.md`](codebase-orientation.md).
 | 1 Backend + headless Generative Fill | ✅ 2026-10-09: live against ComfyUI 0.39.0 with Qwen-Image-2.1, Krea 2 Turbo and Qwen-Image-Edit-2511 (numbers in the dev log) | `photocraft-genai` crate, ComfyUI client, `generate.fill` / `generate.image` (pulled forward from Phase 3) / `generate.health` / `generate.models` from the CLI and MCP |
 | 2 Generative Fill in the app | ⬜ | Prompt bar, progress, variations, generative layers with masks, model picker, preferences |
 | 3 The Firefly core set | ⬜ | Expand, Generate Image, instruction Edit, Remove Background |
-| 3.5 Select by text (SAM 3.1) | ⬜ | `select.byText`, ML Select Subject, point/box object selection, SAM-backed mattes for Remove Background |
+| 3.5 Select by text (SAM 3.1) | 🟡 2026-10-09: `select.byText` and `select.subjectML` live (text prompts); point/box prompts and soft-matte refinement pending | `select.byText`, ML Select Subject, point/box object selection, SAM-backed mattes for Remove Background |
 | 4 Models and workflows as data | ⬜ | Model catalogue, workflow template import, references, LoRAs, downloads with checksums |
 | 4.5 Assistant | ⬜ | In-app assistant panel over a local LLM/VLM, driving the command registry; prompt enhancement, auto-naming |
 | 5 Quality and depth | ⬜ | Harmonize, Generative Upscale, Generate Similar, generative smart objects, PSD interop |
@@ -116,6 +116,10 @@ License (commercial allowed, military/weapons uses banned, licence passed on; th
 weights). **DoD.** "select the dog" on a public-domain test image yields one undoable selection
 per instance in under a second on the 5090; classical fallback when the server is down; `panic_hunt`
 green; the MCP acceptance test gains a select-by-text task.
+
+**Status 2026-10-09.** `select.byText` and `select.subjectML` landed and ran live ("the
+lighthouse" in 4.6 s cold, "sky" in 1.8 s warm; see the dev log). Open: `select.byPoint`, the
+BiRefNet soft-matte refinement, the MCP acceptance task, and the menu/tool UI (Phase 2 work).
 
 ## Phase 4: Models and workflows as data
 

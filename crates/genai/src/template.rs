@@ -141,6 +141,7 @@ const BUILTIN: &[&str] = &[
     include_str!("../workflows/qwen-2.1-fill.json"),
     include_str!("../workflows/krea2-turbo-image.json"),
     include_str!("../workflows/qwen-2.1-image.json"),
+    include_str!("../workflows/sam3.1-segment.json"),
 ];
 
 /// Every compiled-in template. Parsing cannot fail for shipped files (a test checks it); a file

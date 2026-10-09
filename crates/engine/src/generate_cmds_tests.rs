@@ -206,7 +206,7 @@ fn health_and_models_report_the_server() {
     let mut s = session(&fake.url);
     let h = s.execute(HEALTH, json!({})).unwrap();
     assert_eq!(h["ok"], true);
-    assert_eq!(h["version"], "0.37.0");
+    assert_eq!(h["version"], "0.39.0");
     assert_eq!(h["vramTotal"], 32_000_000_000u64);
     let m = s.execute(MODELS, json!({})).unwrap();
     assert_eq!(m["server"]["ok"], true);

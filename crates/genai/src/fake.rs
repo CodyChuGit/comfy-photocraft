@@ -35,6 +35,9 @@ pub struct Options {
     pub missing_node: Option<String>,
     /// Serve the WebSocket (false: connections to `/ws` are refused, so the client must poll).
     pub websocket: bool,
+    /// What a detector graph (`SAM3_Detect`) "finds": one mask image per rectangle, given as
+    /// normalised `[x0, y0, x1, y1]` of the uploaded image. Empty = nothing found.
+    pub segments: Vec<[f32; 4]>,
 }
 
 impl Default for Options {
@@ -45,9 +48,10 @@ impl Default for Options {
             reject_prompt: None,
             color: [200, 40, 40, 255],
             progress_steps: 4,
-            version: "0.37.0".into(),
+            version: "0.39.0".into(),
             missing_node: None,
             websocket: true,
+            segments: vec![[0.25, 0.25, 0.75, 0.75]],
         }
     }
 }
@@ -65,6 +69,8 @@ pub struct State {
     pub deleted: Vec<String>,
     queued_at: BTreeMap<String, Instant>,
     outputs: BTreeMap<String, Vec<u8>>,
+    /// Output file names per prompt, in order.
+    output_files: BTreeMap<String, Vec<String>>,
 }
 
 pub struct FakeComfy {
@@ -316,8 +322,33 @@ fn route(method: &str, path: &str, body: &[u8], ctype: &str, opts: &Options, sta
                 .map(|i| (i.width, i.height))
                 .or(latent_size)
                 .unwrap_or((64, 64));
-            let out = Rgba8::solid(size.0, size.1, opts.color).and_then(|i| png::encode_rgba8(&i)).unwrap_or_default();
-            st.outputs.insert(format!("{id}.png"), out);
+            let files: Vec<(String, Vec<u8>)> = if graph_text.contains("SAM3_Detect") {
+                // A detector: one mask image per configured segment (none = nothing found).
+                let (w, h) = size;
+                opts.segments
+                    .iter()
+                    .enumerate()
+                    .map(|(i, r)| {
+                        let px = |f: f32, n: u32| ((n as f32 * f.clamp(0.0, 1.0)).round() as u32).min(n);
+                        let (x0, y0, x1, y1) = (px(r[0], w), px(r[1], h), px(r[2], w), px(r[3], h));
+                        let mut data = Vec::with_capacity(w as usize * h as usize * 4);
+                        for y in 0..h {
+                            for x in 0..w {
+                                let v = if x >= x0 && x < x1 && y >= y0 && y < y1 { 255 } else { 0 };
+                                data.extend_from_slice(&[v, v, v, 255]);
+                            }
+                        }
+                        (format!("{id}_{i}.png"), Rgba8::new(w, h, data).and_then(|img| png::encode_rgba8(&img)).unwrap_or_default())
+                    })
+                    .collect()
+            } else {
+                vec![(format!("{id}.png"), Rgba8::solid(size.0, size.1, opts.color).and_then(|i| png::encode_rgba8(&i)).unwrap_or_default())]
+            };
+            let names: Vec<String> = files.iter().map(|(n, _)| n.clone()).collect();
+            for (name, bytes) in files {
+                st.outputs.insert(name, bytes);
+            }
+            st.output_files.insert(id.clone(), names);
             st.queued_at.insert(id.clone(), Instant::now());
             st.prompts.push((id.clone(), graph.clone(), client_id));
             json(200, json!({"prompt_id": id, "number": n, "node_errors": {}}))
@@ -334,7 +365,9 @@ fn route(method: &str, path: &str, body: &[u8], ctype: &str, opts: &Options, sta
                     json!({"prompt": [], "outputs": {}, "status": {"status_str": "error", "completed": false, "messages": [["execution_start", {"prompt_id": id}], ["execution_error", {"prompt_id": id, "node_id": "14", "node_type": "KSampler", "exception_message": msg}]]}})
                 }
                 None => {
-                    json!({"prompt": [], "outputs": {"16": {"images": [{"filename": format!("{id}.png"), "subfolder": "photocraft", "type": "output"}]}}, "status": {"status_str": "success", "completed": true, "messages": []}})
+                    let images: Vec<Value> =
+                        st.output_files.get(id).into_iter().flatten().map(|n| json!({"filename": n, "subfolder": "photocraft", "type": "output"})).collect();
+                    json!({"prompt": [], "outputs": {"16": {"images": images}}, "status": {"status_str": "success", "completed": true, "messages": []}})
                 }
             };
             json(200, json!({id: entry}))

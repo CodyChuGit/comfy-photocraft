@@ -186,7 +186,7 @@ fn health_and_model_files() {
     let b = backend(&fake.url);
     let h = b.health();
     assert!(h.ok, "{h:?}");
-    assert_eq!(h.version, "0.37.0");
+    assert_eq!(h.version, "0.39.0");
     assert_eq!(h.vram_total, Some(32_000_000_000));
     assert_eq!(h.queue_remaining, Some(0));
     let files = b.model_files("diffusion_models").unwrap_or_else(|e| panic!("{e}"));
