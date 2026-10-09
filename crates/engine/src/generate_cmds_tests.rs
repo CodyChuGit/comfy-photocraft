@@ -231,6 +231,9 @@ fn parameters_are_validated_before_anything_runs() {
         json!({"prompt": "x", "steps": 1000}),
         json!({"prompt": "x", "margin": 2}),
         json!({"prompt": "x", "margin": -0.1}),
+        json!({"prompt": "x", "variations": 0}),
+        json!({"prompt": "x", "variations": 5}),
+        json!({"prompt": "x", "variations": 1.5}),
         json!({"prompt": "x", "seed": -1}),
         json!({"prompt": "x", "seed": 1.5}),
         json!({"prompt": "x", "seed": "7"}),
@@ -313,6 +316,55 @@ fn results_of_another_size_are_resampled_to_the_request() {
     assert_eq!(r.get(0, 0), Some([0, 0, 0, 255]));
     assert_eq!(r.get(1, 1), Some([255, 255, 255, 255]));
     assert!(resize_rgba8(&two, 0, 2).is_err());
+}
+
+#[test]
+fn variations_are_hidden_siblings_and_the_variation_command_switches_them() {
+    let fake = FakeComfy::start().unwrap();
+    let mut s = session(&fake.url);
+    let (layers, steps) = {
+        let d = s.active().unwrap();
+        (d.doc.layers.len(), d.history.past_len())
+    };
+    let r = s.execute(FILL, json!({"prompt": "a kite", "seed": 40, "variations": 3})).unwrap();
+    let ids: Vec<LayerId> = r["layers"].as_array().unwrap().iter().map(|v| LayerId(v.as_u64().unwrap())).collect();
+    assert_eq!(ids.len(), 3);
+    assert_eq!(r["layer"], ids[0].0, "the visible result is the primary one");
+    assert_eq!(r["seeds"], json!([40, 41, 42]), "consecutive seeds");
+    assert_eq!(fake.state().prompts.len(), 3, "one backend run per variation");
+    {
+        let d = s.active().unwrap();
+        assert_eq!(d.doc.layers.len(), layers + 3);
+        assert_eq!(d.history.past_len(), steps + 1, "one undo step");
+        assert_eq!(d.active_layer, Some(ids[0]));
+        let visible: Vec<bool> = ids.iter().map(|id| d.doc.layer(*id).unwrap().visible).collect();
+        assert_eq!(visible, [true, false, false]);
+        assert_eq!(d.doc.layer(ids[1]).unwrap().name, "Generative Fill: a kite (2/3)");
+        assert!(ids.iter().all(|id| d.doc.layer(*id).unwrap().mask.is_some()), "every variation is masked to the selection");
+    }
+    // Switching shows exactly one of them and activates it, in one undo step.
+    let layers_json: Vec<u64> = ids.iter().map(|l| l.0).collect();
+    let v = s.execute(VARIATION, json!({"layers": layers_json, "index": 3})).unwrap();
+    assert_eq!((v["shown"].as_u64(), v["count"].as_u64()), (Some(ids[2].0), Some(3)));
+    {
+        let d = s.active().unwrap();
+        let visible: Vec<bool> = ids.iter().map(|id| d.doc.layer(*id).unwrap().visible).collect();
+        assert_eq!(visible, [false, false, true]);
+        assert_eq!(d.active_layer, Some(ids[2]));
+        assert_eq!(d.history.past_len(), steps + 2);
+    }
+    assert!(s.undo());
+    assert!(s.active().unwrap().doc.layer(ids[0]).unwrap().visible);
+    for p in [
+        json!({}),
+        json!({"layers": [], "index": 1}),
+        json!({"layers": layers_json, "index": 4}),
+        json!({"layers": layers_json, "index": 0}),
+        json!({"layers": layers_json}),
+    ] {
+        assert!(matches!(s.execute(VARIATION, p.clone()), Err(EngineError::BadParams { .. })), "{p}");
+    }
+    assert!(matches!(s.execute(VARIATION, json!({"layers": [999_999], "index": 1})), Err(EngineError::NoLayer(_))));
 }
 
 #[test]

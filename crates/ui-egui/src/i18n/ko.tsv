@@ -2738,3 +2738,9 @@ cameraRaw	Color	색상
 	Default generate model	기본 생성 모델
 	Default image template	기본 이미지 템플릿
 	Generative timeout (seconds)	생성 시간 제한(초)
+	Show generative bar	생성 막대 표시
+	Describe what to generate…	생성할 내용을 설명하세요…
+	Variations	변형
+	Generating…	생성 중…
+	Previous variation	이전 변형
+	Next variation	다음 변형

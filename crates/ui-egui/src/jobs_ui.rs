@@ -147,6 +147,8 @@ fn on_event(app: &mut PhotocraftApp, e: JobEvent) {
             true
         }
     });
+    // The generative task bar's own fill: it records the result layers (variations).
+    crate::generative_bar::on_event(app, &e);
     // Camera Raw's open-time re-develop and its final step.
     if crate::camera_raw_ui::on_redevelop_event(app, &e) {
         return;
@@ -290,7 +292,8 @@ pub fn status_progress(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 /// [`DIALOG_DELAY_MS`]; Esc cancels (see [`tick`]).
 pub fn dialog(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let Some(j) = app.session.active_job() else { return };
-    if j.elapsed_ms < DIALOG_DELAY_MS {
+    // A fill the generative task bar is showing has its progress and Cancel there already.
+    if j.elapsed_ms < DIALOG_DELAY_MS || crate::generative_bar::shows_job(app, j.id) {
         return;
     }
     let t = Tokens::get(ctx);

@@ -740,6 +740,9 @@ pub struct UiState {
     /// Selection-tool context menu opened by a plain canvas right-click.
     #[serde(default)]
     pub canvas_tool_menu: Option<crate::canvas_tool_menu::CanvasToolMenu>,
+    /// The generative task bar under the selection (comfy-photocraft, `generative_bar`).
+    #[serde(default)]
+    pub generative_bar: crate::generative_bar::GenerativeBar,
     /// Smoothing is a per-tool option (Brush and Eraser each keep theirs): the tool whose
     /// smoothing the session brush holds, and the other tools' saved values.
     #[serde(default)]
@@ -860,6 +863,7 @@ impl Default for UiState {
             brush_picker: None,
             layer_menu: None,
             canvas_tool_menu: None,
+            generative_bar: Default::default(),
             smoothing_tool: None,
             tool_smoothing: Vec::new(),
             clone_source: None,

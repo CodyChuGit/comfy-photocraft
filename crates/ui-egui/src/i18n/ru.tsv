@@ -2428,3 +2428,9 @@ cameraRaw	Roughness	Неровность
 	Default generate model	Модель генерации по умолчанию
 	Default image template	Шаблон изображения по умолчанию
 	Generative timeout (seconds)	Тайм-аут генерации (секунды)
+	Show generative bar	Показывать генеративную панель
+	Describe what to generate…	Опишите, что сгенерировать…
+	Variations	Варианты
+	Generating…	Генерация…
+	Previous variation	Предыдущий вариант
+	Next variation	Следующий вариант

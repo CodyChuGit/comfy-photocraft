@@ -4,6 +4,53 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-09 (late night): Phase 2, the generative task bar and variations
+
+**Landed**
+
+- `generate.fill` takes `variations` (1..4): one backend run per variation with consecutive
+  seeds, each its own masked layer, only the first visible, all in one undo step; the result
+  lists `layers` and `seeds`, and the job's progress spans the runs ("Variation 2/3").
+  `generate.variation {layers, index}` shows one of them, hides the others and activates it, as
+  one undo step. `generate.models {probe: false}` lists the templates without touching the server.
+- `crates/ui-egui/src/generative_bar.rs`: the task bar under the selection. Prompt (Enter
+  generates), template picker (research templates only with the preference on), variations,
+  Generate; a progress bar with Cancel while a fill runs on the document (its own or one a script
+  started); a ‹ 1/3 › switcher after a multi-variation run; × hides it until the next selection.
+  It sits centred below the selection, above it when there is no room, always on the canvas.
+  Edit › Generative Fill… and the selection context menu open it; the generated dialog remains
+  the fallback when the new `integrations.showGenerativeBar` preference is off or for scripts
+  that pass params. `ui.set` gained `generativeBar`, `generativePrompt`, `generativeTemplate`,
+  `generativeVariations`; `ui.inspect` reports `generativeBar`; the modal progress dialog stays
+  away while the bar shows the job (`docs/control-protocol.md` updated).
+- Tests: two engine tests (variations, the variation command and its validation), four UI tests
+  (menu → bar → generate → switch against the fake server; the preference's dialog fallback; the
+  bar's placement in a kittest harness; the placement arithmetic); six strings and one
+  preference label translated in the 13 languages.
+- Live: a two-variation Qwen-Image-2.1 fill from the bar on the lighthouse (a boat on the water),
+  captured as `ui-genbar-idle/running/results.png` in `C:\Users\5090\ComfyUI\photocraft-tests`.
+
+**Findings for the performance pass (next)**
+
+- ComfyUI's official 2511 template chains UNETLoader → ModelSamplingAuraFlow 3.1 → CFGNorm 1.0 →
+  (Lightning LoRA, 4 steps, CFG 1 | nothing, 40 steps, CFG 4) → KSampler euler/simple, with
+  `FluxKontextMultiReferenceLatentMethod index_timestep_zero` on both conditionings. Our 2511
+  fill lacks CFGNorm and the reference-method nodes. The 2511 Lightning LoRAs (lightx2v) are
+  Apache-2.0: 850 MB bf16 files for 4 and 8 steps.
+- Qwen-Image-2.1's few-step LoRA (Viggle turbo, 6 steps) carries the same research licence as
+  the base model and needs the author's custom nodes (a sigma schedule and an unmerged LoRA
+  loader); not a plain `LoraLoaderModelOnly`. `QwenImage21Cache` (already in our templates) is
+  the other 2.1 speed lever.
+- ComfyUI flags worth measuring on the 5090: `--fast fp16_accumulation` (ships in Comfy's own
+  bat file; changes outputs slightly), `--highvram` (keeps models resident). SageAttention needs
+  a wheel matching torch 2.14 / cu130 / Python 3.13 and is reported to break Qwen when enabled
+  globally; left out.
+- Photoshop's Generative Fill renders at most 1024 px on the longer side and upsamples; our
+  2511 path does the same through `FluxKontextImageScale`, the 2.1 path keeps the input size.
+
+**Still open (Phase 2)**: generative layer metadata, a committed control-protocol script test,
+installed-model badges in the picker.
+
 ## 2026-10-09 (night): Phase 2, first slice: the generative commands are clickable
 
 **Landed**

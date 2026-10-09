@@ -2585,3 +2585,9 @@ cameraRaw	Blending	Fusion
 	Default generate model	Modèle de génération par défaut
 	Default image template	Modèle d'image par défaut
 	Generative timeout (seconds)	Délai d'attente génératif (secondes)
+	Show generative bar	Afficher la barre générative
+	Describe what to generate…	Décrivez ce qu'il faut générer…
+	Variations	Variations
+	Generating…	Génération…
+	Previous variation	Variation précédente
+	Next variation	Variation suivante

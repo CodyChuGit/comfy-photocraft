@@ -123,7 +123,7 @@ fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Resu
                 size: None,
                 params,
             };
-            let resp = match backend.run(&req, &JobProgress(ctx)) {
+            let resp = match backend.run(&req, &JobProgress::new(ctx)) {
                 Ok(r) => r,
                 Err(photocraft_genai::Error::NoOutput(_)) => return Err(EngineError::Other(format!("nothing matching \"{shown}\" was found"))),
                 Err(e) => return Err(gen_err(e)),

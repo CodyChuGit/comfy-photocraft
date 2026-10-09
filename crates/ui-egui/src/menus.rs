@@ -149,6 +149,10 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     if let Some(r) = crate::plugin_ui::menu(app, id, &params) {
         return r;
     }
+    // Edit › Generative Fill… opens the generative task bar under the selection.
+    if let Some(r) = crate::generative_bar::menu(app, id, &params) {
+        return r;
+    }
     if id == "window.panel.brushes" {
         // Window › Brushes opens the Brush Settings window on its presets tab.
         app.ui.panels.brush_settings = true;

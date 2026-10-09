@@ -2225,3 +2225,9 @@ cameraRaw	Amount	Cantidad
 	Default generate model	Modelo de generación predeterminado
 	Default image template	Plantilla de imagen predeterminada
 	Generative timeout (seconds)	Tiempo de espera generativo (segundos)
+	Show generative bar	Mostrar la barra generativa
+	Describe what to generate…	Describe qué generar…
+	Variations	Variaciones
+	Generating…	Generando…
+	Previous variation	Variación anterior
+	Next variation	Variación siguiente

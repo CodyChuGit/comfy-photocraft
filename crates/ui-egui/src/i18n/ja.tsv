@@ -2137,3 +2137,9 @@ cameraRaw	Color	カラー
 	Default generate model	既定の生成モデル
 	Default image template	既定の画像テンプレート
 	Generative timeout (seconds)	生成のタイムアウト（秒）
+	Show generative bar	生成バーを表示
+	Describe what to generate…	生成する内容を入力…
+	Variations	バリエーション
+	Generating…	生成中…
+	Previous variation	前のバリエーション
+	Next variation	次のバリエーション

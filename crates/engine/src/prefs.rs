@@ -728,6 +728,8 @@ pub struct Integrations {
     pub generative_timeout_secs: u32,
     /// Offer models whose licence allows research use only (never pre-selected).
     pub allow_research_models: bool,
+    /// Show the generative task bar under a selection (Generative Fill's prompt and variations).
+    pub show_generative_bar: bool,
 }
 
 impl Default for Integrations {
@@ -742,6 +744,7 @@ impl Default for Integrations {
             default_image_template: "krea2-turbo/image".into(),
             generative_timeout_secs: 600,
             allow_research_models: false,
+            show_generative_bar: true,
         }
     }
 }

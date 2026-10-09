@@ -2193,3 +2193,9 @@
 	Default generate model	Standard-Generierungsmodell
 	Default image template	Standard-Bildvorlage
 	Generative timeout (seconds)	Zeitlimit für Generierung (Sekunden)
+	Show generative bar	Generative Leiste anzeigen
+	Describe what to generate…	Beschreiben, was generiert werden soll…
+	Variations	Variationen
+	Generating…	Wird generiert…
+	Previous variation	Vorherige Variation
+	Next variation	Nächste Variation

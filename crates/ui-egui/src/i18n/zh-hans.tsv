@@ -2162,3 +2162,9 @@ cameraRaw	Blending	混合
 	Default generate model	默认生成模型
 	Default image template	默认图像模板
 	Generative timeout (seconds)	生成超时（秒）
+	Show generative bar	显示生成栏
+	Describe what to generate…	描述要生成的内容…
+	Variations	变体
+	Generating…	正在生成…
+	Previous variation	上一个变体
+	Next variation	下一个变体

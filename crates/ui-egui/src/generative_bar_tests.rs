@@ -1,0 +1,186 @@
+use egui::vec2;
+use egui_kittest::Harness;
+use photocraft_doc::LayerId;
+use photocraft_genai::fake::FakeComfy;
+use serde_json::json;
+
+use super::*;
+use crate::control::{ControlRequest, Outcome, handle};
+
+/// A 64×48 document with one empty layer, talking to `url`; no background jobs (inline runs).
+fn app(url: &str) -> PhotocraftApp {
+    let mut s = photocraft_engine::Session::new();
+    s.execute("file.new", json!({"width": 64, "height": 48})).unwrap();
+    s.execute("layer.new.layer", json!({})).unwrap();
+    s.edit_prefs(|p| p.integrations.comfy_server = url.to_string());
+    let mut app = PhotocraftApp::new(s, crate::Services::default());
+    app.sync_views();
+    app
+}
+
+fn control(app: &mut PhotocraftApp, ctx: &egui::Context, method: &str, params: Value) -> Value {
+    let (req, _rx) = ControlRequest::new(method, params);
+    match handle(app, ctx, &req) {
+        Outcome::Done(v) => v,
+        _ => panic!("{method}: the reply was deferred"),
+    }
+}
+
+#[test]
+fn the_menu_opens_the_bar_and_generate_runs_the_fill_with_variations() {
+    let fake = FakeComfy::start().unwrap();
+    let mut app = app(&fake.url);
+    let ctx = egui::Context::default();
+    // Without a selection the menu row is disabled, like the command itself.
+    assert!(crate::menus::invoke(&mut app, &ctx, COMMAND, json!({})).is_err());
+    assert!(!app.ui.generative_bar.open);
+    app.run("select.rect", json!({"x": 10, "y": 8, "width": 20, "height": 16})).unwrap();
+    let r = crate::menus::invoke(&mut app, &ctx, COMMAND, json!({})).unwrap();
+    assert_eq!(r["generativeBar"], true);
+    assert!(app.ui.generative_bar.open && app.ui.generative_bar.focus);
+    assert!(app.ui.dialogs.is_empty(), "the bar replaces the generated dialog");
+    let ids: Vec<&str> = app.ui.generative_bar.templates.iter().map(|t| t.id.as_str()).collect();
+    assert!(ids.contains(&"qwen-edit-2511/fill") && ids.contains(&"qwen-2.1/fill"), "{ids:?}");
+    assert!(!app.ui.generative_bar.templates.iter().find(|t| t.id == "qwen-2.1/fill").unwrap().allowed, "research template gated");
+    assert!(fake.state().requests.is_empty(), "listing templates for the picker contacts no server");
+
+    // An empty prompt does nothing; a prompt generates, inline here (no background jobs).
+    assert!(generate(&mut app).is_err());
+    assert!(fake.state().prompts.is_empty());
+    app.ui.generative_bar.prompt = "a kite".into();
+    app.ui.generative_bar.variations = 2;
+    let layers_before = app.session.active().unwrap().doc.layers.len();
+    generate(&mut app).unwrap();
+    assert_eq!(fake.state().prompts.len(), 2, "one backend run per variation");
+    let bar = app.ui.generative_bar.clone();
+    assert_eq!(bar.results.len(), 2);
+    assert_eq!(bar.shown, 0);
+    assert!(bar.job.is_none());
+    let d = app.session.active().unwrap();
+    assert_eq!(d.doc.layers.len(), layers_before + 2);
+    assert_eq!(d.doc.layer(LayerId(bar.results[0])).unwrap().name, "Generative Fill: a kite (1/2)");
+    assert_eq!(valid_results(&app), bar.results);
+
+    // The switcher shows the second variation through generate.variation (one undo step).
+    let steps = app.session.active().unwrap().history.past_len();
+    show_variation(&mut app, 1).unwrap();
+    let d = app.session.active().unwrap();
+    let (a, b) = (LayerId(bar.results[0]), LayerId(bar.results[1]));
+    assert!(!d.doc.layer(a).unwrap().visible && d.doc.layer(b).unwrap().visible);
+    assert_eq!(d.history.past_len(), steps + 1);
+    assert_eq!(app.ui.generative_bar.shown, 1);
+    assert!(show_variation(&mut app, 7).is_ok(), "an index past the end shows the last one");
+    assert_eq!(app.ui.generative_bar.shown, 1);
+
+    // ui.inspect shows the bar; ui.set drives and validates it.
+    let v = control(&mut app, &ctx, "ui.inspect", json!({}));
+    assert_eq!(v["result"]["generativeBar"]["prompt"], "a kite");
+    assert_eq!(v["result"]["generativeBar"]["results"].as_array().unwrap().len(), 2);
+    let bad = control(&mut app, &ctx, "ui.set", json!({"generativeVariations": 9}));
+    assert_eq!(bad["ok"], false, "{bad}");
+    let bad = control(&mut app, &ctx, "ui.set", json!({"generativePrompt": 5}));
+    assert_eq!(bad["ok"], false, "{bad}");
+    let ok = control(&mut app, &ctx, "ui.set", json!({"generativePrompt": "a boat", "generativeVariations": 3, "generativeTemplate": "qwen-2.1/fill"}));
+    assert_eq!(ok["ok"], true, "{ok}");
+    let bar = &app.ui.generative_bar;
+    assert_eq!((bar.prompt.as_str(), bar.variations, bar.template.as_str()), ("a boat", 3, "qwen-2.1/fill"));
+    assert_eq!(control(&mut app, &ctx, "ui.set", json!({"generativeBar": false}))["ok"], true);
+    assert!(!app.ui.generative_bar.open);
+    assert_eq!(control(&mut app, &ctx, "ui.set", json!({"generativeBar": true}))["ok"], true);
+    assert!(app.ui.generative_bar.open);
+
+    // A research template is refused by the engine until the preference allows it.
+    assert!(generate(&mut app).is_err());
+    app.session.edit_prefs(|p| p.integrations.allow_research_models = true);
+    generate(&mut app).unwrap();
+    assert_eq!(app.ui.generative_bar.results.len(), 3);
+    assert_eq!(app.session.active().unwrap().doc.layer(LayerId(app.ui.generative_bar.results[1])).unwrap().name, "Generative Fill: a boat (2/3)");
+}
+
+#[test]
+fn the_preference_hides_the_bar_and_the_menu_falls_back_to_the_dialog() {
+    let fake = FakeComfy::start().unwrap();
+    let mut app = app(&fake.url);
+    let ctx = egui::Context::default();
+    app.session.edit_prefs(|p| p.integrations.show_generative_bar = false);
+    app.run("select.rect", json!({"x": 10, "y": 8, "width": 20, "height": 16})).unwrap();
+    show(&mut app, &ctx);
+    assert!(!app.ui.generative_bar.open, "no bar when the preference is off");
+    let r = crate::menus::invoke(&mut app, &ctx, COMMAND, json!({})).unwrap();
+    assert!(r["dialog"].is_u64(), "{r}");
+    assert_eq!(app.ui.dialogs.len(), 1);
+    // With params, automation runs the engine directly either way.
+    app.ui.close_dialog(r["dialog"].as_u64().unwrap());
+    app.session.edit_prefs(|p| p.integrations.show_generative_bar = true);
+    let r = crate::menus::invoke(&mut app, &ctx, COMMAND, json!({"prompt": "x"})).unwrap();
+    assert!(r["layer"].is_u64(), "{r}");
+    assert!(!app.ui.generative_bar.open);
+}
+
+fn harness(mut app: PhotocraftApp) -> Harness<'static, PhotocraftApp> {
+    app.sync_views();
+    let mut h = Harness::builder().with_size(vec2(1000.0, 700.0)).build_ui_state(
+        |ui, app: &mut PhotocraftApp| {
+            let ctx = ui.ctx().clone();
+            if !ctx.fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                return;
+            }
+            egui::CentralPanel::default().show(ui, |ui| crate::canvas::document_area(app, ui));
+            show(app, &ctx);
+        },
+        app,
+    );
+    PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::default());
+    h.run_steps(4);
+    h
+}
+
+fn bar_rect(h: &Harness<'static, PhotocraftApp>) -> Option<egui::Rect> {
+    h.ctx.memory(|m| m.area_rect(egui::Id::new(AREA_ID)))
+}
+
+#[test]
+fn the_bar_appears_under_a_new_selection_inside_the_canvas_and_goes_with_it() {
+    let fake = FakeComfy::start().unwrap();
+    let app = app(&fake.url);
+    let mut h = harness(app);
+    assert!(!h.state().ui.generative_bar.open, "no selection, no bar");
+    h.state_mut().run("select.rect", json!({"x": 10, "y": 8, "width": 20, "height": 16})).unwrap();
+    h.run_steps(3);
+    assert!(h.state().ui.generative_bar.open, "a selection opens the bar");
+    assert!(!h.state().ui.generative_bar.templates.is_empty(), "the picker has its templates without a menu click");
+    let bar = bar_rect(&h).expect("the bar is drawn");
+    let app = h.state();
+    let xf = crate::canvas::ViewXform::active(app).unwrap();
+    let sel = xf.doc_rect(app.session.active().unwrap().doc.selection.as_ref().unwrap().content_bounds());
+    let canvas = crate::rulers::content_rect(app, app.last_canvas_rect);
+    assert!(bar.top() >= sel.bottom(), "below the selection: bar {bar:?}, selection {sel:?}");
+    assert!((bar.center().x - sel.center().x).abs() < 2.0, "centred on it: bar {bar:?}, selection {sel:?}");
+    assert!(canvas.contains_rect(bar), "inside the canvas: bar {bar:?}, canvas {canvas:?}");
+    // Closed with ×, it stays closed for this selection, and a new selection reopens it.
+    h.state_mut().ui.generative_bar.open = false;
+    h.run_steps(2);
+    assert!(!h.state().ui.generative_bar.open);
+    h.state_mut().run("select.deselect", json!({})).unwrap();
+    h.run_steps(2);
+    assert!(!h.state().ui.generative_bar.open, "no selection, no bar");
+    h.state_mut().run("select.all", json!({})).unwrap();
+    h.run_steps(3);
+    assert!(h.state().ui.generative_bar.open, "a new selection reopens it");
+    let bar = bar_rect(&h).expect("drawn again");
+    let app = h.state();
+    let canvas = crate::rulers::content_rect(app, app.last_canvas_rect);
+    assert!(canvas.contains_rect(bar), "a selection filling the view keeps the bar on the canvas: {bar:?} in {canvas:?}");
+}
+
+#[test]
+fn placement_prefers_below_then_above_then_the_canvas_bottom() {
+    let canvas = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(800.0, 600.0));
+    let size = vec2(500.0, 40.0);
+    let below = place(egui::Rect::from_min_max(egui::pos2(100.0, 100.0), egui::pos2(300.0, 200.0)), size, canvas);
+    assert_eq!(below, egui::pos2(8.0, 212.0), "centred would start at -50: clamped to the left edge");
+    let above = place(egui::Rect::from_min_max(egui::pos2(300.0, 400.0), egui::pos2(500.0, 580.0)), size, canvas);
+    assert_eq!(above, egui::pos2(150.0, 348.0));
+    let huge = place(egui::Rect::from_min_max(egui::pos2(-100.0, -100.0), egui::pos2(900.0, 700.0)), size, canvas);
+    assert_eq!(huge, egui::pos2(150.0, 552.0));
+}

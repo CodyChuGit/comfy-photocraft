@@ -2154,3 +2154,9 @@ cameraRaw	Color	Barvy
 	Default generate model	Výchozí model pro generování
 	Default image template	Výchozí šablona obrázku
 	Generative timeout (seconds)	Časový limit generování (sekundy)
+	Show generative bar	Zobrazit generativní lištu
+	Describe what to generate…	Popište, co vygenerovat…
+	Variations	Variace
+	Generating…	Generování…
+	Previous variation	Předchozí variace
+	Next variation	Další variace

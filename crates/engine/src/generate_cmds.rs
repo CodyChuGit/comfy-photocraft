@@ -15,7 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use photocraft_color::{ColorMode, PixelFormat, SampleType};
-use photocraft_doc::{Document, Layer, LayerMask, Size};
+use photocraft_doc::{Document, Layer, LayerId, LayerMask, Size};
 use photocraft_genai::template::{self, License, Template};
 use photocraft_genai::{GenerativeBackend, Gray8, Health, Request, Rgba8, Task};
 use photocraft_geom::Rect;
@@ -30,6 +30,11 @@ pub const FILL: &str = "generate.fill";
 pub const IMAGE: &str = "generate.image";
 pub const HEALTH: &str = "generate.health";
 pub const MODELS: &str = "generate.models";
+pub const VARIATION: &str = "generate.variation";
+/// Most results one `generate.fill` call makes (`variations`).
+pub const MAX_VARIATIONS: u32 = 4;
+/// Seeds stay below 2^53 so they survive a round trip through JSON numbers.
+const MAX_SEED: u64 = 1 << 53;
 pub const DEFAULT_FILL_TEMPLATE: &str = "qwen-edit-2511/fill";
 pub const DEFAULT_IMAGE_TEMPLATE: &str = "krea2-turbo/image";
 /// Text-to-image sizes are rounded down to this grid (latent patches); the smallest side allowed.
@@ -84,15 +89,30 @@ fn fill_enabled(s: &Session) -> std::result::Result<(), String> {
     Ok(())
 }
 
-/// Maps the backend's progress onto the job's bar after the render step.
-pub(crate) struct JobProgress<'a>(pub(crate) &'a JobCtx);
+/// Maps the backend's progress onto the job's bar: the `lo..hi` part of it, after the render step.
+pub(crate) struct JobProgress<'a> {
+    ctx: &'a JobCtx,
+    lo: f32,
+    hi: f32,
+}
+
+impl<'a> JobProgress<'a> {
+    /// One backend run filling the bar from 5 % to 95 %.
+    pub(crate) fn new(ctx: &'a JobCtx) -> Self {
+        Self::span(ctx, 0.05, 0.95)
+    }
+    /// The part of the bar one of several backend runs occupies.
+    pub(crate) fn span(ctx: &'a JobCtx, lo: f32, hi: f32) -> Self {
+        Self { ctx, lo, hi }
+    }
+}
 
 impl photocraft_genai::Progress for JobProgress<'_> {
     fn report(&self, fraction: f32, message: &str) {
-        self.0.progress(0.05 + 0.9 * fraction.clamp(0.0, 1.0), message);
+        self.ctx.progress(self.lo + (self.hi - self.lo) * fraction.clamp(0.0, 1.0), message);
     }
     fn cancelled(&self) -> bool {
-        self.0.cancelled()
+        self.ctx.cancelled()
     }
 }
 
@@ -108,6 +128,8 @@ struct FillPlan {
     models: Vec<(String, String)>,
     /// The area sent to the backend: the selection's bounds grown by the margin, on the canvas.
     rect: Rect,
+    /// How many results to make (consecutive seeds); only the first is visible.
+    variations: u32,
 }
 
 pub(crate) fn opt_str<'a>(cmd: &str, p: &'a Value, key: &str, max: usize) -> Result<Option<&'a str>> {
@@ -158,6 +180,11 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
     };
     let Common { template, prompt, negative, seed, steps, guidance, models, name } = plan_common(s, FILL, p, &default_template, Task::Fill, &default_model)?;
     let margin = opt_num(FILL, p, "margin", 0.0, 1.0)?.unwrap_or(0.25);
+    let variations = match opt_num(FILL, p, "variations", 1.0, f64::from(MAX_VARIATIONS))? {
+        None => 1,
+        Some(x) if x.fract() == 0.0 => x as u32,
+        Some(_) => return Err(bad(FILL, format!("`variations` must be a whole number from 1 to {MAX_VARIATIONS}"))),
+    };
 
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let sel = d.doc.selection.as_ref().ok_or_else(|| EngineError::Other("make a selection first".into()))?;
@@ -181,7 +208,7 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
         )));
     }
     let name = name.unwrap_or_else(|| format!("Generative Fill: {}", short(&prompt)));
-    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect })
+    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations })
 }
 
 /// Bilinear resize, for a backend that returns a different size than it was given.
@@ -374,7 +401,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
             &label,
             false,
             move |ctx| {
-                let resp = backend.run(&req, &JobProgress(ctx)).map_err(gen_err)?;
+                let resp = backend.run(&req, &JobProgress::new(ctx)).map_err(gen_err)?;
                 ctx.check()?;
                 Ok(resp)
             },
@@ -395,7 +422,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
         s,
         &label,
         move |doc, active, ctx| {
-            let resp = backend.run(&req, &JobProgress(ctx)).map_err(gen_err)?;
+            let resp = backend.run(&req, &JobProgress::new(ctx)).map_err(gen_err)?;
             ctx.check()?;
             let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
             let canvas = doc.bounds();
@@ -415,7 +442,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
 fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_fill(s, p)?;
     let backend = backend(s)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations } = plan;
     let label = name.clone();
     let template_id = template.meta.id.clone();
     let tid = template_id.clone();
@@ -432,7 +459,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
             let coverage: Vec<f32> = sel.read_region(rect).chunks_exact(k).map(|c| c.first().copied().unwrap_or(0.0).clamp(0.0, 1.0)).collect();
             let mask = Gray8::new(w, h, coverage.iter().map(|c| (c * 255.0 + 0.5) as u8).collect()).map_err(gen_err)?;
             ctx.check()?;
-            let req = Request {
+            let mut req = Request {
                 template: template_id,
                 prompt,
                 negative,
@@ -445,23 +472,83 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
                 size: None,
                 params: BTreeMap::new(),
             };
-            let resp = backend.run(&req, &JobProgress(ctx)).map_err(gen_err)?;
-            ctx.check()?;
-            let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
-            let out = if (out.width, out.height) == (w, h) { out } else { resize_rgba8(&out, w, h)? };
+            // One backend run per variation, consecutive seeds, each its own masked layer; the
+            // first is visible, the alternates sit hidden above it (`generate.variation` switches).
+            let n = variations.max(1);
+            let mut made: Vec<(LayerId, u64, String, u64)> = Vec::with_capacity(n as usize);
+            for i in 0..n {
+                req.seed = seed.wrapping_add(u64::from(i)) % MAX_SEED;
+                let (lo, hi) = (0.05 + 0.9 * i as f32 / n as f32, 0.05 + 0.9 * (i + 1) as f32 / n as f32);
+                if n > 1 {
+                    ctx.progress(lo, &format!("Variation {}/{n}", i + 1));
+                }
+                let resp = backend.run(&req, &JobProgress::span(ctx, lo, hi)).map_err(gen_err)?;
+                ctx.check()?;
+                let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
+                let out = if (out.width, out.height) == (w, h) { out } else { resize_rgba8(&out, w, h)? };
+                // The result becomes a layer in the document's own format, masked to the selection.
+                let layer_name = if n > 1 { format!("{name} ({}/{n})", i + 1) } else { name.clone() };
+                let mut layer = Layer::raster(layer_name, doc.pixel_format());
+                write_rgba8(&mut layer, &out, rect)?;
+                let mut mask_surface = Surface::with_default(PixelFormat::GRAY8, &[0.0]);
+                mask_surface.write_region(rect, &coverage);
+                layer.mask = Some(LayerMask { surface: mask_surface, enabled: true, linked: true, density: 1.0, feather: 0.0 });
+                layer.visible = i == 0;
+                let nid = doc.insert_above(*active, layer);
+                *active = Some(nid);
+                made.push((nid, resp.seed, resp.run_id, resp.elapsed_ms));
+            }
             ctx.progress(0.96, "Placing");
-            // The result becomes a layer in the document's own format, masked to the selection.
-            let mut layer = Layer::raster(name, doc.pixel_format());
-            write_rgba8(&mut layer, &out, rect)?;
-            let mut mask_surface = Surface::with_default(PixelFormat::GRAY8, &[0.0]);
-            mask_surface.write_region(rect, &coverage);
-            layer.mask = Some(LayerMask { surface: mask_surface, enabled: true, linked: true, density: 1.0, feather: 0.0 });
-            let nid = doc.insert_above(*active, layer);
-            *active = Some(nid);
-            Ok((nid, resp.seed, resp.run_id, resp.elapsed_ms, w, h))
+            // The visible result is the active layer.
+            *active = made.first().map(|m| m.0);
+            Ok((made, w, h))
         },
-        move |(nid, seed, run_id, ms, w, h)| json!({"layer": nid.0, "seed": seed, "template": tid, "runId": run_id, "width": w, "height": h, "ms": ms}),
+        move |(made, w, h)| {
+            let first = made.first();
+            json!({
+                "layer": first.map(|m| m.0.0), "seed": first.map(|m| m.1), "runId": first.map(|m| m.2.clone()), "template": tid,
+                "layers": made.iter().map(|m| m.0.0).collect::<Vec<_>>(), "seeds": made.iter().map(|m| m.1).collect::<Vec<_>>(),
+                "width": w, "height": h, "ms": made.iter().map(|m| m.3).sum::<u64>(),
+            })
+        },
     )
+}
+
+/// `generate.variation`: show one of the layers a fill made as variations, hide the others.
+fn run_variation(s: &mut Session, p: &Value) -> Result<Value> {
+    let bad_layers = || bad(VARIATION, "`layers` must be a list of 1 to 16 layer ids");
+    let layers: Vec<LayerId> = p
+        .get("layers")
+        .and_then(Value::as_array)
+        .ok_or_else(bad_layers)?
+        .iter()
+        .map(|v| v.as_u64().map(LayerId).ok_or_else(bad_layers))
+        .collect::<Result<_>>()?;
+    if layers.is_empty() || layers.len() > 16 {
+        return Err(bad_layers());
+    }
+    let index = match opt_num(VARIATION, p, "index", 1.0, layers.len() as f64)? {
+        Some(x) if x.fract() == 0.0 => x as usize,
+        Some(_) => return Err(bad(VARIATION, "`index` must be a whole number (1 = the first variation)")),
+        None => return Err(bad(VARIATION, "`index` is required (1 = the first variation)")),
+    };
+    let d = s.active().ok_or(EngineError::NoDocument)?;
+    if let Some(missing) = layers.iter().find(|id| d.doc.layer(**id).is_none()) {
+        return Err(EngineError::NoLayer(*missing));
+    }
+    let shown = layers.get(index.saturating_sub(1)).copied();
+    s.edit(&format!("Variation {index}"), |doc, active| {
+        for (i, id) in layers.iter().enumerate() {
+            doc.layer_mut(*id).ok_or(EngineError::NoLayer(*id))?.visible = i + 1 == index;
+        }
+        *active = shown;
+        Ok(())
+    })?;
+    Ok(json!({"shown": shown.map(|l| l.0), "index": index, "count": layers.len()}))
+}
+
+fn doc_enabled(s: &Session) -> std::result::Result<(), String> {
+    s.active().map(|_| ()).ok_or_else(|| "no document open".into())
 }
 
 fn run_health(s: &mut Session, _p: &Value) -> Result<Value> {
@@ -472,9 +559,15 @@ fn run_health(s: &mut Session, _p: &Value) -> Result<Value> {
     serde_json::to_value(&h).map_err(|e| EngineError::Other(e.to_string()))
 }
 
-fn run_models(s: &mut Session, _p: &Value) -> Result<Value> {
+fn run_models(s: &mut Session, p: &Value) -> Result<Value> {
     let allow_research = s.prefs().integrations.allow_research_models;
-    let backend = backend(s).ok();
+    // `probe: false` lists the templates without contacting the server (the UI's picker).
+    let probe = match p.get("probe") {
+        None | Some(Value::Null) => true,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(bad(MODELS, "`probe` must be true or false")),
+    };
+    let backend = if probe { backend(s).ok() } else { None };
     let health = backend.as_ref().map(|b| b.health());
     let online = health.as_ref().is_some_and(|h| h.ok);
     let mut folders: BTreeMap<String, Option<Vec<String>>> = BTreeMap::new();
@@ -512,7 +605,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Fill…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template},"model":{file?=Preferences},"name":{str?}} → {"layer","seed","template","runId","width","height","ms"} (steps and guidance 0 = the template's defaults; margin = context around the selection as a fraction of its larger side; a background job: the result is a new layer above the active one, masked to the selection; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template},"model":{file?=Preferences},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","ms"} (steps and guidance 0 = the template's defaults; margin = context around the selection as a fraction of its larger side; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; a background job: the result is a new layer above the active one, masked to the selection; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: fill_enabled,
             run: run_fill,
             journal: true,
@@ -525,6 +618,16 @@ pub fn specs() -> Vec<CommandSpec> {
             params: r#"{"prompt":text,"negative":text,"target":"auto|layer|document","width":int=0,"height":int=0,"steps":0..250=0,"guidance":0..30=0,"seed":{u64?=random},"template":{id?=Preferences › Default Image Template},"model":{file?=Preferences},"name":{str?}} → {"layer"|"document","seed","template","runId","width","height","ms"} (target auto = a layer over the whole canvas when a document is open, else a new document; width/height 0 = the document's size or 1024, otherwise 64..4096 rounded down to multiples of 16; steps and guidance 0 = the template's defaults; a background job; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: image_enabled,
             run: run_image,
+            journal: true,
+        },
+        CommandSpec {
+            id: VARIATION,
+            label: "Show Variation",
+            menu: &[],
+            shortcut: None,
+            params: r#"{"layers":[id],"index":int=1} → {"shown","index","count"} (the layers a Generative Fill made as variations: shows the index-th (1-based) and hides the others, as one undo step)"#,
+            enabled: doc_enabled,
+            run: run_variation,
             journal: true,
         },
         CommandSpec {
@@ -542,7 +645,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "List Generative Models",
             menu: &[],
             shortcut: None,
-            params: r#"{} → {"server","templates":[{"id","name","family","task","license","allowed","defaults","models":[{"placeholder","folder","file","installed"}]}]}"#,
+            params: r#"{"probe":bool=true} → {"server","templates":[{"id","name","family","task","license","allowed","defaults","models":[{"placeholder","folder","file","installed"}]}]} (probe false = list the templates without contacting the server: no server status, installed unknown)"#,
             enabled: always,
             run: run_models,
             journal: false,

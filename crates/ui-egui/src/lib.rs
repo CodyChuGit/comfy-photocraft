@@ -60,6 +60,7 @@ pub mod file_ui;
 pub mod fill_ui;
 pub mod filter_dialog;
 pub mod gallery_ui;
+pub mod generative_bar;
 pub mod gpu_canvas;
 pub mod gpu_status;
 pub mod gradient_ui;
@@ -1121,6 +1122,7 @@ impl eframe::App for PhotocraftApp {
         timeline_ui::windows(self, &ctx);
         workspace_ui::windows(self, &ctx);
         palette::show(self, &ctx);
+        generative_bar::show(self, &ctx);
         dialogs::show(self, &ctx);
         jobs_ui::dialog(self, &ctx);
         discard_ui::show(self, &ctx);

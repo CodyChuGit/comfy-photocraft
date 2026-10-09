@@ -11,7 +11,7 @@ code map is in [`codebase-orientation.md`](codebase-orientation.md).
 |---|---|---|
 | 0 Foundation | ✅ 2026-10-08 | This documentation, the Windows toolchain, a green release build, the `comfy-photocraft` branch |
 | 1 Backend + headless Generative Fill | ✅ 2026-10-09: live against ComfyUI 0.39.0 with Qwen-Image-2.1, Krea 2 Turbo and Qwen-Image-Edit-2511 (numbers in the dev log) | `photocraft-genai` crate, ComfyUI client, `generate.fill` / `generate.image` (pulled forward from Phase 3) / `generate.health` / `generate.models` from the CLI and MCP |
-| 2 Generative Fill in the app | 🟡 2026-10-09: menu rows, generated dialogs and the Preferences page work end to end; task bar, variations and the model picker pending | Prompt bar, progress, variations, generative layers with masks, model picker, preferences |
+| 2 Generative Fill in the app | 🟡 2026-10-09: menu rows, the task bar under the selection (prompt, template picker, variations, progress, switcher) and the Preferences page work end to end; layer metadata and the script test pending | Prompt bar, progress, variations, generative layers with masks, model picker, preferences |
 | 3 The Firefly core set | ⬜ | Expand, Generate Image, instruction Edit, Remove Background |
 | 3.5 Select by text (SAM 3.1) | 🟡 2026-10-09: `select.byText` and `select.subjectML` live (text prompts); point/box prompts and soft-matte refinement pending | `select.byText`, ML Select Subject, point/box object selection, SAM-backed mattes for Remove Background |
 | 4 Models and workflows as data | ⬜ | Model catalogue, workflow template import, references, LoRAs, downloads with checksums |
@@ -91,13 +91,12 @@ variations, keep it as a masked layer. Feels like Photoshop.
 **DoD.** Visual check with the offscreen snapshot example; a control-protocol script that selects,
 fills and screenshots is committed as a test; `ui.inspect` exposes the task bar state.
 
-**Status 2026-10-09: first slice done.** Item 1 is in (Edit › Generative Fill…, Edit › Generate
-Image…, Select › Select by Text…, and Generative Fill… first in the selection context menu, all
-translated), and item 6 in its generated form (Preferences › AI Integrations shows the seven
-settings with translated labels). As a stopgap for item 2, the three commands open the generated
-schema dialog (`filter_dialog`, no preview): prompt, negative, steps/guidance (0 = the template's
-defaults), margin or size, and OK runs the standard background job with status-bar progress and
-Esc-cancel. Verified with the offscreen snapshot example (see the dev log). Open: items 2–5 and 7.
+**Status 2026-10-09.** Items 1, 2, 3 (progress in the bar, no preview frames yet), 4 (variations
+as hidden sibling layers switched by `generate.variation`), 6 (generated Preferences page) and 7
+in its first form (the bar's template picker, research templates gated) are in; see the dev log
+entries of 2026-10-09. The generated schema dialog remains for Generate Image, Select by Text and
+for a hidden bar. Open: item 5 (generative layer metadata), the committed control-protocol script
+test of the DoD, installed-model badges in the picker, preview frames.
 
 ## Phase 3: The Firefly core set
 

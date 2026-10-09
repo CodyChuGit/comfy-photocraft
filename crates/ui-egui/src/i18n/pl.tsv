@@ -3195,3 +3195,9 @@ cameraRaw	Roughness	Chropowatość
 	Default generate model	Domyślny model generowania
 	Default image template	Domyślny szablon obrazu
 	Generative timeout (seconds)	Limit czasu generowania (sekundy)
+	Show generative bar	Pokaż pasek generatywny
+	Describe what to generate…	Opisz, co wygenerować…
+	Variations	Wariacje
+	Generating…	Generowanie…
+	Previous variation	Poprzednia wariacja
+	Next variation	Następna wariacja

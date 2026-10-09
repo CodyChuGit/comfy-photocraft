@@ -70,7 +70,7 @@ pub enum Outcome {
 
 /// The fields `ui.set` reads. Anything else is rejected before a field is applied, so a typo or
 /// a field the method doesn't have can't reply with success while nothing changes (#412).
-pub const UI_SET_FIELDS: [&str; 19] = [
+pub const UI_SET_FIELDS: [&str; 23] = [
     "tool",
     "panels",
     "dock",
@@ -90,6 +90,11 @@ pub const UI_SET_FIELDS: [&str; 19] = [
     "brushSize",
     "gradientBlendMode",
     "gradientClassic",
+    // The generative task bar (`generative_bar::set`).
+    "generativeBar",
+    "generativePrompt",
+    "generativeTemplate",
+    "generativeVariations",
 ];
 
 fn ok(v: Value) -> Outcome {
@@ -333,6 +338,9 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
             if let Some(size) = p.get("brushSize").and_then(Value::as_f64)
                 && let Err(e) = app.run("tools.setBrush", json!({"brush": {"size": size}}))
             {
+                return err(e);
+            }
+            if let Err(e) = crate::generative_bar::set(app, p) {
                 return err(e);
             }
             ok(Value::Null)
@@ -623,6 +631,7 @@ pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {
                 }).collect::<Vec<_>>()
             })
         }),
+        "generativeBar": app.ui.generative_bar,
         "panels": app.ui.panels,
         "views": app.ui.views,
         "dialogs": dialogs,
