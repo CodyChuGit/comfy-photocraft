@@ -3183,3 +3183,15 @@ cameraRaw	Roughness	Chropowatość
 	More documents	Więcej dokumentów
 	Developing {name}	Wywoływanie {name}
 	Camera Raw ({name})	Camera Raw ({name})
+
+# Comfy PhotoCraft: generative menu items (Edit › Generative Fill…, Edit › Generate Image…, Select › Select by Text…)
+	Generative Fill…	Wypełnienie generatywne…
+	Generate Image…	Generuj obraz…
+	Select by Text…	Zaznacz według tekstu…
+	Allow research models	Zezwalaj na modele badawcze
+	ComfyUI server	Serwer ComfyUI
+	Default edit model	Domyślny model edycji
+	Default fill template	Domyślny szablon wypełnienia
+	Default generate model	Domyślny model generowania
+	Default image template	Domyślny szablon obrazu
+	Generative timeout (seconds)	Limit czasu generowania (sekundy)

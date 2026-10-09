@@ -107,6 +107,10 @@ fn sizes_default_round_and_validate() {
     ] {
         assert!(matches!(s.execute(IMAGE, p.clone()), Err(EngineError::BadParams { .. })), "{p}");
     }
+    // The generated dialog sends 0 for "default" sizes and steps, and "auto" for the target.
+    let r = s.execute(IMAGE, json!({"prompt": "x", "width": 0, "height": 0, "target": "auto", "steps": 0, "guidance": 0})).unwrap();
+    assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(1024), Some(1024)), "auto with a document open: a layer over its canvas");
+    assert_eq!(fake.state().prompts.last().unwrap().1["7"]["inputs"]["steps"], 8, "0 steps = the template default");
     let mut empty = Session::new();
     empty.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
     let e = empty.execute(IMAGE, json!({"prompt": "x", "target": "layer"})).unwrap_err();

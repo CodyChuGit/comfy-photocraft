@@ -2119,3 +2119,15 @@ cameraRaw	Blending	混合
 	Lines +/−	行數 +/−
 	@{login}: {prs} PRs, {commits} commits, +{added} / −{deleted} lines (Δ {delta}), +{binAdded} / −{binDeleted} binary assets, {first} – {last}	@{login}：{prs} 個 PR，{commits} 次提交，行 +{added} / −{deleted}（Δ {delta}），二進位檔 +{binAdded} / −{binDeleted}，{first} – {last}
 	Apply At Canvas Bounds	套用效果至版面邊界
+
+# Comfy PhotoCraft: generative menu items (Edit › Generative Fill…, Edit › Generate Image…, Select › Select by Text…)
+	Generative Fill…	生成式填滿…
+	Generate Image…	產生影像…
+	Select by Text…	依文字選取…
+	Allow research models	允許研究用模型
+	ComfyUI server	ComfyUI 伺服器
+	Default edit model	預設編輯模型
+	Default fill template	預設填滿範本
+	Default generate model	預設生成模型
+	Default image template	預設影像範本
+	Generative timeout (seconds)	生成逾時（秒）

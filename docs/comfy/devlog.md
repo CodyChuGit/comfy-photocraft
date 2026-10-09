@@ -4,6 +4,54 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-09 (night): Phase 2, first slice: the generative commands are clickable
+
+**Landed**
+
+- Menu rows (fork additions in `menu_catalog.rs`, not parity rows): **Edit › Generative Fill…**
+  and **Edit › Generate Image…** right after Content-Aware Fill, **Select › Select by Text…** (the
+  command's own `menu`), and **Generative Fill…** first in the selection context menu
+  (`canvas_tool_menu.rs`), where Photoshop puts it. Translated in the 13 complete-menu languages;
+  `docs/parity.md` now counts 629 live items (the two Edit rows).
+- Generated dialogs: the three commands are on `filter_dialog::has_dialog`'s allow-list (no
+  preview). Their params docs were rewritten in the dialog notation, with 0 meaning "the
+  template's default" for steps/guidance and "the document's size" for width/height, and
+  `target: "auto|layer|document"`; the engine accepts those values from the CLI too (tests
+  updated). OK runs the usual background job (`jobs_ui`: status-bar progress, Esc cancels), so
+  the dialog itself needed no new UI code.
+- Two fixes in upstream's `filter_dialog.rs`, both candidates for an upstream PR: `parse_spec`
+  parses only the parameter object (a `:` in the notes after `→` leaked in as an `Int` field,
+  visible as a stray `Ms"} (prompt` row), and ranges spanning ≤ 10 are stored with the two
+  decimals the field shows (margin 0.25 was snapped to 0.3). Unit test added.
+- Preferences › AI Integrations had been failing two ui-egui tests since Phase 1: the generated
+  labels of the seven settings had no translations, and a test assumed the section was entirely
+  unimplemented. Labels in 13 languages, `humanize` overrides ("ComfyUI server", "Generative
+  timeout (seconds)"), the test now asserts the section is visible while agent control stays
+  hidden.
+- Visual check with the offscreen snapshot example, captures in
+  `C:\Users\5090\ComfyUI\photocraft-tests\ui-*.png`: the three dialogs, the Edit and Select menus,
+  the selection context menu, the Preferences page in English and German.
+
+**Findings**
+
+- The snapshot example panics on this PC's DX12 adapter inside egui-wgpu's staging belt
+  (`renderer.rs:984`, the same failure as the 7 baseline canvas tests). `$env:WGPU_BACKEND =
+  "vulkan"` works, and so does `WGPU_FORCE_FALLBACK_ADAPTER=1`; written into
+  `dev-environment-windows.md` with the PowerShell quoting for `--script`.
+- `input_tests::eyedropper_and_alt_sampling_show_a_pipette` fails the same way with
+  `PHOTOCRAFT_CONFIG_DIR` pointing at an empty folder, so it is not reading machine preferences.
+  Still unexplained, still in the baseline.
+- The generated dialog is a stopgap: "0" for width/height/steps cannot explain itself, and there
+  is no model picker. The task bar (Phase 2 item 2) replaces it.
+
+**Numbers**: ui-egui lib 916 passed / 1 baseline failure; engine 859 + the generate/select
+command tests; genai 29; i18n 1467/1467 in every language; parity 629/629; scorecard unchanged
+(57 unread settings of 146); clippy, layers, wasm green.
+
+**Still open (Phase 2)**: the task bar anchored to the selection, variations, progress preview,
+a model picker fed by `generate.models`, generative layer metadata, and a committed
+control-protocol script that selects, fills and screenshots.
+
 ## 2026-10-09 (later): Phase 3.5, Select by Text with SAM 3.1, live
 
 **Landed**

@@ -293,7 +293,8 @@ pub(crate) fn plan_common(s: &Session, cmd: &str, p: &Value, default_template: &
             x as u64
         }
     };
-    let steps = opt_num(cmd, p, "steps", 1.0, 250.0)?.map_or(0, |x| x.round() as u32);
+    // 0 (the generated dialog's default) means the template's own step count.
+    let steps = opt_num(cmd, p, "steps", 0.0, 250.0)?.map_or(0, |x| x.round() as u32);
     let guidance = opt_num(cmd, p, "guidance", 0.0, 30.0)?.map_or(0.0, |x| x as f32);
     let name = opt_str(cmd, p, "name", 200)?.map(str::to_string);
     let mut models = Vec::new();
@@ -309,7 +310,12 @@ pub(crate) fn plan_common(s: &Session, cmd: &str, p: &Value, default_template: &
 
 /// A side length rounded down to the latent grid, within the allowed range.
 fn side(cmd: &str, p: &Value, key: &str, default: u32) -> Result<u32> {
-    let v = opt_num(cmd, p, key, f64::from(MIN_SIDE), f64::from(MAX_SIDE))?.map_or(default, |x| x.round() as u32);
+    // 0 (the generated dialog's default) means "use the default size".
+    let v = match opt_num(cmd, p, key, 0.0, f64::from(MAX_SIDE))?.map(|x| x.round() as u32) {
+        None | Some(0) => default,
+        Some(v) if v < MIN_SIDE => return Err(bad(cmd, format!("`{key}` must be 0 (default) or {MIN_SIDE}..{MAX_SIDE} (got {v})"))),
+        Some(v) => v,
+    };
     Ok((v / SIZE_STEP * SIZE_STEP).clamp(MIN_SIDE, MAX_SIDE))
 }
 
@@ -321,7 +327,7 @@ fn plan_image(s: &Session, p: &Value) -> Result<ImagePlan> {
     let Common { template, prompt, negative, seed, steps, guidance, models, name } = plan_common(s, IMAGE, p, &default_template, Task::Image, &default_model)?;
     let doc_size = s.active().map(|d| (d.doc.bounds().width(), d.doc.bounds().height()));
     let to_document = match opt_str(IMAGE, p, "target", 20)? {
-        None => doc_size.is_none(),
+        None | Some("auto") => doc_size.is_none(),
         Some("layer") => {
             if doc_size.is_none() {
                 return Err(EngineError::Other("open or create a document first, or use \"target\": \"document\"".into()));
@@ -329,7 +335,7 @@ fn plan_image(s: &Session, p: &Value) -> Result<ImagePlan> {
             false
         }
         Some("document") => true,
-        Some(other) => return Err(bad(IMAGE, format!("`target` must be \"layer\" or \"document\" (got `{other}`)"))),
+        Some(other) => return Err(bad(IMAGE, format!("`target` must be \"auto\", \"layer\" or \"document\" (got `{other}`)"))),
     };
     let (dw, dh) = if to_document { (1024, 1024) } else { doc_size.unwrap_or((1024, 1024)) };
     let width = side(IMAGE, p, "width", dw)?;
@@ -506,7 +512,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Fill…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":str,"negative":str?="","template":id?="qwen-edit-2511/fill","model":file?=Preferences,"seed":u64?=random,"steps":1..250?=template,"guidance":0..30?=template,"margin":0..1=0.25 (context around the selection, as a fraction of its larger side),"name":str?} → {"layer","seed","template","runId","width","height","ms"} (a background job: the result is a new layer above the active one, masked to the selection; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template},"model":{file?=Preferences},"name":{str?}} → {"layer","seed","template","runId","width","height","ms"} (steps and guidance 0 = the template's defaults; margin = context around the selection as a fraction of its larger side; a background job: the result is a new layer above the active one, masked to the selection; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: fill_enabled,
             run: run_fill,
             journal: true,
@@ -516,7 +522,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generate Image…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":str,"negative":str?="","template":id?="krea2-turbo/image","model":file?=Preferences,"seed":u64?=random,"steps":1..250?=template,"guidance":0..30?=template,"width":64..4096?=document or 1024,"height":64..4096?=document or 1024,"target":"layer|document"?=layer when a document is open,"name":str?} → {"layer"|"document","seed","template","runId","width","height","ms"} (a background job; sizes round down to multiples of 16; a layer covers the whole canvas; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"target":"auto|layer|document","width":int=0,"height":int=0,"steps":0..250=0,"guidance":0..30=0,"seed":{u64?=random},"template":{id?=Preferences › Default Image Template},"model":{file?=Preferences},"name":{str?}} → {"layer"|"document","seed","template","runId","width","height","ms"} (target auto = a layer over the whole canvas when a document is open, else a new document; width/height 0 = the document's size or 1024, otherwise 64..4096 rounded down to multiples of 16; steps and guidance 0 = the template's defaults; a background job; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: image_enabled,
             run: run_image,
             journal: true,

@@ -2213,3 +2213,15 @@ cameraRaw	Amount	Cantidad
 	Lines +/−	Líneas +/−
 	@{login}: {prs} PRs, {commits} commits, +{added} / −{deleted} lines (Δ {delta}), +{binAdded} / −{binDeleted} binary assets, {first} – {last}	@{login}: {prs} PR, {commits} commits, +{added} / −{deleted} líneas (Δ {delta}), +{binAdded} / −{binDeleted} archivos binarios, {first} – {last}
 	Apply At Canvas Bounds	Aplicar efecto en los límites del lienzo
+
+# Comfy PhotoCraft: generative menu items (Edit › Generative Fill…, Edit › Generate Image…, Select › Select by Text…)
+	Generative Fill…	Relleno generativo…
+	Generate Image…	Generar imagen…
+	Select by Text…	Seleccionar por texto…
+	Allow research models	Permitir modelos de investigación
+	ComfyUI server	Servidor ComfyUI
+	Default edit model	Modelo de edición predeterminado
+	Default fill template	Plantilla de relleno predeterminada
+	Default generate model	Modelo de generación predeterminado
+	Default image template	Plantilla de imagen predeterminada
+	Generative timeout (seconds)	Tiempo de espera generativo (segundos)

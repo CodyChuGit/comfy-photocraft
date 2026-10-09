@@ -2416,3 +2416,15 @@ cameraRaw	Roughness	Неровность
 	Lines +/−	Строки +/−
 	@{login}: {prs} PRs, {commits} commits, +{added} / −{deleted} lines (Δ {delta}), +{binAdded} / −{binDeleted} binary assets, {first} – {last}	@{login}: PR: {prs}, коммиты: {commits}, строки +{added} / −{deleted} (Δ {delta}), двоичные файлы +{binAdded} / −{binDeleted}, {first} – {last}
 	Apply At Canvas Bounds	Применить эффект на границах холста
+
+# Comfy PhotoCraft: generative menu items (Edit › Generative Fill…, Edit › Generate Image…, Select › Select by Text…)
+	Generative Fill…	Генеративная заливка…
+	Generate Image…	Создать изображение…
+	Select by Text…	Выделить по тексту…
+	Allow research models	Разрешить исследовательские модели
+	ComfyUI server	Сервер ComfyUI
+	Default edit model	Модель редактирования по умолчанию
+	Default fill template	Шаблон заливки по умолчанию
+	Default generate model	Модель генерации по умолчанию
+	Default image template	Шаблон изображения по умолчанию
+	Generative timeout (seconds)	Тайм-аут генерации (секунды)

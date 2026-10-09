@@ -2125,3 +2125,15 @@ cameraRaw	Color	カラー
 	Lines +/−	行数 +/−
 	@{login}: {prs} PRs, {commits} commits, +{added} / −{deleted} lines (Δ {delta}), +{binAdded} / −{binDeleted} binary assets, {first} – {last}	@{login}: PR {prs} 件、コミット {commits} 件、行 +{added} / −{deleted} (Δ {delta})、バイナリ +{binAdded} / −{binDeleted}、{first} – {last}
 	Apply At Canvas Bounds	カンバスの境界に効果を適用
+
+# Comfy PhotoCraft: generative menu items (Edit › Generative Fill…, Edit › Generate Image…, Select › Select by Text…)
+	Generative Fill…	生成塗りつぶし…
+	Generate Image…	画像を生成…
+	Select by Text…	テキストで選択…
+	Allow research models	研究用モデルを許可
+	ComfyUI server	ComfyUI サーバー
+	Default edit model	既定の編集モデル
+	Default fill template	既定の塗りつぶしテンプレート
+	Default generate model	既定の生成モデル
+	Default image template	既定の画像テンプレート
+	Generative timeout (seconds)	生成のタイムアウト（秒）

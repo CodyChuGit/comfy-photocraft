@@ -77,8 +77,16 @@ $w.WriteLine('{"id":1,"method":"ui.screenshot","params":{"path":"evidence/shot.p
 Offscreen UI snapshots without a window (upstream rule 6: verify UI changes visually):
 
 ```powershell
+$env:WGPU_BACKEND = "vulkan"   # on this PC the DX12 path panics in egui-wgpu's staging belt (renderer.rs:984)
 cargo run --release -p photocraft-ui-egui --example snapshot -- --out ui.png --size 1440x900 --scale 1
 ```
+
+`WGPU_FORCE_FALLBACK_ADAPTER=1` (the software adapter) works too. `--script` takes a JSON array
+of control-protocol calls; from PowerShell put `--%` before `--` and escape the quotes as `\"`,
+one invocation per line, e.g. `--script "[[\"ui.menu.invoke\",{\"id\":\"generate.fill\"}]]"`.
+`--click-at X,Y` opens a top menu (Edit is at 90,16; Select at 261,16 in a 1440×900 capture) and a
+`ui.pointer` call with `"tool":"RectMarquee","button":"secondary"` opens the selection context
+menu. The dialog and menu captures of the Phase 2 slice are in `C:\Users\5090\ComfyUI\photocraft-tests\ui-*.png`.
 
 ## Tests and gates
 

@@ -2181,3 +2181,15 @@
 	Lines +/−	Zeilen +/−
 	@{login}: {prs} PRs, {commits} commits, +{added} / −{deleted} lines (Δ {delta}), +{binAdded} / −{binDeleted} binary assets, {first} – {last}	@{login}: {prs} PRs, {commits} Commits, +{added} / −{deleted} Zeilen (Δ {delta}), +{binAdded} / −{binDeleted} Binärdateien, {first} – {last}
 	Apply At Canvas Bounds	Effekt an Arbeitsflächenbegrenzungen anwenden
+
+# Comfy PhotoCraft: generative menu items (Edit › Generative Fill…, Edit › Generate Image…, Select › Select by Text…)
+	Generative Fill…	Generative Füllung…
+	Generate Image…	Bild generieren…
+	Select by Text…	Per Text auswählen…
+	Allow research models	Forschungsmodelle zulassen
+	ComfyUI server	ComfyUI-Server
+	Default edit model	Standard-Bearbeitungsmodell
+	Default fill template	Standard-Füllvorlage
+	Default generate model	Standard-Generierungsmodell
+	Default image template	Standard-Bildvorlage
+	Generative timeout (seconds)	Zeitlimit für Generierung (Sekunden)

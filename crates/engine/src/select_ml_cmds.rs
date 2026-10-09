@@ -202,9 +202,10 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec {
             id: BY_TEXT,
             label: "Select by Text…",
-            menu: &[],
+            // Not a Photoshop menu item: listed after Photoshop's Select items (menus.rs "extra").
+            menu: &["Select"],
             shortcut: None,
-            params: r#"{"prompt":str (a short phrase: "the dog", "red car", "eye:2"; comma-separated terms),"mode":"replace|add|subtract|intersect"="replace","instance":1..?=all (which found instance to select),"threshold":0..1=0.5,"sampleAllLayers":bool=true,"template":id?="sam3.1/segment","model":file?} → {"selected","count","instances":[{"index","bounds":[x,y,w,h],"pixels"}],"ms"} (a background job; needs a ComfyUI server with the SAM 3.1 checkpoint, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"mode":"replace|add|subtract|intersect","threshold":0..1=0.5,"sampleAllLayers":bool=true,"instance":{1..?=all},"template":{id?="sam3.1/segment"},"model":{file?}} → {"selected","count","instances":[{"index","bounds":[x,y,w,h],"pixels"}],"ms"} (prompt: a short phrase such as "the dog", "red car" or "eye:2", comma-separated terms allowed; instance picks one of the found instances, default all; a background job; needs a ComfyUI server with the SAM 3.1 checkpoint, see Preferences › AI Integrations)"#,
             enabled,
             run: run_by_text,
             journal: true,
@@ -214,7 +215,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Select Subject (ML)",
             menu: &[],
             shortcut: None,
-            params: r#"{"what":"subject|person|face|hair|sky|animal|vehicle|text"="subject","mode":"replace|add|subtract|intersect"="replace","instance":1..?=all,"threshold":0..1=0.5,"sampleAllLayers":bool=true} → {"selected","count","instances","ms"} (Select by Text with a fixed phrase; the classical select.subject stays available without a server)"#,
+            params: r#"{"what":"subject|person|face|hair|sky|animal|vehicle|text","mode":"replace|add|subtract|intersect","threshold":0..1=0.5,"sampleAllLayers":bool=true,"instance":{1..?=all}} → {"selected","count","instances","ms"} (Select by Text with a fixed phrase; the classical select.subject stays available without a server)"#,
             enabled,
             run: run_subject,
             journal: true,

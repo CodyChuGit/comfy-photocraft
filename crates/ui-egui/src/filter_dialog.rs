@@ -42,7 +42,7 @@ pub struct Param {
 /// Parse the registry's parameter notation, e.g.
 /// `{"radius":0.1..1000=1,"method":"spin|zoom","monochromatic":bool,"seed":u32=0,"horizontal":px=0}`.
 pub fn parse_spec(spec: &str) -> Vec<Param> {
-    let inner = spec.trim().trim_start_matches('{').trim_end_matches('}');
+    let inner = input_object(spec.trim());
     let mut out = Vec::new();
     // Split on commas that start a new `"key":` (not inside strings or brackets).
     let mut parts: Vec<String> = Vec::new();
@@ -106,6 +106,27 @@ pub fn parse_spec(spec: &str) -> Vec<Param> {
     out
 }
 
+/// The inside of a doc string's parameter object: from its first `{` to the matching `}`, so
+/// the result description after `→` (which may contain `:`) is never read as a parameter.
+fn input_object(spec: &str) -> &str {
+    let Some(start) = spec.find('{') else { return spec };
+    let (mut depth, mut in_str) = (0i32, false);
+    for (i, ch) in spec[start..].char_indices() {
+        match ch {
+            '"' => in_str = !in_str,
+            '{' | '[' if !in_str => depth += 1,
+            '}' | ']' if !in_str => {
+                depth -= 1;
+                if depth == 0 {
+                    return spec.get(start + 1..start + i).unwrap_or_default();
+                }
+            }
+            _ => {}
+        }
+    }
+    spec[start..].trim_start_matches('{').trim_end_matches('}')
+}
+
 /// Parameter keys measured in pixels (scaled for proxy previews).
 fn is_pixel_param(key: &str) -> bool {
     matches!(
@@ -162,6 +183,10 @@ pub fn has_dialog(command: &str) -> bool {
                 | "view.proofSetup"
                 | "layer.layerStyle.globalLight"
                 | "image.mode.colorTable"
+                // Generative commands: prompt, options, no preview (they run as background jobs).
+                | "generate.fill"
+                | "generate.image"
+                | "select.byText"
         ))
         && photocraft_engine::commands::find(command).is_some_and(|c| !parse_spec(c.params).is_empty())
 }
@@ -308,7 +333,10 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
                 } else {
                     crate::widgets::slider_row(ui, &label(&p.key), &mut v, min..=max, unit, None);
                 }
-                f.insert(p.key, json!((v * 10.0).round() / 10.0));
+                // Keep the precision the field shows: two decimals for small ranges (0..1 margins
+                // and thresholds), one otherwise, so 0.25 is not stored as 0.3.
+                let scale = if max - min <= 10.0 { 100.0 } else { 10.0 };
+                f.insert(p.key, json!((v * scale).round() / scale));
             }
             Kind::Choice(options) => {
                 ui.horizontal(|ui| {
@@ -451,6 +479,24 @@ mod tests {
             kinds,
             [&Kind::Bool(true), &Kind::Grid(25), &Kind::Json, &Kind::Json, &Kind::Text, &Kind::Document, &Kind::Range { min: 1.0, max: 9999.0, default: 1.0 }]
         );
+    }
+
+    /// Only the parameter object is parsed: a result description after `→` with a `:` in its
+    /// notes used to leak in as an `Int` field ("Ms"} (prompt" in the Select by Text dialog).
+    #[test]
+    fn result_notes_after_the_arrow_are_not_parameters() {
+        let p = parse_spec(
+            r#"{"prompt":text,"threshold":0..1=0.5,"instance":{1..?=all}} → {"count","ms"} (prompt: a phrase such as "the dog", "eye:2"; a background job)"#,
+        );
+        assert_eq!(p.iter().map(|p| p.key.as_str()).collect::<Vec<_>>(), ["prompt", "threshold", "instance"]);
+        assert_eq!(p[1].kind, Kind::Range { min: 0.0, max: 1.0, default: 0.5 });
+        assert_eq!(p[2].kind, Kind::Json, "hidden `{{…}}` params are kept out of the dialog but still parsed");
+        for id in ["generate.fill", "generate.image", "select.byText"] {
+            let spec = photocraft_engine::commands::find(id).unwrap();
+            assert!(parse_spec(spec.params).iter().all(|p| p.key.chars().all(|c| c.is_ascii_alphanumeric())), "{id}: {:?}", parse_spec(spec.params));
+        }
+        assert_eq!(input_object("none"), "none");
+        assert_eq!(input_object("{}"), "");
     }
 
     /// A layer-id param has no number field: drawing the Auto-Align dialog used to write

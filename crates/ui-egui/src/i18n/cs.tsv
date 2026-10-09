@@ -2142,3 +2142,15 @@ cameraRaw	Color	Barvy
 	Lines +/−	Řádky +/−
 	@{login}: {prs} PRs, {commits} commits, +{added} / −{deleted} lines (Δ {delta}), +{binAdded} / −{binDeleted} binary assets, {first} – {last}	@{login}: PR: {prs}, commity: {commits}, řádky +{added} / −{deleted} (Δ {delta}), binární soubory +{binAdded} / −{binDeleted}, {first} – {last}
 	Apply At Canvas Bounds	Použít efekt na hranicích plátna
+
+# Comfy PhotoCraft: generative menu items (Edit › Generative Fill…, Edit › Generate Image…, Select › Select by Text…)
+	Generative Fill…	Generativní výplň…
+	Generate Image…	Generovat obrázek…
+	Select by Text…	Vybrat podle textu…
+	Allow research models	Povolit výzkumné modely
+	ComfyUI server	Server ComfyUI
+	Default edit model	Výchozí model pro úpravy
+	Default fill template	Výchozí šablona výplně
+	Default generate model	Výchozí model pro generování
+	Default image template	Výchozí šablona obrázku
+	Generative timeout (seconds)	Časový limit generování (sekundy)

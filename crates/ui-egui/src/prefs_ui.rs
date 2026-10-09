@@ -767,6 +767,13 @@ fn humanize(key: &str) -> String {
     if key == "webpQuality" {
         return "Quality".into();
     }
+    // AI Integrations (the ComfyUI backend): keys whose humanized form reads badly.
+    if key == "comfyServer" {
+        return "ComfyUI server".into();
+    }
+    if key == "generativeTimeoutSecs" {
+        return "Generative timeout (seconds)".into();
+    }
     let mut s = String::new();
     for (i, ch) in key.chars().enumerate() {
         if i == 0 {
@@ -1798,9 +1805,13 @@ mod tests {
         assert!(has_visible_fields(&values, "general"));
         assert!(has_visible_fields(&values, "fileHandling"));
         // Every setting of these sections is still unimplemented.
-        for section in ["type", "enhancedControls", "integrations", "scratchDisks"] {
+        for section in ["type", "enhancedControls", "scratchDisks"] {
             assert!(!has_visible_fields(&values, section), "{section}");
         }
+        // AI Integrations shows the ComfyUI settings (comfy-photocraft); agent control is still hidden.
+        assert!(has_visible_fields(&values, "integrations"));
+        assert!(!prefs::is_hidden("integrations.comfyServer"));
+        assert!(prefs::is_hidden("integrations.allowAgentControl"));
         // Camera Raw Defaults shows only "Open in Camera Raw" so far.
         assert!(has_visible_fields(&values, "rawDefaults"));
         assert!(!prefs::is_hidden("rawDefaults.openInCameraRaw"));

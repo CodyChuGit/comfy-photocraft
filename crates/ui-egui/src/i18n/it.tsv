@@ -2215,3 +2215,15 @@ cameraRaw	Amount	Quantità
 	@{login}: {prs} PRs, {commits} commits, +{added} / −{deleted} lines (Δ {delta}), +{binAdded} / −{binDeleted} binary assets, {first} – {last}	@{login}: {prs} PR, {commits} commit, +{added} / −{deleted} righe (Δ {delta}), +{binAdded} / −{binDeleted} risorse binarie, {first} – {last}
 	Convert to Layers	Converti in livelli
 	Apply At Canvas Bounds	Applica effetto ai limiti dell’area di lavoro
+
+# Comfy PhotoCraft: generative menu items (Edit › Generative Fill…, Edit › Generate Image…, Select › Select by Text…)
+	Generative Fill…	Riempimento generativo…
+	Generate Image…	Genera immagine…
+	Select by Text…	Seleziona per testo…
+	Allow research models	Consenti modelli di ricerca
+	ComfyUI server	Server ComfyUI
+	Default edit model	Modello di modifica predefinito
+	Default fill template	Modello di riempimento predefinito
+	Default generate model	Modello di generazione predefinito
+	Default image template	Modello di immagine predefinito
+	Generative timeout (seconds)	Timeout generativo (secondi)

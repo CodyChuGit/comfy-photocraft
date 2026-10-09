@@ -2726,3 +2726,15 @@ cameraRaw	Color	색상
 	Lines +/−	줄 +/−
 	@{login}: {prs} PRs, {commits} commits, +{added} / −{deleted} lines (Δ {delta}), +{binAdded} / −{binDeleted} binary assets, {first} – {last}	@{login}: PR {prs}개, 커밋 {commits}개, 줄 +{added} / −{deleted} (Δ {delta}), 바이너리 +{binAdded} / −{binDeleted}, {first} – {last}
 	Apply At Canvas Bounds	캔버스 경계에 효과 적용
+
+# Comfy PhotoCraft: generative menu items (Edit › Generative Fill…, Edit › Generate Image…, Select › Select by Text…)
+	Generative Fill…	생성형 채우기…
+	Generate Image…	이미지 생성…
+	Select by Text…	텍스트로 선택…
+	Allow research models	연구용 모델 허용
+	ComfyUI server	ComfyUI 서버
+	Default edit model	기본 편집 모델
+	Default fill template	기본 채우기 템플릿
+	Default generate model	기본 생성 모델
+	Default image template	기본 이미지 템플릿
+	Generative timeout (seconds)	생성 시간 제한(초)

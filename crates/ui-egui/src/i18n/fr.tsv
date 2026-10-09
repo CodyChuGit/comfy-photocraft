@@ -2573,3 +2573,15 @@ cameraRaw	Blending	Fusion
 	Lines +/−	Lignes +/−
 	@{login}: {prs} PRs, {commits} commits, +{added} / −{deleted} lines (Δ {delta}), +{binAdded} / −{binDeleted} binary assets, {first} – {last}	@{login} : {prs} PR, {commits} commits, +{added} / −{deleted} lignes (Δ {delta}), +{binAdded} / −{binDeleted} fichiers binaires, {first} – {last}
 	Apply At Canvas Bounds	Appliquer l’effet aux limites de la zone de travail
+
+# Comfy PhotoCraft: generative menu items (Edit › Generative Fill…, Edit › Generate Image…, Select › Select by Text…)
+	Generative Fill…	Remplissage génératif…
+	Generate Image…	Générer une image…
+	Select by Text…	Sélectionner par texte…
+	Allow research models	Autoriser les modèles de recherche
+	ComfyUI server	Serveur ComfyUI
+	Default edit model	Modèle d'édition par défaut
+	Default fill template	Modèle de remplissage par défaut
+	Default generate model	Modèle de génération par défaut
+	Default image template	Modèle d'image par défaut
+	Generative timeout (seconds)	Délai d'attente génératif (secondes)

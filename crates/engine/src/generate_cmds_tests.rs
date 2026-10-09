@@ -227,7 +227,7 @@ fn parameters_are_validated_before_anything_runs() {
         json!({"prompt": ""}),
         json!({"prompt": "   "}),
         json!({"prompt": 5}),
-        json!({"prompt": "x", "steps": 0}),
+        json!({"prompt": "x", "steps": -1}),
         json!({"prompt": "x", "steps": 1000}),
         json!({"prompt": "x", "margin": 2}),
         json!({"prompt": "x", "margin": -0.1}),

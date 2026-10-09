@@ -2560,3 +2560,15 @@ cameraRaw	Blending	Pembauran
 	Lines +/−	Baris +/−
 	@{login}: {prs} PRs, {commits} commits, +{added} / −{deleted} lines (Δ {delta}), +{binAdded} / −{binDeleted} binary assets, {first} – {last}	@{login}: {prs} PR, {commits} commit, +{added} / −{deleted} baris (Δ {delta}), +{binAdded} / −{binDeleted} berkas biner, {first} – {last}
 	Apply At Canvas Bounds	Terapkan efek di batas kanvas
+
+# Comfy PhotoCraft: generative menu items (Edit › Generative Fill…, Edit › Generate Image…, Select › Select by Text…)
+	Generative Fill…	Isian Generatif…
+	Generate Image…	Hasilkan Gambar…
+	Select by Text…	Pilih Berdasarkan Teks…
+	Allow research models	Izinkan model riset
+	ComfyUI server	Server ComfyUI
+	Default edit model	Model edit default
+	Default fill template	Templat isian default
+	Default generate model	Model generasi default
+	Default image template	Templat gambar default
+	Generative timeout (seconds)	Batas waktu generatif (detik)
