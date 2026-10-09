@@ -72,7 +72,8 @@ fn fill_adds_a_masked_layer_above_the_active_one() {
         let d = s.active().unwrap();
         (d.doc.layers.len(), d.history.past_len(), s.journal.len())
     };
-    let r = s.execute(FILL, json!({"prompt": "a red bicycle", "seed": 5})).unwrap();
+    // A hard edge: the layer mask is the selection, exactly (the default soft edge is tested below).
+    let r = s.execute(FILL, json!({"prompt": "a red bicycle", "seed": 5, "edge": "hard"})).unwrap();
     assert_eq!(r["seed"], 5);
     // The preference is `auto`, and the fake "has" the Lightning LoRA: the 8-step tier runs.
     assert_eq!(r["template"], AUTO_FILL_ORDER[0]);
@@ -454,11 +455,15 @@ fn expand_grows_the_canvas_and_paints_the_added_area_in_one_step() {
     assert_eq!(g["10"]["inputs"]["pixels"], json!(["4", 0]), "the padded canvas is the latent");
     let sent = photocraft_genai::png::decode_rgba8(&st.uploads[0].1).unwrap();
     assert!(sent.data.as_chunks::<4>().0.iter().all(|p| p[3] == 255), "no transparent pixels reach the model");
-    // The added canvas reaches the model as mid-grey (the 96×64 rect goes out at 512 px wide).
-    let far = sent.get(sent.width - 2, sent.height / 4).unwrap();
-    assert!(far.iter().take(3).all(|c| (i16::from(*c) - 128).abs() <= 4), "grey pre-fill: {far:?}");
-    let picture = sent.get(sent.width / 4, sent.height / 4).unwrap();
-    assert!(picture.iter().take(3).any(|c| (i16::from(*c) - 128).abs() > 20), "the picture itself is not grey: {picture:?}");
+    // The added canvas reaches the model continuing the picture's edge pixels (the 96×64 rect
+    // goes out at 512 px wide), not as a wall of grey.
+    let y = sent.height / 4;
+    let (far, edge) = (sent.get(sent.width - 2, y).unwrap(), sent.get(cw as u32 - 3, y).unwrap());
+    assert!(
+        far.iter().zip(edge.iter()).take(3).all(|(a, b)| (i16::from(*a) - i16::from(*b)).abs() <= 6),
+        "the pre-fill continues the edge: {far:?} vs {edge:?}"
+    );
+    assert!(far.iter().take(3).any(|c| (i16::from(*c) - 128).abs() > 20), "and is not grey: {far:?}");
     drop(st);
     assert!(s.undo());
     let d = s.active().unwrap();
@@ -588,28 +593,65 @@ fn the_request_mask_is_feathered_outward_and_the_layer_mask_is_not() {
     assert!(at(18, 30) > at(14, 30), "monotonic falloff");
     assert_eq!(at(5, 5), 0, "far away stays empty");
     assert_eq!(feather_outward(&mask, 0).unwrap(), mask);
-    assert_eq!((feather_radius(576, 512), feather_radius(100, 100), feather_radius(4000, 4000)), (12, 4, 24));
+    assert_eq!((feather_radius(576, 512), feather_radius(100, 100), feather_radius(4000, 4000)), (23, 6, 48));
 
-    // End to end: the uploaded mask is soft outside the selection, the layer mask is the
-    // selection exactly.
+    // End to end: the uploaded mask is soft outside the selection; the layer mask is the same
+    // soft band, dithered, or the selection exactly for a hard edge.
     let fake = FakeComfy::start().unwrap();
     let mut s = session(&fake.url);
-    let r = s.execute(FILL, json!({"prompt": "x", "margin": 0.5})).unwrap();
+    let r = s.execute(FILL, json!({"prompt": "x", "margin": 0.5, "seed": 3})).unwrap();
     let st = fake.state();
     let sent = photocraft_genai::png::decode_rgba8(&st.uploads[1].1).unwrap();
     // The selection is x 10..30, y 8..24 on the canvas; a 50 % margin of the longer side (10 px)
     // makes the request rect (0, 0)..(40, 34), grown to the grid as (0, 0)..(48, 48) and sent
     // upscaled to 512×512 (scale 10.67), so the selection sits at x 107..320, y 85..256 of it.
+    // The feather is the 6 px minimum here, a 12 px tail: nearly gone at the margin's far edge.
     assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(48), Some(48)));
     assert_eq!((sent.width, sent.height), (512, 512));
     assert_eq!(sent.get(200, 170).map(|p| p[0]), Some(255), "the selection itself");
-    assert!(sent.get(90, 170).unwrap()[0] > 0, "feathered beyond the selection's edge");
-    assert_eq!(sent.get(5, 170).map(|p| p[0]), Some(0), "the tail ends well inside the margin");
+    let (near, far) = (sent.get(90, 170).unwrap()[0], sent.get(5, 170).unwrap()[0]);
+    assert!(near > 128 && far < 40 && near > far, "a falloff from full at the selection's edge: {near} -> {far}");
+    assert_eq!(sent.get(5, 500).map(|p| p[0]), Some(0), "the far corner is empty");
     drop(st);
-    let d = s.active().unwrap();
-    let l = d.doc.layer(LayerId(r["layer"].as_u64().unwrap())).unwrap();
-    let m = l.mask.as_ref().unwrap().surface.read_region(Rect::new(8, 16, 9, 17));
-    assert_eq!(m[0], 0.0, "the layer mask is the selection itself, not the feathered request mask");
+    // The default soft edge: the layer mask fades (with grain) across the band outside the
+    // selection, is full inside and empty far away; a hard edge is the selection exactly.
+    let mask_of = |s: &Session, r: &Value| {
+        let d = s.active().unwrap();
+        d.doc.layer(LayerId(r["layer"].as_u64().unwrap())).unwrap().mask.as_ref().unwrap().surface.clone()
+    };
+    let m = mask_of(&s, &r);
+    assert_eq!(m.read_region(Rect::new(20, 16, 21, 17))[0], 1.0, "inside the selection");
+    assert_eq!(m.read_region(Rect::new(10, 16, 11, 17))[0], 1.0, "and on its edge pixel");
+    let band = m.read_region(Rect::new(8, 16, 9, 17))[0];
+    assert!(band > 0.3 && band < 1.0, "2 px outside the selection is high in the soft band: {band}");
+    let outer = m.read_region(Rect::new(2, 16, 3, 17))[0];
+    assert!(outer < band, "and the band falls off outward: {outer} < {band}");
+    assert_eq!(m.read_region(Rect::new(0, 47, 1, 48))[0], 0.0, "the far corner is outside the band");
+    // Grain: neighbouring band pixels are not all equal (a plain ramp would be).
+    let row: Vec<f32> = (0..10).map(|dx| m.read_region(Rect::new(dx, 16, dx + 1, 17))[0]).collect();
+    assert!(row.windows(2).any(|p| (p[0] - p[1]).abs() > 0.02), "{row:?}");
+    let r2 = s.execute(FILL, json!({"prompt": "x", "margin": 0.5, "edge": "hard"})).unwrap();
+    let m2 = mask_of(&s, &r2);
+    assert_eq!(m2.read_region(Rect::new(8, 16, 9, 17))[0], 0.0, "a hard edge is the selection itself");
+    assert_eq!(m2.read_region(Rect::new(9, 16, 10, 17))[0], 0.0);
+    assert_eq!(m2.read_region(Rect::new(10, 16, 11, 17))[0], 1.0);
+    assert!(matches!(s.execute(FILL, json!({"prompt": "x", "edge": "fuzzy"})), Err(EngineError::BadParams { .. })));
+}
+
+#[test]
+fn the_dithered_edge_is_a_noisy_ramp_that_stays_clean_inside_and_outside() {
+    let mask: Vec<u8> = (0..=255u8).collect();
+    let a = dither_edge(&mask, 7);
+    assert_eq!((a[0], a[255]), (0.0, 1.0), "fully in and out are untouched");
+    assert!(a.iter().all(|v| (0.0..=1.0).contains(v)));
+    // Mid-ramp the noise is strongest; the ramp still rises on average.
+    let mid: Vec<f32> = a[100..156].to_vec();
+    assert!(mid.windows(2).any(|p| p[1] < p[0]), "noise breaks the monotonic ramp: {mid:?}");
+    let low: f32 = a[1..64].iter().sum::<f32>() / 63.0;
+    let high: f32 = a[192..255].iter().sum::<f32>() / 63.0;
+    assert!(low < 0.35 && high > 0.65, "{low} {high}");
+    assert_eq!(dither_edge(&mask, 7), a, "deterministic for a seed");
+    assert_ne!(dither_edge(&mask, 8), a, "another seed, another grain");
 }
 
 #[test]

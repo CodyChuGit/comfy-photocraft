@@ -77,10 +77,78 @@ sky"). Judged by eye on the output PNGs.
 What shipped: every 2511 fill template wraps the prompt ("Add {prompt} to this image, fitting
 the scene's perspective, lighting and surroundings naturally. Change nothing else."; a prompt
 that already starts with an imperative verb gets "{prompt}. Fit the result…" instead), and the
-request mask is feathered outward by 2 % of the longer side (4–24 px) so the latent noise mask
-blends the edge; the layer mask stays the selection. `fill-guided` remains in the picker for
-the cases where placement matters more than time. Qwen-Image-2.1 put the boat on the water at
-every seed tried; it is the research-licensed option.
+request mask is feathered outward so the latent noise mask blends the edge. `fill-guided`
+remains in the picker for the cases where placement matters more than time. Qwen-Image-2.1 put
+the boat on the water at every seed tried; it is the research-licensed option.
+
+**Edges (later the same day).** With the layer mask equal to the selection, the model's blended
+band was cut off at the selection's edge: a hard border wherever the re-rendered pixels differed
+from the original in tone (the user's "the borders are harsh"). Measured on the right-side
+expand's sky (mean luminance per column, y 200–420): the original stepped from 225 to 228 at
+the old edge, with a dark line of 213 right on it. Three changes, in the order they were found:
+
+1. The layer mask is by default the soft request band itself, its ramp **dithered**: per-pixel
+   noise (a splitmix64 hash of pixel index and seed), amplitude `0.6 × (1 − |2m − 1|)`, zero
+   inside and outside the band and strongest mid-ramp, clamped to 0..1. The transition reads as
+   grain, like film, not as a gradient or a line, and 8-bit exports cannot band. Fills feather
+   4 % of the longer side (6–48 px, was 2 %), a band of twice that; expands the same 4 %
+   (8–80 px, was 8 %): at 8 % the model took the licence to move the horizon inside the band
+   (a ghosted double horizon at one seed), at 2 % the old edge still read as a line.
+   `"edge":"hard"` restores the exact selection (or exactly the added canvas) for compositing
+   work that wants it.
+2. The feather ramp now starts at **full** coverage on the edge and falls to nothing at twice
+   the radius (ComfyUI's GrowMask + FeatherMask shape). The first version, two box blurs
+   `max`ed with the selection, started at half coverage: as the noise mask it kept half of the
+   original latent one pixel outside the edge, and as a layer mask it stepped from 1 to 0.5,
+   so half the tone difference stayed as a line.
+3. Expand's empty canvas is pre-filled by replicating the picture's edge pixels, not mid-grey.
+   The model never sees it as content (its reference is the cropped picture and the noise mask
+   is full over it), but the VAE's latents beside a wall of grey carried its tone into the edge
+   band: that was the dark line of 213.
+
+After the three: 229 → 226 across 160 px, no step and no dip in the profile, nothing visible in
+a contrast-stretched crop; the hard variant keeps its step (as asked). Server cost: none, the
+request's size and graph are unchanged (the hard/soft variants of one seed hit ComfyUI's cache
+and return in 0.1 s); the dither is one pass over the mask. The grey pre-fill was A/B'd again
+with the full-coverage ramp (`xab-f08-grey-*`, `xab-f04-grey-*`): still a 2–3 level step right
+on the edge at both seeds, so the edge replication stays.
+
+**Consistency of the new side (the thing no edge can hide).** With the user's prompt "more
+open sea and evening sky", seeds 6 and 8 painted a crisper, darker sea with a sharp horizon
+next to the hazy original: a different photograph, visible through any blend. Same widen,
+Lightning 8 unless noted (`bench/xab2-*.png`, `xab3-*.png`):
+
+| Prompt → what the model got | seed 6 | seed 8 | time |
+|---|---|---|---|
+| "more open sea and evening sky" (the description wrapper) | crisp sea, sharp horizon | sharp horizon, higher than the original's | 13–15 s |
+| the same through the **40-step base** (`qwen-edit-2511/expand`, CFG 4) | a second lighthouse in the new area | hazy, consistent | 130 s |
+| "Add more open sea…, keeping exactly the same soft haze… as the original photo" | hazy, consistent | a second lighthouse | 14–16 s |
+| **empty prompt** ("extend the scene beyond its original edges, continuing it naturally") | hazy, consistent | consistent, a little sharper | 14–18 s |
+| "Extend this image…, continuing the scene naturally with more open sea… Match the original's … haze… and do not repeat its objects" | a second lighthouse | consistent | 13 s |
+| "Extend this image to show more open sea… continuing the original photo naturally with the same haze, light and colours" | a stub of railing copied | consistent | 13–15 s |
+
+Lessons: the empty prompt is the most faithful continuation, and it is what the dialog and the
+docs recommend for "more of the same"; a description gives the model licence to restyle; the
+40-step base is no more consistent and ten times slower. The shipped wrappers are unchanged.
+
+**But the table is indicative at best.** Re-running the empty prompt at seed 6 in a steady
+server state gave a second lighthouse (`final-expand-empty-s6.png`) where the run above had
+none, and the two runs were bit-identical with each other on repeat. Pixel diffs of identical
+requests run at different times: 0.00 (seed 8 widen, two repeats of the empty seed 6), 0.58
+(the seed-11 fill), 2.19 and 4.53 (seed-6 widens), 21.44 of 765 (the empty seed 6, a second
+lighthouse against none). So ComfyUI is deterministic in a steady state and not across
+model-load states: the partially offloaded model after a graph switch (next paragraph)
+computes slightly differently, and the 8-step Lightning sampler amplifies that into a
+different composition at a knife-edge seed. Conclusions about wordings need many seeds in one
+server state (a prompt study is listed under §6); what stands is that the model does, at some
+seeds, repeat the picture's main object in the new area, whatever the wording.
+
+**Graph switches thrash the server.** Every first run after switching between the base and
+a Lightning graph, or after a purge followed by a fill, took 31, 56, 93, 121 and 131 s
+(2.3–2.5 GB free, torch 63 MB: ComfyUI loads the newly patched model partially and streams the
+rest every step), then 13–20 s for the runs after it. The fix to build (§6): remember the last
+template's model set in the engine and purge before a run that changes it, a 10–15 s reload
+instead of a 2-minute run.
 
 ## 4. Native-size sampling (shipped)
 
@@ -119,9 +187,11 @@ resident and costs little: the editing models' own working size is about that.
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP
   on the 5090; the encoder 3–5 s when the pixels change; everything on the PhotoCraft side
   under 0.5 s.
-- Next levers, in order of expected gain: a working FP8-tensor-core checkpoint (the scaled
-  file gave noise here), SageAttention once a wheel exists for this torch build,
-  TeaCache/EasyCache-style step caching for the 40-step base, and detecting the
-  memory-pressure state from `timings` to suggest the purge.
+- Next levers, in order of expected gain: purge automatically before a run whose model set
+  differs from the last one (the graph-switch thrash in §3 costs 30–130 s a time), a working
+  FP8-tensor-core checkpoint (the scaled file gave noise here), SageAttention once a wheel
+  exists for this torch build, TeaCache/EasyCache-style step caching for the 40-step base,
+  detecting the memory-pressure state from `timings` to suggest the purge, and a prompt study
+  for Expand over more seeds (§3: two seeds showed the wording matters and cannot rank it).
 - On a 24 GB Ampere card (RTX 3090) the same tiers apply with roughly 2–3× the step times and
   no FP8 gain; the text encoder will live in RAM; the Lightning 8-step tier is the one to install.

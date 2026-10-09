@@ -172,15 +172,22 @@ own.
   card keeps the model resident at it) and one under 512 px on its longer side is sent upscaled;
   the result is resampled back under the selection's full-resolution layer mask. Segmentation
   requests are capped at 2 MP. Generative Expand shows the model only the picture as its
-  reference (an `ImageCrop` in its templates) while the padded canvas is the sampling latent.
+  reference (an `ImageCrop` in its templates) while the padded canvas is the sampling latent;
+  the padding is pre-filled by replicating the picture's edge pixels (a wall of grey leaked its
+  tone through the VAE into the edge band as a dark line).
   Upload names are content hashes, so ComfyUI's node cache (loader, text encoder, VAE encode) is
   reused across variations and re-rolls of the same selection.
 - **Mask.** The selection surface (`doc.selection: Option<Surface>`, used by filters at
-  `filters.rs:222-223`) cropped to the same rect, as 8-bit coverage; Fill feathers it outward by a
-  few pixels so the model blends the seam.
+  `filters.rs:222-223`) cropped to the same rect, as 8-bit coverage; Fill feathers it outward
+  (4 % of the request's longer side, 6–48 px, a band of twice that; Expand's band runs into
+  the picture) so the
+  model re-renders a band around the area and blends the seam.
 - **Result.** Decoded PNGs become a `Surface` positioned at `rect.x0, rect.y0` on a new raster layer
-  named after the prompt ("Generative Fill: a red bicycle"), with a **layer mask** equal to the
-  original selection coverage so only the selected area shows. The composite under the mask is
+  named after the prompt ("Generative Fill: a red bicycle"), with a **layer mask**. With the
+  default `edge: soft` the mask is that same feathered band, its ramp dithered with per-pixel
+  noise (zero inside and outside, strongest mid-ramp, seeded by the request's seed) so the
+  result fades into its surroundings as grain rather than meeting them at a line; `edge: hard`
+  makes the mask exactly the selection (or the added canvas). The composite under the mask is
   untouched. For RGBA outputs (`alpha_is_matte`) the alpha becomes the mask instead of being baked
   into the pixels, so Remove Background never destroys data.
 - **Depth.** The new layer takes the document's depth and profile; 8-bit model output is

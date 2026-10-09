@@ -106,7 +106,9 @@ fp8_matrix_mult` on the server, then native-size sampling (the latent at the req
 16-px alignment, a 512-px floor) and Edit › Purge › Generative Models. A Lightning-8 fill is
 9–11 s on the 5090 at the test selection, a small selection 10 s, a Qwen-Image-2.1 re-roll
 2.6 s. Next levers are listed in `benchmarks.md` §6 (a working FP8-tensor-core checkpoint,
-SageAttention, step caching, purge suggestions from the timings).
+SageAttention, step caching, purge suggestions from the timings). Edges: since 2026-10-09 the
+result layer's mask is by default the soft, noise-dithered re-rendered band (`edge: soft`;
+`hard` = the exact selection), for fills and expands alike.
 
 ## Phase 3: The Firefly core set
 
@@ -129,8 +131,11 @@ moves by the left/top pads, the result is a layer whose soft mask blends the re-
 band into the picture); its own templates (`qwen-edit-2511/expand-lightning-8`, `expand`) show
 the model only the picture as a reference while the padded canvas is the sampling latent; an
 empty prompt continues the scene. Shares the fill pipeline (`fill_region`: Lightning tiers,
-`auto`, sizing, feather, variations). Open: `generate.edit`, `generate.removeBackground`, the
-Crop tool's expand state.
+`auto`, sizing, feather, variations). Later the same day: soft, dithered edges by default
+(`edge: soft|hard`), the edge-replicating pre-fill, a 4 % band; the empty prompt is the most
+faithful continuation (`benchmarks.md` §3). Open: `generate.edit`, `generate.removeBackground`,
+the Crop tool's expand state, an automatic purge before a run that changes the model set (the
+first run after a graph switch took 31–131 s on the 32 GB card), a prompt study for Expand.
 
 ## Phase 3.5: Select by text (SAM 3.1)
 

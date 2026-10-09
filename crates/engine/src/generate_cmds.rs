@@ -153,6 +153,48 @@ struct FillPlan {
     variations: u32,
     /// Pick the template inside the job from what the server has (`AUTO_FILL_ORDER`).
     auto: bool,
+    /// How the result's layer mask meets the surroundings.
+    edge: Edge,
+}
+
+/// How a generated layer's mask ends: softly, across the band the model re-rendered around the
+/// selection, with per-pixel noise so the ramp reads as grain rather than a gradient or a line
+/// (the default), or hard, exactly on the selection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Edge {
+    Soft,
+    Hard,
+}
+
+fn parse_edge(cmd: &str, p: &Value) -> Result<Edge> {
+    match opt_str(cmd, p, "edge", 10)? {
+        None | Some("soft") => Ok(Edge::Soft),
+        Some("hard") => Ok(Edge::Hard),
+        Some(other) => Err(bad(cmd, format!("`edge` must be soft or hard (got `{other}`)"))),
+    }
+}
+
+/// The layer mask of a soft edge: the feathered request mask, its ramp dithered with
+/// per-pixel noise (zero inside and outside, strongest mid-ramp) so the transition has no
+/// visible line and no banding. Deterministic for a seed, so variations differ.
+fn dither_edge(mask: &[u8], seed: u64) -> Vec<f32> {
+    mask.iter()
+        .enumerate()
+        .map(|(i, v)| {
+            let m = f32::from(*v) / 255.0;
+            if *v == 0 || *v == 255 {
+                return m;
+            }
+            // splitmix64 of the pixel index and the seed → a uniform value in 0..1.
+            let mut z = (i as u64).wrapping_add(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^= z >> 31;
+            let n = (z >> 40) as f32 / (1u64 << 24) as f32;
+            let amplitude = 0.6 * (1.0 - (2.0 * m - 1.0).abs());
+            (m + (n - 0.5) * amplitude).clamp(0.0, 1.0)
+        })
+        .collect()
 }
 
 pub(crate) fn opt_str<'a>(cmd: &str, p: &'a Value, key: &str, max: usize) -> Result<Option<&'a str>> {
@@ -212,6 +254,7 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
     let Common { template, prompt, negative, seed, steps, guidance, models, name } =
         plan_common(s, FILL, &q, if auto { DEFAULT_FILL_TEMPLATE } else { &requested }, Task::Fill, &default_model)?;
     let margin = opt_num(FILL, p, "margin", 0.0, 1.0)?.unwrap_or(0.25);
+    let edge = parse_edge(FILL, p)?;
     let variations = match opt_num(FILL, p, "variations", 1.0, f64::from(MAX_VARIATIONS))? {
         None => 1,
         Some(x) if x.fract() == 0.0 => x as u32,
@@ -243,7 +286,7 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
         )));
     }
     let name = name.unwrap_or_else(|| format!("Generative Fill: {}", short(&prompt)));
-    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto })
+    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge })
 }
 
 /// The first of `candidates` whose model files the server lists (one `/models/<folder>` call per
@@ -410,10 +453,13 @@ pub(crate) fn resize_rgba8(src: &Rgba8, w: u32, h: u32) -> Result<Rgba8> {
     Rgba8::new(w, h, out).map_err(gen_err)
 }
 
-/// Soften a mask outward: a falloff of about `radius` pixels beyond its edge, the inside kept at
-/// full coverage (two box blurs ≈ a triangle filter, then `max` with the original). The latent
-/// noise mask then blends the regenerated area into its surroundings instead of cutting a hard
-/// rectangle; the layer mask keeps the selection's real edge.
+/// Soften a mask outward: full coverage at its edge falling to nothing about `2 × radius` pixels
+/// beyond it, the inside untouched (two box blurs ≈ a triangle filter, the outer half of its
+/// ramp doubled, then `max` with the original). The same shape ComfyUI's GrowMask + FeatherMask
+/// make. As the latent noise mask it has the model re-render the band around the area and blend
+/// it, with no step at the edge: a ramp that started at half coverage there (the first version)
+/// left half of the tone difference as a line along the edge. As the layer mask (dithered, see
+/// `dither_edge`) it fades the result into its surroundings across the same band.
 pub(crate) fn feather_outward(mask: &Gray8, radius: usize) -> Result<Gray8> {
     let (w, h) = (mask.width as usize, mask.height as usize);
     if radius == 0 || w == 0 || h == 0 {
@@ -424,7 +470,7 @@ pub(crate) fn feather_outward(mask: &Gray8, radius: usize) -> Result<Gray8> {
         cur = box_blur(&cur, w, h, radius, true);
         cur = box_blur(&cur, w, h, radius, false);
     }
-    let out: Vec<u8> = cur.iter().zip(&mask.data).map(|(b, o)| (*o).max((b + 0.5).clamp(0.0, 255.0) as u8)).collect();
+    let out: Vec<u8> = cur.iter().zip(&mask.data).map(|(b, o)| (*o).max((b * 2.0 + 0.5).clamp(0.0, 255.0) as u8)).collect();
     Gray8::new(mask.width, mask.height, out).map_err(gen_err)
 }
 
@@ -457,16 +503,19 @@ fn box_blur(src: &[f32], w: usize, h: usize, r: usize, horizontal: bool) -> Vec<
     out
 }
 
-/// The outward feather of a request mask: 2 % of the longer side, 4 to 24 pixels.
+/// The outward feather of a fill's request mask: 4 % of the longer side, 6 to 48 pixels. The
+/// model re-renders that band around the selection and the soft layer mask fades across it.
 pub(crate) fn feather_radius(w: u32, h: u32) -> usize {
-    ((f64::from(w.max(h)) * 0.02).round() as usize).clamp(4, 24)
+    ((f64::from(w.max(h)) * 0.04).round() as usize).clamp(6, 48)
 }
 
-/// The feather of an expand's request mask into the picture: 8 % of the longer side, 8 to 160
-/// pixels. The model re-renders that band of the original, so the new area's tone is carried
-/// across the old edge instead of meeting it.
+/// The feather of an expand's request mask into the picture: 4 % of the longer side, 8 to 80
+/// pixels (a band of twice that). The model re-renders that band of the original, so the new
+/// area's tone is carried across the old edge instead of meeting it. Measured on the 1024-px
+/// lighthouse: at 8 % the model took the licence to move the horizon inside the band (a ghosted
+/// double horizon at one seed), at 2 % the old edge still read as a line; 4 % did neither.
 pub(crate) fn outpaint_feather_radius(w: u32, h: u32) -> usize {
-    ((f64::from(w.max(h)) * 0.08).round() as usize).clamp(8, 160)
+    ((f64::from(w.max(h)) * 0.04).round() as usize).clamp(8, 80)
 }
 
 /// Mask resize with a tent filter (no ringing, coverage stays within 0..=255).
@@ -696,6 +745,7 @@ struct FillJob {
     name: String,
     models: Vec<(String, String)>,
     variations: u32,
+    edge: Edge,
 }
 
 /// The layers a job made: (id, seed, run id, ms, timings), the primary one first.
@@ -733,19 +783,24 @@ fn fill_region(
         let p = o.picture;
         prefill_outside(&mut image, Rect::new(p.x0 - rect.x0, p.y0 - rect.y0, p.x1 - rect.x0, p.y1 - rect.y0));
     }
+    let FillJob { backend, template_id, auto, auto_order, prompt, negative, seed, steps, guidance, name, models, variations, edge } = job;
     let mask = Gray8::new(w, h, coverage.iter().map(|c| (c * 255.0 + 0.5) as u8).collect()).map_err(gen_err)?;
-    // The model gets a softened mask so it blends the edge (much wider for an expand, whose seam
-    // runs along a whole picture edge and whose sky or water tone has to carry across it); a
-    // fill's layer mask stays the selection itself.
+    // The model gets a softened mask so it re-renders a band around the area and blends it (much
+    // wider for an expand, whose seam runs along a whole picture edge and whose sky or water tone
+    // has to carry across it).
     let radius = if outpaint.is_some() { outpaint_feather_radius(w, h) } else { feather_radius(w, h) };
     let mask = feather_outward(&mask, radius)?;
-    let layer_coverage: Vec<f32> = if outpaint.is_some() { mask.data.iter().map(|v| f32::from(*v) / 255.0).collect() } else { coverage };
+    // The layer mask: that same band, dithered, so the result fades into its surroundings with
+    // no line; or exactly the selection when the caller asked for a hard edge.
+    let layer_coverage: Vec<f32> = match edge {
+        Edge::Soft => dither_edge(&mask.data, seed),
+        Edge::Hard => coverage,
+    };
     ctx.check()?;
     // Large areas go out at the models' working size and come back resampled; the layer mask
     // below keeps the selection's full-resolution edge either way.
     let (rw, rh) = request_size(w, h);
     let (image, mask) = if (rw, rh) == (w, h) { (image, mask) } else { (resize_rgba8(&image, rw, rh)?, resize_gray8(&mask, rw, rh)?) };
-    let FillJob { backend, template_id, auto, auto_order, prompt, negative, seed, steps, guidance, name, models, variations } = job;
     let template_id = if auto { resolve_auto(backend.as_ref(), auto_order, &template_id) } else { template_id };
     // An expand template crops the model's reference to the picture: its rectangle inside the
     // request, in the request's (possibly resampled) pixels.
@@ -808,27 +863,39 @@ fn made_json(made: &Made, w: u32, h: u32, (rw, rh): (u32, u32), template_id: &st
     })
 }
 
-/// What empty canvas is painted with before it goes to the model: mid-grey, the outpainting
-/// convention. Replicating the picture's edge pixels was tried first and the edit model copied
-/// the resulting streaks as content to preserve; a flat grey reads as "nothing here yet".
+/// What empty canvas is painted with when there is no picture to continue: mid-grey.
 const PREFILL: [u8; 4] = [128, 128, 128, 255];
 
-/// Fill the pixels outside `inner` (in image coordinates) with [`PREFILL`].
+/// Paint the pixels outside `inner` (in image coordinates) with the nearest pixel of `inner`, so
+/// the canvas the VAE encodes continues the picture's edge colours instead of meeting a grey
+/// wall. The model never sees this area as content (its reference is the cropped picture, see
+/// `Outpaint`, and the noise mask is full over it), but the VAE's latents next to a wall of grey
+/// carry its tone into the picture's edge band, which came back as a dark line along the old
+/// edge. The replicated streaks are what the early padded-reference variant turned into
+/// content; with the reference cropped they are only ever noised away.
 fn prefill_outside(img: &mut Rgba8, inner: Rect) {
     let (w, h) = (img.width as i32, img.height as i32);
     let inner = inner.intersect(&Rect::new(0, 0, w, h));
     if inner.x0 == 0 && inner.y0 == 0 && inner.x1 == w && inner.y1 == h {
         return;
     }
+    let empty = inner.x1 <= inner.x0 || inner.y1 <= inner.y0;
     let stride = img.width as usize * 4;
     for y in 0..h {
+        let sy = if empty { 0 } else { y.clamp(inner.y0, inner.y1 - 1) };
         for x in 0..w {
             if x >= inner.x0 && x < inner.x1 && y >= inner.y0 && y < inner.y1 {
                 continue;
             }
+            let sx = if empty { 0 } else { x.clamp(inner.x0, inner.x1 - 1) };
+            let src = sy as usize * stride + sx as usize * 4;
+            let p = match img.data.get(src..src + 4) {
+                Some(s) if !empty => [s[0], s[1], s[2], 255],
+                _ => PREFILL,
+            };
             let dst = y as usize * stride + x as usize * 4;
             if let Some(d) = img.data.get_mut(dst..dst + 4) {
-                d.copy_from_slice(&PREFILL);
+                d.copy_from_slice(&p);
             }
         }
     }
@@ -837,7 +904,7 @@ fn prefill_outside(img: &mut Rgba8, inner: Rect) {
 fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_fill(s, p)?;
     let backend = backend(s)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge } = plan;
     let label = name.clone();
     let job = FillJob {
         backend,
@@ -852,6 +919,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
         name,
         models,
         variations,
+        edge,
     };
     crate::jobs::edit_job(
         s,
@@ -959,6 +1027,7 @@ fn plan_expand(s: &Session, p: &Value) -> Result<(FillPlan, Pads, (u32, u32))> {
         Some(_) => return Err(bad(EXPAND, format!("`variations` must be a whole number from 1 to {MAX_VARIATIONS}"))),
     };
     let margin = opt_num(EXPAND, p, "margin", 0.0, 1.0)?.unwrap_or(0.25);
+    let edge = parse_edge(EXPAND, p)?;
     // The request: the bounding box of the added canvas (an L or a frame when more than one
     // side grows) plus `margin` of the picture next to it, on the new canvas.
     let canvas = Rect::new(0, 0, nw as i32, nh as i32);
@@ -982,7 +1051,7 @@ fn plan_expand(s: &Session, p: &Value) -> Result<(FillPlan, Pads, (u32, u32))> {
         )));
     }
     let name = name.unwrap_or_else(|| "Generative Expand".to_string());
-    Ok((FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto }, pads, (nw, nh)))
+    Ok((FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge }, pads, (nw, nh)))
 }
 
 fn expand_enabled(s: &Session) -> std::result::Result<(), String> {
@@ -994,7 +1063,7 @@ fn expand_enabled(s: &Session) -> std::result::Result<(), String> {
 fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
     let (plan, pads, (nw, nh)) = plan_expand(s, p)?;
     let backend = backend(s)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge } = plan;
     let label = name.clone();
     let job = FillJob {
         backend,
@@ -1009,6 +1078,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
         name,
         models,
         variations,
+        edge,
     };
     crate::jobs::edit_job(
         s,
@@ -1152,7 +1222,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Fill…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; margin = context around the selection as a fraction of its larger side; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; areas over one megapixel are sent downscaled and come back resampled; a background job: the result is a new layer above the active one, masked to the selection; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; margin = context around the selection as a fraction of its larger side; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; areas over 0.75 megapixels are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: fill_enabled,
             run: run_fill,
             journal: true,
@@ -1173,7 +1243,7 @@ pub fn specs() -> Vec<CommandSpec> {
             // Placed by the menu catalogue under Edit.
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"left":int=0,"top":int=0,"right":int=0,"bottom":int=0,"width":int=0,"height":int=0,"negative":text,"steps":0..250=0,"guidance":0..30=0,"variations":int=1,"margin":{0..1=0.25},"anchor":{str?=center},"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template},"model":{file?=Preferences},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","canvas":[w,h],"offset":[x,y],"width","height","requestWidth","requestHeight","ms","timings"} (adds canvas (left/top/right/bottom in pixels, or a larger width/height placed by anchor: topLeft, top, topRight, left, center, right, bottomLeft, bottom, bottomRight) and has the model paint it, as one undo step: the picture moves by the left/top pads, the result is a new layer masked to the added area; an empty prompt continues the scene; otherwise as generate.fill; needs a ComfyUI server)"#,
+            params: r#"{"prompt":text,"left":int=0,"top":int=0,"right":int=0,"bottom":int=0,"width":int=0,"height":int=0,"negative":text,"steps":0..250=0,"guidance":0..30=0,"edge":"soft|hard","variations":int=1,"margin":{0..1=0.25},"anchor":{str?=center},"seed":{u64?=random},"template":{id?="auto": the Lightning expand tier when its LoRA is installed, else the 40-step one},"model":{file?=Preferences},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","canvas":[w,h],"offset":[x,y],"width","height","requestWidth","requestHeight","ms","timings"} (adds canvas (left/top/right/bottom in pixels, or a larger width/height placed by anchor: topLeft, top, topRight, left, center, right, bottomLeft, bottom, bottomRight) and has the model paint it, as one undo step: the picture moves by the left/top pads, the result is a new layer over the added area; edge soft = its mask fades across the re-rendered band just inside the old edge (8 % of the picture's longer side), dithered; hard = exactly the added area; an empty prompt continues the scene; otherwise as generate.fill; needs a ComfyUI server)"#,
             enabled: expand_enabled,
             run: run_expand,
             journal: true,

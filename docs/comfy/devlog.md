@@ -4,6 +4,59 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-09 (late): soft, dithered edges for fills and expands
+
+The user: "the borders are harsh, is there a way to do like a noise opacity in the edges so
+that there aren't hard cutoffs?" Yes; it took three changes, each found by measuring the
+right-side expand's sky profile (`benchmarks.md` §3, "Edges").
+
+**Landed**
+
+- `generate.fill` and `generate.expand` take `"edge":"soft|hard"` (default soft; a choice in
+  the generated dialogs, labels already translated). Soft: the result layer's mask is the
+  feathered request band itself, its ramp **dithered** with per-pixel noise (`dither_edge`: a
+  splitmix64 hash of pixel index and seed, amplitude `0.6 × (1 − |2m − 1|)`, so nothing changes
+  inside or outside the band and the grain peaks mid-ramp). The result fades into its
+  surroundings as grain, not a gradient or a line. Hard: exactly the selection (or the added
+  canvas). The feather is now 4 % of the longer side for both (fill 6–48 px, was 2 %; expand
+  8–80 px, was 8 %: at 8 % the model moved the horizon inside the band at one seed, a ghosted
+  double horizon; at 2 % the old edge still read as a line).
+- `feather_outward` starts its ramp at **full** coverage on the edge and falls to nothing at
+  twice the radius (the GrowMask + FeatherMask shape). The old `max(selection, blur)` ramp
+  started at half coverage: a 0.5 step at the edge in both the noise mask and the layer mask,
+  which is half the tone difference left standing as a line.
+- Expand's padding is pre-filled by replicating the picture's edge pixels instead of mid-grey:
+  the grey never reached the model as content (cropped reference, full noise mask) but the VAE
+  carried its tone into the latents of the edge band, a dark line right on the old edge
+  (luminance 213 between 225 and 228). `PREFILL` grey remains only for an empty picture.
+- Tests: the soft-edge test (full on the edge pixel, high just outside, falling off, grain in
+  the row, hard = selection, `edge: fuzzy` rejected), `dither_edge` unit test, the prefill test
+  now checks edge continuity, expectations for the new radii and ramp.
+
+**Live** (`bench/edge-s11-*.png`, `bench/expand-right-{soft,hard}.png`, `xab*-*.png`): the
+expand's sky goes 229 → 226 across the band with no step or dip, nothing visible in a
+contrast-stretched crop; the hard variant keeps its step. The soft and hard variants of one
+seed are the same request, so the second returns from ComfyUI's cache in 0.1 s. The three
+placement cases (boat ×2, balloon) are unchanged by the wider feather. Back-to-back expands
+run 13–20 s (13 s with the reference's encoding cached, 19 s after another reference evicted
+it).
+
+**Found on the way** (`benchmarks.md` §3): what no edge can hide is the new side being a
+different photograph. With a described prompt the Lightning model painted a crisp, sharp-
+horizon sea next to the hazy original at two seeds; the empty prompt (the default instruction)
+continued the haze; the 40-step base (130 s) and several wordings copied the lighthouse into
+the new area at one seed, and so did the empty prompt at the same seed when re-run later. The
+server is bit-deterministic in a steady state and not across model-load states (pixel diffs
+0.00 on repeats, up to 21/765 between states: a second lighthouse against none), so two-seed
+wording comparisons prove little; the wrappers stay as they are and the dialog's note that an
+empty prompt continues the scene is the advice. Also: the first run after a graph switch
+(base ↔ Lightning, or purge → fill → expand) took 31–131 s with the server at 2.4 GB free
+(partial model load), then 13–20 s; the engine should purge before a run that changes the
+model set (roadmap, next).
+
+**Open**: the automatic purge on a model-set change; a prompt study for Expand over more seeds;
+the Crop tool's expand state; `generate.edit`, `generate.removeBackground`.
+
 ## 2026-10-09 (night, Phase 3): Generative Expand
 
 **Landed**
