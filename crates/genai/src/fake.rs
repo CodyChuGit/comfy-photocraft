@@ -334,7 +334,30 @@ fn route(method: &str, path: &str, body: &[u8], ctype: &str, opts: &Options, sta
                 .map(|i| (i.width, i.height))
                 .or(latent_size)
                 .unwrap_or((64, 64));
-            let files: Vec<(String, Vec<u8>)> = if graph_text.contains("SAM3_Detect") {
+            // A layered-latent graph: one RGBA image per layer, layer `i` opaque in the `i`-th
+            // horizontal band (background first), transparent elsewhere.
+            let layer_count = graph
+                .as_object()
+                .and_then(|nodes| nodes.values().find(|n| n["class_type"] == "EmptyQwenImageLayeredLatentImage"))
+                .and_then(|n| n["inputs"]["layers"].as_u64())
+                .filter(|n| (1..=64).contains(n));
+            let files: Vec<(String, Vec<u8>)> = if let Some(count) = layer_count {
+                let (w, h) = size;
+                (0..count)
+                    .map(|i| {
+                        let (y0, y1) = ((h as u64 * i / count) as u32, (h as u64 * (i + 1) / count) as u32);
+                        let mut img = Rgba8::solid(w, h, opts.color).unwrap_or_else(|_| Rgba8 { width: 1, height: 1, data: vec![0; 4] });
+                        for y in 0..h {
+                            for x in 0..w {
+                                if let Some(a) = img.data.get_mut((y as usize * w as usize + x as usize) * 4 + 3) {
+                                    *a = if y >= y0 && y < y1 { 255 } else { 0 };
+                                }
+                            }
+                        }
+                        (format!("{id}_{i}.png"), png::encode_rgba8(&img).unwrap_or_default())
+                    })
+                    .collect()
+            } else if graph_text.contains("SAM3_Detect") {
                 // A detector: one mask image per configured segment (none = nothing found).
                 let (w, h) = size;
                 opts.segments

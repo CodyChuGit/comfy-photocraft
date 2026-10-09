@@ -79,6 +79,14 @@ const MAX_MATTE_REQUEST_PIXELS: u64 = 1024 * 1024;
 
 pub(crate) const INFO: &str = "generate.info";
 pub(crate) const SIMILAR: &str = "generate.similar";
+pub(crate) const SPLIT: &str = "generate.splitLayers";
+pub(crate) const DEFAULT_LAYERS_TEMPLATE: &str = "qwen-layered/split";
+const MAX_SPLIT_LAYERS: u32 = 8;
+/// The layered model's working size: 640 px on the longer side (what ComfyUI's official graph
+/// scales the input to); the layers come back resampled to the canvas.
+const LAYERED_MAX_SIDE: u32 = 640;
+/// What the layered model is told when no description is given.
+const SPLIT_DEFAULT_PROMPT: &str = "separate this image into layers: the background and each foreground subject on its own layer";
 
 /// The PSD additional-layer-info key a generative layer keeps its [`GenerativeInfo`] under
 /// (JSON). An unmodelled block, so it survives PSD round trips and `Layer::duplicate`.
@@ -1451,6 +1459,9 @@ struct MattePlan {
     auto: bool,
     /// The planned template is a detector (`Task::Segment`), not a matte model.
     segment: bool,
+    /// Soften a detector's hard mask with the classical edge refinement (as the Quick Action
+    /// does after Select Subject).
+    refine: bool,
 }
 
 /// What the detector is asked for when Remove Background has no subject named.
@@ -1490,7 +1501,8 @@ fn plan_remove_bg(s: &Session, p: &Value) -> Result<MattePlan> {
         Some(other) => return Err(bad(REMOVE_BG, format!("`mode` must be replace, add, subtract or intersect (got `{other}`)"))),
     };
     let all_layers = opt_bool(REMOVE_BG, p, "sampleAllLayers", false)?;
-    Ok(MattePlan { common, layer, as_selection, mode, all_layers, subject, auto, segment: task == Task::Segment })
+    let refine = opt_bool(REMOVE_BG, p, "refine", true)?;
+    Ok(MattePlan { common, layer, as_selection, mode, all_layers, subject, auto, segment: task == Task::Segment, refine })
 }
 
 fn remove_bg_enabled(s: &Session) -> std::result::Result<(), String> {
@@ -1514,7 +1526,7 @@ fn run_remove_bg(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_remove_bg(s, p)?;
     let backend = backend(s)?;
     let server = server_key(s);
-    let MattePlan { common, layer: id, as_selection, mode, all_layers, subject, auto, segment } = plan;
+    let MattePlan { common, layer: id, as_selection, mode, all_layers, subject, auto, segment, refine } = plan;
     let Common { template, negative, seed, steps, guidance, models, .. } = common;
     let template_id = template.meta.id.clone();
     let label = if as_selection { "Select Subject (Generative)" } else { "Remove Background (Generative)" };
@@ -1596,6 +1608,32 @@ fn run_remove_bg(s: &mut Session, p: &Value) -> Result<Value> {
                     break;
                 }
             }
+            // A detector's mask is hard-edged: the classical edge refinement (a narrow smart
+            // radius, a little smoothing and feather, as after Select Subject) gives hair and
+            // soft edges partial coverage from the pixels themselves.
+            if segment && refine {
+                ctx.progress(0.9, "Refining edge");
+                let (content, found) = crate::select_ml_cmds::coverage_bounds(&cov, area);
+                if found > 0 {
+                    let wv = w as usize;
+                    let reader = |r: Rect| -> Vec<f32> {
+                        let mut v = Vec::with_capacity(r.width() as usize * r.height() as usize);
+                        for y in r.y0..r.y1 {
+                            for x in r.x0..r.x1 {
+                                let inside = x >= area.x0 && x < area.x1 && y >= area.y0 && y < area.y1;
+                                v.push(if inside { cov.get((y - area.y0) as usize * wv + (x - area.x0) as usize).copied().unwrap_or(0.0) } else { 0.0 });
+                            }
+                        }
+                        v
+                    };
+                    let refined = crate::smartselect_cmds::with_doc_sampler(doc, Some(id), all_layers, |smp, d| {
+                        photocraft_algo::matting::refine_mask(smp, &reader, content, d.bounds(), &crate::cutout_cmds::REFINE)
+                    });
+                    if let Some(reg) = refined {
+                        cov = photocraft_algo::matting::region_reader(&reg)(area);
+                    }
+                }
+            }
             if let Some(own) = own_alpha {
                 for (c, a) in cov.iter_mut().zip(own) {
                     *c *= f32::from(a) / 255.0;
@@ -1628,6 +1666,143 @@ fn run_remove_bg(s: &mut Session, p: &Value) -> Result<Value> {
 
 /// A detector request is sent at most this large (SAM 3.1 works at about 1 megapixel inside).
 const MAX_SEGMENT_REQUEST_PIXELS: u64 = 2048 * 1024;
+
+/// The size a split request goes out at: at most [`LAYERED_MAX_SIDE`] on the longer side,
+/// multiples of 16 (the layered latent's step), at least 64.
+pub(crate) fn layered_request_size(w: u32, h: u32) -> (u32, u32) {
+    let longer = w.max(h).max(1);
+    let scale = if longer > LAYERED_MAX_SIDE { f64::from(LAYERED_MAX_SIDE) / f64::from(longer) } else { 1.0 };
+    let fit = |v: u32| (((f64::from(v) * scale).round() as u32) / SIZE_STEP * SIZE_STEP).max(SIZE_STEP);
+    (fit(w), fit(h))
+}
+
+/// Everything `generate.splitLayers` needs, validated before any network work.
+struct SplitPlan {
+    common: Common,
+    layers: u32,
+    all_layers: bool,
+}
+
+fn plan_split(s: &Session, p: &Value) -> Result<SplitPlan> {
+    s.active().ok_or(EngineError::NoDocument)?;
+    let mut q = p.clone();
+    if opt_str(SPLIT, p, "prompt", MAX_PROMPT_CHARS)?.map(str::trim).unwrap_or("").is_empty()
+        && let Some(o) = q.as_object_mut()
+    {
+        o.insert("prompt".into(), Value::String(SPLIT_DEFAULT_PROMPT.into()));
+    }
+    let common = plan_common(s, SPLIT, &q, DEFAULT_LAYERS_TEMPLATE, Task::Layers, "")?;
+    let layers = match opt_num(SPLIT, p, "layers", 1.0, f64::from(MAX_SPLIT_LAYERS))? {
+        None => 3,
+        Some(x) if x.fract() == 0.0 => x as u32,
+        Some(_) => return Err(bad(SPLIT, format!("`layers` must be a whole number from 1 to {MAX_SPLIT_LAYERS}"))),
+    };
+    let all_layers = opt_bool(SPLIT, p, "sampleAllLayers", true)?;
+    Ok(SplitPlan { common, layers, all_layers })
+}
+
+fn split_enabled(s: &Session) -> std::result::Result<(), String> {
+    web_unavailable()?;
+    s.active().map(|_| ()).ok_or_else(|| "no document open".into())
+}
+
+/// `generate.splitLayers`: the picture goes to a layered model that decomposes it into RGBA
+/// layers (background first); each comes back as a new layer above the active one, with the
+/// alpha the model gave it.
+fn run_split(s: &mut Session, p: &Value) -> Result<Value> {
+    let plan = plan_split(s, p)?;
+    let backend = backend(s)?;
+    let server = server_key(s);
+    let SplitPlan { common, layers, all_layers } = plan;
+    let Common { template, prompt, negative, seed, steps, guidance, models, name } = common;
+    let tid = template.meta.id.clone();
+    let tid_out = tid.clone();
+    let base = name.unwrap_or_else(|| "Split Layer".to_string());
+    crate::jobs::edit_job(
+        s,
+        "Split into Layers",
+        move |doc, active, ctx| {
+            ctx.progress(0.0, "Rendering");
+            let area = doc.bounds();
+            let (w, h) = (area.width(), area.height());
+            let n = w as usize * h as usize;
+            let layer = if all_layers { None } else { active.and_then(|id| doc.layer(id)).and_then(|l| l.surface()) };
+            let rgba8: Vec<u8> = match layer {
+                Some(surf) => {
+                    let mut px = vec![[0u8; 4]; n];
+                    surf.read_rgba8_into(area, &mut px);
+                    // Transparent pixels go to the model over mid-grey (its loader drops alpha).
+                    px.into_iter()
+                        .flat_map(|p| {
+                            let a = u16::from(p[3]);
+                            let over = |c: u8| ((u16::from(c) * a + 128 * (255 - a)) / 255) as u8;
+                            [over(p[0]), over(p[1]), over(p[2]), 255]
+                        })
+                        .collect()
+                }
+                None => photocraft_compose::render(doc, area).to_rgba8().pixels,
+            };
+            let image = Rgba8::new(w, h, rgba8).map_err(gen_err)?;
+            let (rw, rh) = layered_request_size(w, h);
+            let image = if (rw, rh) == (w, h) { image } else { resize_rgba8(&image, rw, rh)? };
+            let mut params = BTreeMap::new();
+            params.insert("layers".to_string(), json!(layers));
+            let req = Request {
+                template: tid.clone(),
+                prompt: prompt.clone(),
+                negative,
+                seed,
+                steps,
+                guidance,
+                image: Some(image),
+                mask: None,
+                models,
+                size: Some((rw, rh)),
+                params,
+            };
+            let resp = run_switching(backend.as_ref(), &server, &req, &JobProgress::new(ctx)).map_err(gen_err)?;
+            ctx.check()?;
+            ctx.progress(0.95, "Placing");
+            if resp.images.is_empty() {
+                return Err(EngineError::Other("the backend returned no layers".into()));
+            }
+            let count = resp.images.len();
+            let mut made: Vec<LayerId> = Vec::with_capacity(count);
+            for (i, out) in resp.images.into_iter().enumerate() {
+                let out = if (out.width, out.height) == (w, h) { out } else { resize_rgba8(&out, w, h)? };
+                let layer_name = format!("{base} {}/{count}", i + 1);
+                let mut layer = Layer::raster(layer_name.clone(), doc.pixel_format());
+                write_rgba8(&mut layer, &out, area)?;
+                set_generative_info(
+                    &mut layer,
+                    &GenerativeInfo {
+                        command: SPLIT.to_string(),
+                        prompt: prompt.clone(),
+                        template: tid.clone(),
+                        seed: resp.seed,
+                        steps,
+                        guidance,
+                        rect: [area.x0, area.y0, w as i32, h as i32],
+                        name: layer_name,
+                        ..GenerativeInfo::default()
+                    },
+                );
+                // Background first, each next layer above the last.
+                let nid = doc.insert_above(*active, layer);
+                *active = Some(nid);
+                made.push(nid);
+            }
+            Ok((made, resp.seed, resp.run_id, resp.elapsed_ms, resp.timings, (rw, rh), (w, h)))
+        },
+        move |(made, seed, run_id, ms, timings, (rw, rh), (w, h))| {
+            json!({
+                "layers": made.iter().map(|l| l.0).collect::<Vec<_>>(), "count": made.len(), "seed": seed, "template": tid_out,
+                "runId": run_id, "width": w, "height": h, "requestWidth": rw, "requestHeight": rh,
+                "ms": ms, "timings": [serde_json::to_value(timings).unwrap_or(Value::Null)],
+            })
+        },
+    )
+}
 
 /// Edit › Purge › Generative Models: the server unloads its models and frees their memory. A
 /// server that has had several model families loaded can end up streaming weights on every run
@@ -1745,6 +1920,9 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
     let info = generative_info(layer).ok_or_else(|| EngineError::Other("the layer was not made by a generative command".into()))?;
     let seed = parse_seed(SIMILAR, p)?;
     let variations = parse_variations(SIMILAR, p)?;
+    if info.command == SPLIT {
+        return Err(EngineError::Other("a split layer has no \"similar\": split the picture again instead".into()));
+    }
     if info.command == IMAGE {
         // A generated image: the same request, as a layer above this one.
         let q = json!({
@@ -1870,7 +2048,7 @@ pub fn specs() -> Vec<CommandSpec> {
             // Placed by the menu catalogue under Edit, with the other generative items.
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"asSelection":bool=false,"sampleAllLayers":bool=false,"mode":"replace|add|subtract|intersect","layer":{id?=active},"seed":{u64?=random},"steps":{0..250=0},"guidance":{0..30=0},"template":{id?="auto": qwen-2.1/matte (a soft matte from Qwen-Image-2.1's alpha output; research licence, Preferences › AI Integrations › Allow Research-Only Models) when allowed and installed, else sam3.1/segment (the permissive detector, a hard-edged mask)},"model":{file?}} → {"layer","selection","bounds":[x,y,w,h],"pixels","seed","template","runId","width","height","requestWidth","requestHeight","ms","timings"} (prompt = what to keep, e.g. "the lighthouse", empty = the model's own reading of the subject; the matte becomes the layer's mask (the Background becomes a normal layer; the pixels are never changed) or, with asSelection, the selection combined by mode; sampleAllLayers sends the composite instead of the layer alone; images over one megapixel are sent downscaled and the matte comes back resampled; a background job; needs a ComfyUI server; the classical Quick Action layer.removeBackground needs none)"#,
+            params: r#"{"prompt":text,"asSelection":bool=false,"sampleAllLayers":bool=false,"refine":bool=true,"mode":"replace|add|subtract|intersect","layer":{id?=active},"seed":{u64?=random},"steps":{0..250=0},"guidance":{0..30=0},"template":{id?="auto": qwen-2.1/matte (a soft matte from Qwen-Image-2.1's alpha output; research licence, Preferences › AI Integrations › Allow Research-Only Models) when allowed and installed, else sam3.1/segment (the permissive detector)},"model":{file?}} → {"layer","selection","bounds":[x,y,w,h],"pixels","seed","template","runId","width","height","requestWidth","requestHeight","ms","timings"} (prompt = what to keep, e.g. "the lighthouse", empty = the model's own reading of the subject; the matte becomes the layer's mask (the Background becomes a normal layer; the pixels are never changed) or, with asSelection, the selection combined by mode; sampleAllLayers sends the composite instead of the layer alone; refine = soften the detector's hard mask with the classical edge refinement, as the Quick Action does; images over one megapixel are sent downscaled and the matte comes back resampled; a background job; needs a ComfyUI server; the classical Quick Action layer.removeBackground needs none)"#,
             enabled: remove_bg_enabled,
             run: run_remove_bg,
             journal: true,
@@ -1884,6 +2062,17 @@ pub fn specs() -> Vec<CommandSpec> {
             params: r#"{"layer":{id?=active},"seed":{u64?=random},"variations":int=1} → as the command that made the layer (runs it again with a new seed in the same place: the layer's mask is the area, the result is a new layer above it; a generated image is generated again as a layer; an expanded area is filled again with its prompt; needs a ComfyUI server)"#,
             enabled: similar_enabled,
             run: run_similar,
+            journal: true,
+        },
+        CommandSpec {
+            id: SPLIT,
+            label: "Split into Layers (Generative)…",
+            // Placed by the menu catalogue under Edit, with the other generative items.
+            menu: &[],
+            shortcut: None,
+            params: r#"{"layers":int=3,"prompt":text,"negative":text,"sampleAllLayers":bool=true,"steps":0..250=0,"guidance":0..30=0,"seed":{u64?=random},"template":{id?=qwen-layered/split},"model":{file?},"name":{str?}} → {"layers":[id],"count","seed","template","runId","width","height","requestWidth","requestHeight","ms","timings"} (a layered model (Qwen-Image-Layered, Apache-2.0) decomposes the picture into `layers` RGBA layers, the background first, each a new layer above the active one with the alpha the model gave it; prompt = a description of the picture, empty = a generic instruction; sampleAllLayers false sends the active layer alone; the picture goes out at 640 px on its longer side and the layers come back resampled; a background job; needs a ComfyUI server with the layered model's files)"#,
+            enabled: split_enabled,
+            run: run_split,
             journal: true,
         },
         CommandSpec {
@@ -1963,3 +2152,7 @@ mod edit_tests;
 #[cfg(test)]
 #[path = "generate_similar_tests.rs"]
 mod similar_tests;
+
+#[cfg(test)]
+#[path = "generate_split_tests.rs"]
+mod split_tests;

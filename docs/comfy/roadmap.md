@@ -159,9 +159,10 @@ canvas crops to the part inside (when that is not the whole canvas) and then has
 paint the overhang through `generate.expand` (`canvas::commit_crop`). Remove Background's
 permissive route landed last: `template: auto` takes SAM 3.1 (the prompt or "the main
 subject", a hard-edged mask) unless the research opt-in and the 2.1 files make the soft matte
-possible. Open: a prompt study for Expand, Qwen-Image-Layered ("image to layers": ComfyUI
-ships `EmptyQwenImageLayeredLatentImage` and official templates; the weights are not installed
-here), a soft-matte refinement of the detector route.
+possible; the detector route softens its mask with the classical edge refinement. **Split
+into Layers** (`generate.splitLayers`, Qwen-Image-Layered, Apache-2.0) decomposes the picture
+into RGBA layers, background first, each a new layer. Open: a prompt study for Expand, the
+layered model above its 640 px working size, transparent fills.
 
 ## Phase 3.5: Select by text (SAM 3.1)
 

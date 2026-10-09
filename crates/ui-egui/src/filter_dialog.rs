@@ -189,6 +189,7 @@ pub fn has_dialog(command: &str) -> bool {
                 | "generate.expand"
                 | "generate.edit"
                 | "generate.removeBackground"
+                | "generate.splitLayers"
                 | "select.byText"
         ))
         && photocraft_engine::commands::find(command).is_some_and(|c| !parse_spec(c.params).is_empty())

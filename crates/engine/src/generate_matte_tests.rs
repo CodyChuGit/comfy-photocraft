@@ -161,11 +161,20 @@ fn without_the_research_opt_in_remove_background_uses_the_permissive_detector() 
     let mut s = session(&fake.url);
     s.edit_prefs(|p| p.integrations.allow_research_models = false);
     let id = s.active().unwrap().active_layer.unwrap();
-    let r = s.execute(REMOVE_BG, json!({"prompt": "the boat"})).unwrap();
+    let r = s.execute(REMOVE_BG, json!({"prompt": "the boat", "refine": false})).unwrap();
     assert_eq!(r["template"], "sam3.1/segment");
-    assert_eq!(r["bounds"], json!([16, 12, 32, 24]));
+    assert_eq!(r["bounds"], json!([16, 12, 32, 24]), "unrefined: the detector's rectangle exactly");
     assert_eq!(mask_at(&s, id, 32, 24), 1.0);
     assert_eq!(mask_at(&s, id, 2, 2), 0.0);
+    assert_eq!(mask_at(&s, id, 16, 12), 1.0, "a hard corner");
+    // The default refines the hard mask against the pixels: still the subject, softer edges.
+    let r = s.execute(REMOVE_BG, json!({"prompt": "the boat"})).unwrap();
+    let b = r["bounds"].as_array().unwrap();
+    assert!((13..=19).contains(&b[0].as_i64().unwrap()) && (9..=15).contains(&b[1].as_i64().unwrap()), "{b:?}");
+    assert_eq!(mask_at(&s, id, 32, 24), 1.0);
+    assert_eq!(mask_at(&s, id, 2, 2), 0.0);
+    let edge: Vec<f32> = (12..20).map(|x| mask_at(&s, id, x, 24)).collect();
+    assert!(edge.iter().any(|v| *v > 0.0 && *v < 1.0), "partial coverage across the edge: {edge:?}");
     {
         let st = fake.state();
         let g = &st.prompts[0].1;
@@ -177,7 +186,7 @@ fn without_the_research_opt_in_remove_background_uses_the_permissive_detector() 
     let r = s.execute(REMOVE_BG, json!({"asSelection": true})).unwrap();
     assert_eq!(r["selection"], true);
     assert!(s.active().unwrap().doc.selection.is_some());
-    assert_eq!(fake.state().prompts[1].1["3"]["inputs"]["text"], "the main subject");
+    assert_eq!(fake.state().prompts[2].1["3"]["inputs"]["text"], "the main subject");
     // Research allowed but the 2.1 files missing: `auto` still falls back to the detector.
     let bare = FakeComfy::start_with(Options { missing_files: vec!["qwen_image_2.1_int8_convrot.safetensors".into()], ..Options::default() }).unwrap();
     let mut s = session(&bare.url);

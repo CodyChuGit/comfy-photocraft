@@ -4,6 +4,35 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-09 (late): Split into Layers (Qwen-Image-Layered), and a softer detector matte
+
+**Landed**
+
+- `generate.splitLayers` (Edit › Split into Layers (Generative)…, translated ×13, generated
+  dialog): the composite (or the active layer) goes to **Qwen-Image-Layered** through
+  `qwen-layered/split`, ComfyUI's official "Image to Layers" subgraph as a template (the
+  picture as a `ReferenceLatent` on both conditionings, `EmptyQwenImageLayeredLatentImage` with
+  `layers` slices, `LatentCut` dropping slice 0 and `LatentCutToBatch` making a batch, the
+  layered VAE decoding RGBA). Each result becomes a new layer above the active one, background
+  first, with the alpha the model gave it; `layers` 1..8 (default 3); the picture goes out at
+  640 px on its longer side (the official size) and comes back resampled. A new `Task::Layers`;
+  the fake answers such graphs with one banded RGBA image per layer. The model is Apache-2.0
+  (`models.md`); the 19 GB fp8 repack and its VAE were downloaded here for testing only.
+- Remove Background's detector route now softens its hard mask with the classical edge
+  refinement (`refine: true` by default, the Quick Action's parameters), so hair and soft
+  edges get partial coverage from the pixels themselves.
+- Tests: two for the split (layer order, alpha bands, names, graph, sizes, validation, no
+  "similar"), the refinement in the detector test.
+
+**Live** (the 1024² lighthouse, `bench/split-layer-*.png`): three layers in **72 s** (model
+load included) at 640²: layer 0 a near-white base carrying the boat's shadow, layer 1 the sky
+and sea with the boat (soft where the rocks were), layer 2 the rocks and lighthouse cut out
+with real soft alpha. The model chooses the decomposition; the composite is the picture. A
+second run reuses the loaded model.
+
+**Open**: the layered model's 640 px working size (a 1024 run is worth a try), transparent
+fills (the model's alpha times the selection), preview frames.
+
 ## 2026-10-09 (late): Remove Background without the opt-in, and Select by Point
 
 **Landed**

@@ -1,0 +1,95 @@
+//! `generate.splitLayers` (a picture decomposed into RGBA layers) against the fake server, which
+//! answers a layered-latent graph with one image per layer, opaque in its own horizontal band.
+
+use photocraft_doc::LayerId;
+use photocraft_genai::fake::FakeComfy;
+use photocraft_geom::Rect;
+use serde_json::json;
+
+use super::*;
+
+/// A 64×48 document with one empty layer, talking to `url`.
+fn session(url: &str) -> Session {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 64, "height": 48})).unwrap();
+    s.execute("layer.new.layer", json!({})).unwrap();
+    s.edit_prefs(|p| p.integrations.comfy_server = url.to_string());
+    s
+}
+
+fn alpha_at(s: &Session, id: LayerId, x: i32, y: i32) -> f32 {
+    let d = s.active().unwrap();
+    d.doc.layer(id).unwrap().surface().unwrap().read_region(Rect::new(x, y, x + 1, y + 1))[3]
+}
+
+#[test]
+fn split_lays_the_models_layers_above_the_active_one_background_first() {
+    let fake = FakeComfy::start().unwrap();
+    let mut s = session(&fake.url);
+    let (before, active, steps) = {
+        let d = s.active().unwrap();
+        (d.doc.layers.len(), d.active_layer.unwrap(), d.history.past_len())
+    };
+    let r = s.execute(SPLIT, json!({"layers": 3, "seed": 5})).unwrap();
+    assert_eq!(r["count"], 3);
+    assert_eq!(r["template"], DEFAULT_LAYERS_TEMPLATE);
+    assert_eq!((r["requestWidth"].as_u64(), r["requestHeight"].as_u64()), (Some(64), Some(48)), "small pictures go as they are");
+    let ids: Vec<LayerId> = r["layers"].as_array().unwrap().iter().map(|v| LayerId(v.as_u64().unwrap())).collect();
+    assert_eq!(ids.len(), 3);
+    let d = s.active().unwrap();
+    assert_eq!(d.doc.layers.len(), before + 3);
+    assert_eq!(d.history.past_len(), steps + 1, "one undo step");
+    let pos = |l: LayerId| d.doc.layers.iter().position(|x| x.id == l).unwrap();
+    assert_eq!(pos(ids[0]), pos(active) + 1, "the first (background) layer right above the active one");
+    assert_eq!(pos(ids[2]), pos(ids[1]) + 1, "then each next one above the last");
+    assert_eq!(d.active_layer, Some(ids[2]), "the top one is active");
+    assert_eq!(d.doc.layer(ids[0]).unwrap().name, "Split Layer 1/3");
+    assert_eq!(d.doc.layer(ids[2]).unwrap().name, "Split Layer 3/3");
+    // The fake's bands: layer i is opaque in the i-th third of the height.
+    assert_eq!(alpha_at(&s, ids[0], 10, 5), 1.0);
+    assert_eq!(alpha_at(&s, ids[0], 10, 40), 0.0, "transparent where another layer's content is");
+    assert_eq!(alpha_at(&s, ids[2], 10, 40), 1.0);
+    assert_eq!(alpha_at(&s, ids[2], 10, 5), 0.0);
+    let info = generative_info(d.doc.layer(ids[1]).unwrap()).unwrap();
+    assert_eq!(info.command, SPLIT);
+    assert_eq!(info.prompt, SPLIT_DEFAULT_PROMPT, "no description: the generic instruction");
+    assert_eq!(info.seed, 5);
+    // What the server got.
+    let st = fake.state();
+    let g = &st.prompts[0].1;
+    assert_eq!(g["11"]["class_type"], "EmptyQwenImageLayeredLatentImage");
+    assert_eq!(g["11"]["inputs"]["layers"], 3);
+    assert_eq!((g["11"]["inputs"]["width"].as_u64(), g["11"]["inputs"]["height"].as_u64()), (Some(64), Some(48)));
+    assert_eq!(g["13"]["class_type"], "LatentCut");
+    assert_eq!(g["13"]["inputs"]["index"], 1, "slice 0 (the whole picture) is dropped");
+    assert_eq!(g["6"]["inputs"]["text"], SPLIT_DEFAULT_PROMPT);
+    assert_eq!(g["12"]["inputs"]["steps"], 20);
+    assert_eq!(g["12"]["inputs"]["cfg"], 2.5);
+    assert_eq!(g["1"]["inputs"]["unet_name"], "qwen_image_layered_fp8mixed.safetensors");
+    assert_eq!(st.uploads.len(), 1);
+    drop(st);
+    assert!(s.undo());
+    assert_eq!(s.active().unwrap().doc.layers.len(), before);
+}
+
+#[test]
+fn split_sizes_validates_and_has_no_similar() {
+    assert_eq!(layered_request_size(1024, 1024), (640, 640));
+    assert_eq!(layered_request_size(1920, 1080), (640, 352), "aspect kept, multiples of 16");
+    assert_eq!(layered_request_size(300, 200), (288, 192), "small pictures only snap to the grid");
+    let fake = FakeComfy::start().unwrap();
+    let mut s = session(&fake.url);
+    for p in [json!({"layers": 0}), json!({"layers": 9}), json!({"layers": 2.5}), json!({"sampleAllLayers": "no"}), json!({"template": "qwen-edit-2511/fill"})]
+    {
+        assert!(matches!(s.execute(SPLIT, p.clone()), Err(EngineError::BadParams { .. })), "{p}");
+    }
+    let r = s.execute(SPLIT, json!({"layers": 2, "prompt": "a lighthouse on rocks", "name": "Scene"})).unwrap();
+    let id = LayerId(r["layers"][0].as_u64().unwrap());
+    assert_eq!(s.active().unwrap().doc.layer(id).unwrap().name, "Scene 1/2");
+    assert_eq!(fake.state().prompts[0].1["6"]["inputs"]["text"], "a lighthouse on rocks");
+    let e = s.execute(SIMILAR, json!({"layer": id.0})).unwrap_err().to_string();
+    assert!(e.contains("split"), "{e}");
+    let mut empty = Session::new();
+    empty.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
+    assert!(!empty.is_enabled(SPLIT));
+}

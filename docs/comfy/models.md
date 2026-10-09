@@ -71,6 +71,20 @@ Sources: [conradlocke/krea2-identity-edit](https://huggingface.co/conradlocke/kr
 
 Sources: [Qwen/Qwen-Image-2.1 model card](https://huggingface.co/Qwen/Qwen-Image-2.1) · [QwenLM/Qwen-Image-2.1](https://github.com/QwenLM/Qwen-Image-2.1) · [ComfyUI v0.37.0 notes (wiki)](https://comfyui-wiki.com/en/news/2026-09-20-comfyui-v0-37-0) · [GIGAZINE hands-on](https://gigazine.net/gsc_news/en/20260924-qwen-image-2-1/) · [licence analysis (datanorth)](https://datanorth.ai/news/qwen-releases-qwen-image-2-1) · [licence analysis (latenode)](https://latenode.com/ai-trends/qwen-image-2-1-commercial-licence).
 
+### Qwen-Image-Layered (image to layers, permissive)
+
+| | |
+|---|---|
+| Weights | `Qwen/Qwen-Image-Layered`; ComfyUI repack `Comfy-Org/Qwen-Image-Layered_ComfyUI`: `diffusion_models/qwen_image_layered_fp8mixed.safetensors` (19.1 GB) or `_bf16` (38 GB), `vae/qwen_image_layered_vae.safetensors` (0.24 GB, decodes RGBA); text encoder `qwen_2.5_vl_7b_fp8_scaled.safetensors` (shared with 2511) |
+| Released | 2025-12 |
+| Capabilities | Decomposes a picture into N RGBA layers (background first) that composite back to it; a text-to-layers mode; a control variant (`qwen_image_layered_control`) |
+| ComfyUI | Native in **0.39** with official templates `image_qwen_image_layered.json` (Image to Layers, Text to Layers) and `image_qwen_image_layered_control.json`, and the blueprint "Image to Layers (Qwen-Image-Layered)". Nodes: `EmptyQwenImageLayeredLatentImage` (width, height, layers), `ReferenceLatent` on both conditionings, `ModelSamplingAuraFlow` shift 1, KSampler euler/simple **20 steps CFG 2.5**, `LatentCut` (dim t, index 1) + `LatentCutToBatch` to turn the layer slices into a batch, the layered VAE decoding RGBA. The official graph scales the input to **640 px** on its longer side. PhotoCraft template: `qwen-layered/split` (`generate.splitLayers`). |
+| VRAM | the fp8 repack behaves like 2511 fp8 on the 32 GB card |
+| Licence | **Apache-2.0** (model card and repack both tagged `apache-2.0`, checked 2026-10-09 through the Hugging Face API) |
+| Role here | **Split into Layers** (Edit › Split into Layers (Generative)…): a permissive default; the app ships no weights |
+
+Sources: [Qwen/Qwen-Image-Layered](https://huggingface.co/Qwen/Qwen-Image-Layered) · [Comfy-Org/Qwen-Image-Layered_ComfyUI](https://huggingface.co/Comfy-Org/Qwen-Image-Layered_ComfyUI) · ComfyUI 0.39's bundled templates (`comfyui_workflow_templates_json`).
+
 ### Qwen-Image-Edit-2511 (instruction editing, permissive)
 
 | | |
@@ -142,6 +156,7 @@ Sources: [FLUX.2 / Z-Image on AWS (hands-on)](https://builder.aws.com/content/36
 | Select Subject / Sky / Hair (ML) (`select.subjectML`) | SAM 3.1 ("person", "sky"…) or BiRefNet for soft hair mattes | SAM 3.1 + BiRefNet refine | replaces the classical `select.subject` path when the server is up |
 | Remove Background (`generate.removeBackground`) | **SAM 3.1** (`sam3.1/segment`, SAM License, no opt-in): the prompt or "the main subject" → a hard-edged mask | **Qwen-Image-2.1's RGBA output** (`qwen-2.1/matte`, research licence, opt-in): a soft matte; `auto` takes it when allowed and installed | layer (or composite) → the model's alpha channel (2.1) or the union of the detector's instance masks (SAM), resampled → layer mask or selection (never destroys pixels); the classical Quick Action `layer.removeBackground` needs no server |
 | Transparent Generate Image (`generate.image` + `transparent`) | — (Krea 2 and Z-Image cannot) | Qwen-Image-2.1 RGBA (`promptFormatTransparent`) | prompt + "isolated on a transparent background, output a PNG image" → a layer whose pixels carry the model's alpha |
+| Split into Layers (`generate.splitLayers`) | Qwen-Image-Layered (`qwen-layered/split`, Apache-2.0) | — | the composite at ≤ 640 px → N RGBA layers, background first, each a new layer above the active one, resampled to the canvas |
 | Harmonize (`generate.edit` preset) | Qwen-Image-Edit-2511 | Qwen-Image-2.1 | pasted layer + composite context + "match lighting and colour" → new layer |
 | Generative Upscale (`generate.upscale`) | ESRGAN-class (licence-checked) | SeedVR2 | layer → upscale-model node → new layer / Image Size |
 | Generate Similar | same model as the source layer | — | stored prompt + new seed |

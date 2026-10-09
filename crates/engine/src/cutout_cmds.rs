@@ -16,7 +16,7 @@ const CMD: &str = "layer.removeBackground";
 
 /// Edge refinement after Select Subject: a narrow smart radius and a little smoothing, so soft
 /// edges and hair get partial coverage instead of a hard cut.
-const REFINE: RefineParams = RefineParams { radius: 2.0, smart_radius: true, smooth: 10.0, feather: 0.5, contrast: 10.0, shift_edge: 0.0 };
+pub(crate) const REFINE: RefineParams = RefineParams { radius: 2.0, smart_radius: true, smooth: 10.0, feather: 0.5, contrast: 10.0, shift_edge: 0.0 };
 
 /// Remove Background needs an unlocked pixel layer (also the generative one's rule).
 pub(crate) fn check(doc: &Document, l: &Layer) -> std::result::Result<(), String> {

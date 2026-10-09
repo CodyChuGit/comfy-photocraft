@@ -134,6 +134,8 @@ pub enum Task {
     Upscale,
     /// Instance masks for a text (or point) prompt; the result images are coverage, not pictures.
     Segment,
+    /// Decompose a picture into RGBA layers; one result image per layer.
+    Layers,
 }
 
 /// One generation, backend-agnostic. The engine builds it; a backend runs it.

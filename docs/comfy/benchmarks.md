@@ -205,6 +205,16 @@ The matte is 25 steps of the full model, so it costs a text-to-image. The permis
 
 A soft matte from a dedicated matting model (BiRefNet) would sit between the two in quality;
 it needs a custom node pack the server does not have, so it is not planned for the default.
+The detector route softens its mask with the classical edge refinement instead (`refine`).
+
+## 5d. Split into Layers (Qwen-Image-Layered, fp8)
+
+| Case | time | result |
+|---|---|---|
+| the 1024² lighthouse into 3 layers, 20 steps CFG 2.5 at 640² | 72 s (the 19 GB model loaded in it) | layer 0 a near-white base with the boat's shadow, layer 1 sky and sea with the boat, layer 2 rocks and lighthouse with real soft alpha |
+
+CFG 2.5 means two passes a step, like the 2511 base; the official 640 px working size keeps it
+to about a minute. The layers come back resampled to the canvas.
 
 ## 5c. Generative Edit and the automatic purge
 
