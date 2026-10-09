@@ -248,17 +248,21 @@ already has the section we need: **Edit › Preferences › AI Integrations…**
 `Integrations` (today `allow_agent_control`, `control_port`). The ComfyUI settings go there, so
 no new section, menu row or dialog page is needed:
 
-| Preference (`integrations.*`) | Default | Read by |
-|---|---|---|
-| `comfyServer` | `http://127.0.0.1:8188` | `ComfyBackend::new` |
-| `defaultGenerateModel` / `defaultEditModel` | first installed permissive model of that task | `build_request` |
-| `generativeTimeoutSecs` | 600 | client |
-| `generativePreviews` | true | task bar overlay (Phase 2) |
-| `freeVramAfterRun` | false | client (`POST /free`) |
-| `allowResearchModels` | false | picker and `build_request` (refuses research-only ids unless on) |
-| `generativeContentFilter` | true | the moderation hook required by community licences |
+| Preference (`integrations.*`) | Default | Read by | Status |
+|---|---|---|---|
+| `comfyServer` | `http://127.0.0.1:8188` | `generate_cmds::backend` | **Phase 1, implemented** |
+| `defaultEditModel` | `""` (the template's default file) | `generate_cmds::plan_fill` | **Phase 1, implemented** |
+| `generativeTimeoutSecs` | 600 | `generate_cmds::backend` → the backend's deadline | **Phase 1, implemented** |
+| `allowResearchModels` | false | `plan_fill` refuses research-only templates unless on; `generate.models` reports `allowed` | **Phase 1, implemented** |
+| `defaultGenerateModel` | first installed permissive model | `generate.image` | Phase 3 |
+| `generativePreviews` | true | task bar overlay | Phase 2 |
+| `freeVramAfterRun` | false | client (`POST /free`) | Phase 2 |
+| `generativeContentFilter` | true | the moderation hook required by community licences | Phase 2 |
 
-Each one is read by code in the same change that adds it, so the audit count does not move.
+Each one is read by code in the same change that adds it, so the audit count does not move
+(`crates/engine/tests/prefs_usage.rs` enforces it). Validation lives in `prefs::check_value`
+(`comfyServer` must be an `http(s)://` URL or empty; `defaultEditModel` a plain file name) and
+`prefs::range` (`generativeTimeoutSecs` 5..86 400).
 
 ## 5. UI (Phase 2)
 

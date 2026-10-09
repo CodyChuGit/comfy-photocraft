@@ -266,6 +266,21 @@ same change, or `cargo xtask scorecard --check` reports it.
 - CI (`.github/workflows/ci.yml`): fmt, clippy `-D warnings`, tests, `xtask layers`, `xtask wasm`,
   `scorecard --check`, the corpus job; nightly perf on macOS.
 
+## 9.5 What the fork has added so far (2026-10-08)
+
+- `crates/genai` (`photocraft-genai`, L4): `GenerativeBackend` trait, `Request`/`Response`
+  (`Rgba8`, `Gray8` pixels), `template` (API-format graphs with typed `{{placeholders}}`,
+  built-in `qwen-edit-2511/fill`), `comfy` (`ComfyClient` over ureq + tungstenite, `ComfyBackend`
+  with the upload → prompt → socket/poll → view loop, cancellation via `/interrupt`), `png`, and
+  `fake` (feature `fake-server`: an in-process ComfyUI stand-in for tests).
+- `crates/engine/src/generate_cmds.rs`: `generate.fill` (background job via `jobs::edit_job`,
+  result on a new masked layer), `generate.health`, `generate.models`; tests in
+  `generate_cmds_tests.rs`. Registered with one line in `commands.rs`; `menu: &[]` until Phase 2
+  adds the catalogue rows and translations.
+- `crates/engine/src/prefs.rs` › `Integrations`: `comfy_server`, `default_edit_model`,
+  `generative_timeout_secs`, `allow_research_models` (+ validation in `check_value`/`range`).
+- `xtask/src/layers.rs`: `("genai", Class::Layer(4))`.
+
 ## 10. Gotchas checklist for the new crate
 
 1. Register `genai` in `xtask/src/layers.rs TABLE` at L4; depend only on L0–L3 and standalone crates.

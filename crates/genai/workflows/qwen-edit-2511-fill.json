@@ -1,0 +1,43 @@
+{
+  "meta": {
+    "id": "qwen-edit-2511/fill",
+    "name": "Generative Fill (Qwen-Image-Edit-2511)",
+    "family": "qwen-image-edit-2511",
+    "task": "fill",
+    "license": "permissive",
+    "licenseNote": "Qwen-Image-Edit-2511 is Apache-2.0 (Alibaba Qwen, 2025-12-23).",
+    "minComfyVersion": "0.4.0",
+    "saveNode": "16",
+    "needsImage": true,
+    "needsMask": true,
+    "defaults": { "steps": 40, "guidance": 4.0 },
+    "placeholders": {
+      "prompt": "string", "negative": "string", "seed": "int", "steps": "int", "cfg": "float",
+      "image": "string", "mask": "string", "prefix": "string",
+      "unet": "string", "clip": "string", "vae": "string"
+    },
+    "models": [
+      { "placeholder": "unet", "folder": "diffusion_models", "default": "qwen_image_edit_2511_fp8mixed.safetensors" },
+      { "placeholder": "clip", "folder": "text_encoders", "default": "qwen_2.5_vl_7b_fp8_scaled.safetensors" },
+      { "placeholder": "vae", "folder": "vae", "default": "qwen_image_vae.safetensors" }
+    ],
+    "notes": "Node names and settings follow ComfyUI's official 'Image Edit (Qwen-Image 2511)' template (UNETLoader, CLIPLoader type qwen_image, TextEncodeQwenImageEditPlus, ModelSamplingAuraFlow shift 3.1, KSampler euler/simple, denoise 1). Inpainting is added with core nodes: the mask PNG is loaded, turned into a MASK and applied with SetLatentNoiseMask, so only the selected area is regenerated. The official template's optional CFGNorm and FluxKontextMultiReferenceLatentMethod nodes are left out until verified live."
+  },
+  "graph": {
+    "1": { "class_type": "UNETLoader", "inputs": { "unet_name": "{{unet}}", "weight_dtype": "default" } },
+    "2": { "class_type": "CLIPLoader", "inputs": { "clip_name": "{{clip}}", "type": "qwen_image", "device": "default" } },
+    "3": { "class_type": "VAELoader", "inputs": { "vae_name": "{{vae}}" } },
+    "4": { "class_type": "LoadImage", "inputs": { "image": "{{image}}", "upload": "image" } },
+    "5": { "class_type": "FluxKontextImageScale", "inputs": { "image": ["4", 0] } },
+    "6": { "class_type": "TextEncodeQwenImageEditPlus", "inputs": { "clip": ["2", 0], "prompt": "{{prompt}}", "vae": ["3", 0], "image1": ["5", 0] } },
+    "7": { "class_type": "TextEncodeQwenImageEditPlus", "inputs": { "clip": ["2", 0], "prompt": "{{negative}}", "vae": ["3", 0], "image1": ["5", 0] } },
+    "8": { "class_type": "ModelSamplingAuraFlow", "inputs": { "model": ["1", 0], "shift": 3.1 } },
+    "10": { "class_type": "VAEEncode", "inputs": { "pixels": ["5", 0], "vae": ["3", 0] } },
+    "11": { "class_type": "LoadImage", "inputs": { "image": "{{mask}}", "upload": "image" } },
+    "12": { "class_type": "ImageToMask", "inputs": { "image": ["11", 0], "channel": "red" } },
+    "13": { "class_type": "SetLatentNoiseMask", "inputs": { "samples": ["10", 0], "mask": ["12", 0] } },
+    "14": { "class_type": "KSampler", "inputs": { "model": ["8", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["13", 0], "seed": "{{seed}}", "steps": "{{steps}}", "cfg": "{{cfg}}", "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0 } },
+    "15": { "class_type": "VAEDecode", "inputs": { "samples": ["14", 0], "vae": ["3", 0] } },
+    "16": { "class_type": "SaveImage", "inputs": { "images": ["15", 0], "filename_prefix": "{{prefix}}" } }
+  }
+}

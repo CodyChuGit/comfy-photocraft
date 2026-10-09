@@ -10,7 +10,7 @@ code map is in [`codebase-orientation.md`](codebase-orientation.md).
 | Phase | Status | Ships |
 |---|---|---|
 | 0 Foundation | ✅ 2026-10-08 | This documentation, the Windows toolchain, a green release build, the `comfy-photocraft` branch |
-| 1 Backend + headless Generative Fill | ⬜ | `photocraft-genai` crate, ComfyUI client, `generate.fill` runnable from the CLI and MCP |
+| 1 Backend + headless Generative Fill | 🟡 2026-10-08: code complete against the fake server; live run against a real ComfyUI pending | `photocraft-genai` crate, ComfyUI client, `generate.fill` / `generate.health` / `generate.models` from the CLI and MCP |
 | 2 Generative Fill in the app | ⬜ | Prompt bar, progress, variations, generative layers with masks, model picker, preferences |
 | 3 The Firefly core set | ⬜ | Expand, Generate Image, instruction Edit, Remove Background |
 | 3.5 Select by text (SAM 3.1) | ⬜ | `select.byText`, ML Select Subject, point/box object selection, SAM-backed mattes for Remove Background |
@@ -58,6 +58,12 @@ produces a layered file with a new "Generative Fill" layer, against a local Comf
 layers`, `wasm` (the crate compiles for wasm with the client behind `cfg(not(target_arch = "wasm32"))`,
 returning "unsupported on the web"), `parity`, `panic_hunt` and clippy are green; VRAM and timing
 numbers recorded in the dev log.
+
+**Status 2026-10-08.** Items 1–7 are implemented (`crates/genai`, `crates/engine/src/generate_cmds.rs`,
+the `integrations.*` preferences, 25 crate tests and 12 command tests against the in-process fake
+server; see [`devlog.md`](devlog.md)). What is still open for the DoD: a live run against a real
+ComfyUI with the Qwen-Image-Edit-2511 files (the template's node names come from the official
+ComfyUI template but have not been executed yet), and the recorded VRAM/timing numbers.
 
 ## Phase 2: Generative Fill in the app
 

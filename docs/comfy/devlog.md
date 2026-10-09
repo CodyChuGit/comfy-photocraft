@@ -4,6 +4,52 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-08 (later): Phase 1, the generative backend and `generate.fill`
+
+**Landed**
+
+- `crates/genai` (`photocraft-genai`, L4, registered in `xtask/src/layers.rs`): the
+  `GenerativeBackend` trait (`health`, `run`, `model_files`), `Request`/`Response` over RGBA8 +
+  Gray8 pixels, `Progress` for job progress and cancellation, `template` (API-format graphs with
+  typed `{{placeholders}}`; built-in `qwen-edit-2511/fill` from ComfyUI's official Qwen-Image-Edit
+  2511 template plus `ImageToMask` → `SetLatentNoiseMask` for inpainting), `comfy` (a blocking
+  client on ureq 3.4 + tungstenite 0.30, no TLS: `/system_stats` version check → `/upload/image`
+  ×2 → `/ws` → `/prompt` → socket progress + `/history` polling → `/view`; cancel = `/interrupt` +
+  queue delete; deadline from the preference), `png` (via photocraft-codecs), and `fake` (feature
+  `fake-server`: an in-process ComfyUI stand-in with HTTP + WebSocket, knobs for delay, failure,
+  rejection, missing nodes, no-socket).
+- `crates/engine/src/generate_cmds.rs`: `generate.fill` (validated params → composite crop with a
+  25 % context margin + selection coverage → backend → result resampled if needed → **new raster
+  layer in the document's own depth, above the active layer, with a layer mask equal to the
+  selection**; one undo step; background job with progress and Esc-cancel), `generate.health`,
+  `generate.models`. Commands have `menu: &[]` until Phase 2 (so parity and i18n are untouched).
+- Preferences › AI Integrations: `comfyServer`, `defaultEditModel`, `generativeTimeoutSecs`,
+  `allowResearchModels`, each read by the commands and validated.
+- Tests: 25 in the genai crate (unit + the client against the fake server: upload/queue/wait/
+  download, polling without a socket, overrides, server failure, rejected prompt, cancellation
+  interrupts within 3 s, deadline, unreachable server, old server version, health/model files,
+  request validation) and 12 engine command tests (masked layer geometry and pixels, undo, the
+  uploaded crop and mask, background job parity with inline, cancel leaves the document alone,
+  server failure, unreachable server, health/models, parameter validation, enablement, model
+  overrides, a 16-bit document, resampling). `cargo test -p photocraft-engine --test prefs_usage`
+  green.
+- Gates on 2026-10-08: `cargo fmt`, `cargo clippy --all-targets -- -D warnings` on both crates,
+  `cargo xtask layers` (29 crates, no violations), `cargo xtask wasm` (genai and engine check for
+  wasm32; the client is native-only and seeds fall back to a counter there), `cargo xtask parity`
+  (unchanged: 627/627, the commands have no menu rows yet), `cargo xtask scorecard` (57 unread
+  settings of 143; the four new preferences are read), `panic_hunt --ignored` green in 25 s with
+  the new commands, release `photocraft-cli` built (1 min 43 s); `photocraft-cli commands --filter
+  generate` lists the three commands.
+
+**Still open**
+
+- A live run against a real ComfyUI (not installed on this PC yet) with the 2511 files; the
+  template's node names come from the official template but have not executed here. First live
+  run should also decide whether to add back `CFGNorm`.
+- Phase 2: menu rows + translations, the generative task bar, variations, previews.
+- `docs/comfy/models.toml` catalogue and `generate.image` / `generate.edit` / `removeBackground`
+  (Phase 3) reuse the same crate; `select.byText` (Phase 3.5) needs a SAM 3.1 template.
+
 ## 2026-10-08: Phase 0, foundation
 
 **Landed**

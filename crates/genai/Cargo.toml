@@ -1,0 +1,29 @@
+[package]
+name = "photocraft-genai"
+description = "Local generative backends for PhotoCraft: the GenerativeBackend trait, a ComfyUI client and workflow templates"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# An in-process fake ComfyUI server (HTTP + WebSocket on loopback) for this crate's tests and for
+# the engine's `generate.*` command tests. Never enabled in a shipped build.
+fake-server = []
+
+[dependencies]
+photocraft-codecs = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+# The client talks to a loopback server over plain HTTP and WebSocket, so no TLS stack is built.
+# Both crates are pure Rust. The web build has no client yet (commands report "unsupported"), and
+# `getrandom` needs a JS backend there, so seeds on wasm come from a counter instead.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+getrandom = { workspace = true }
+ureq = { version = "3.4", default-features = false }
+tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }

@@ -76,6 +76,23 @@ Expect `system.comfyui_version`, `system.python_version` and a `devices[]` entry
 
 lists the Krea 2 and Qwen-Image node classes, which proves the server version is new enough.
 
+### From PhotoCraft
+
+Once the server runs, PhotoCraft's own commands check it (headless, no window):
+
+```powershell
+.\target\release\photocraft-cli.exe run --new '{"width":64,"height":64}' --cmd generate.health
+.\target\release\photocraft-cli.exe run --new '{"width":64,"height":64}' --cmd generate.models
+.\target\release\photocraft-cli.exe commands --filter generate
+```
+
+`generate.health` reports `ok`, the server version and free VRAM; `generate.models` lists the
+templates and whether each model file is installed. A Generative Fill from the command line:
+
+```powershell
+.\target\release\photocraft-cli.exe run photo.png --cmd select.rect --params '{"x":200,"y":150,"width":400,"height":300}' --cmd generate.fill --params '{"prompt":"a red bicycle leaning on the wall"}' --out filled.psd
+```
+
 ## 5. API primer
 
 Everything PhotoCraft needs is in the self-hosted server's routes. Field names below come from the

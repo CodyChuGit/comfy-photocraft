@@ -713,11 +713,26 @@ pub struct Integrations {
     pub allow_agent_control: bool,
     /// Default control port (0 = only when `--control` is given).
     pub control_port: u32,
+    /// The local ComfyUI server the `generate.*` commands talk to (`http://127.0.0.1:8188`).
+    pub comfy_server: String,
+    /// Diffusion model file for the edit templates (empty = each template's default).
+    pub default_edit_model: String,
+    /// Seconds a generation may take before it is interrupted.
+    pub generative_timeout_secs: u32,
+    /// Offer models whose licence allows research use only (never pre-selected).
+    pub allow_research_models: bool,
 }
 
 impl Default for Integrations {
     fn default() -> Self {
-        Self { allow_agent_control: true, control_port: 0 }
+        Self {
+            allow_agent_control: true,
+            control_port: 0,
+            comfy_server: "http://127.0.0.1:8188".into(),
+            default_edit_model: String::new(),
+            generative_timeout_secs: 600,
+            allow_research_models: false,
+        }
     }
 }
 
@@ -933,6 +948,7 @@ pub fn range(path: &str) -> Option<(f64, f64)> {
         "guidesGridAndSlices.subdivisions" => (1.0, 100.0),
         "type.recentFonts" => (0.0, 50.0),
         "integrations.controlPort" => (0.0, 65535.0),
+        "integrations.generativeTimeoutSecs" => (5.0, 86_400.0),
         _ => return None,
     })
 }
@@ -1028,6 +1044,22 @@ fn check_value(path: &str, v: &Value) -> std::result::Result<(), String> {
         let ok = v.as_str().is_some_and(|s| !s.is_empty() && s.len() <= 16 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
         if !ok {
             return Err("`interface.language` must be `auto` or a language code such as `en` or `ja`".into());
+        }
+    }
+    if path == "integrations.comfyServer" {
+        let ok = v.as_str().is_some_and(|s| {
+            let s = s.trim();
+            s.is_empty()
+                || ((s.starts_with("http://") || s.starts_with("https://")) && s.len() <= 512 && !s.chars().any(|c| c.is_whitespace() || c.is_control()))
+        });
+        if !ok {
+            return Err("`integrations.comfyServer` must be an http:// or https:// URL such as http://127.0.0.1:8188 (or empty to disable)".into());
+        }
+    }
+    if path == "integrations.defaultEditModel" {
+        let ok = v.as_str().is_some_and(|s| s.len() <= 512 && !s.contains(['/', '\\', '\0']) && !s.contains(".."));
+        if !ok {
+            return Err("`integrations.defaultEditModel` must be a plain model file name (no folders)".into());
         }
     }
     if let Some((lo, hi)) = range(path) {

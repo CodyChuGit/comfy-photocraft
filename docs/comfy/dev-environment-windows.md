@@ -54,6 +54,10 @@ cargo build --release -p photocraft-cli       # headless CLI + MCP server
 .\target\release\photocraft-cli.exe --help    # the CLI explains itself
 ```
 
+Gotcha (PowerShell): JSON arguments to the CLI need their inner quotes backslash-escaped even
+inside single quotes, because Windows PowerShell rebuilds native command lines:
+`--new '{\"width\":64,\"height\":48}'`. Plain `'{"width":64}'` reaches the program as `{width:64}`.
+
 Gotcha: `photocraft.exe --help` is not a CLI flag; the app starts its window. Only `--version`,
 `--control <port>`, `--control-token-file`, `--automation-*-root` and `--safe-gpu` are understood
 (see `docs/development.md`). Kill a stray window with `Stop-Process -Name photocraft`.
