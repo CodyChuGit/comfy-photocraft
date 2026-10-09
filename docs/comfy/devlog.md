@@ -46,6 +46,10 @@ can pick up.
 - `ai-integration-proposal.md`: the full catalogue of ComfyUI + local-LLM integrations (17
   generative, 9 perception, 8 language items, 8 infrastructure items) with a recommended order;
   adds "Select by text" and the in-app Assistant as new phases 3.5 and 4.5.
+- SAM 3.1 researched and written in: Meta, 2026-03-27, text/point/box prompts, native in ComfyUI
+  (PR #13408, one 1.75 GB checkpoint), SAM License (commercial OK, military/weapons banned, licence
+  passed on). It is the model behind Phase 3.5 (`select.byText`, `select.subjectML`,
+  `select.byPoint`); design sketch in the proposal §2.1.
 
 **Numbers to carry forward**
 

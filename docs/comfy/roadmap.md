@@ -13,7 +13,9 @@ code map is in [`codebase-orientation.md`](codebase-orientation.md).
 | 1 Backend + headless Generative Fill | ⬜ | `photocraft-genai` crate, ComfyUI client, `generate.fill` runnable from the CLI and MCP |
 | 2 Generative Fill in the app | ⬜ | Prompt bar, progress, variations, generative layers with masks, model picker, preferences |
 | 3 The Firefly core set | ⬜ | Expand, Generate Image, instruction Edit, Remove Background |
+| 3.5 Select by text (SAM 3.1) | ⬜ | `select.byText`, ML Select Subject, point/box object selection, SAM-backed mattes for Remove Background |
 | 4 Models and workflows as data | ⬜ | Model catalogue, workflow template import, references, LoRAs, downloads with checksums |
+| 4.5 Assistant | ⬜ | In-app assistant panel over a local LLM/VLM, driving the command registry; prompt enhancement, auto-naming |
 | 5 Quality and depth | ⬜ | Harmonize, Generative Upscale, Generate Similar, generative smart objects, PSD interop |
 | 6 Beyond ComfyUI | ⬜ | Native inference backend behind the same trait; web-build path |
 
@@ -97,6 +99,17 @@ fills and screenshots is committed as a test; `ui.inspect` exposes the task bar 
 
 **DoD.** Each command documented, tested, in `docs/parity.md`-style generated listings, drivable
 over MCP; the ten-task MCP acceptance test gains two generative tasks.
+
+## Phase 3.5: Select by text (SAM 3.1)
+
+Design in [`ai-integration-proposal.md`](ai-integration-proposal.md) §2.1. Adds a SAM 3.1
+template to the genai crate (same client, no diffusion model), the commands `select.byText`,
+`select.subjectML` and `select.byPoint`, Select › Select by Text… and the Object Selection tool's
+ML mode, and swaps the matte source of Remove Background when the server is up. Licence: SAM
+License (commercial allowed, military/weapons uses banned, licence passed on; the app ships no
+weights). **DoD.** "select the dog" on a public-domain test image yields one undoable selection
+per instance in under a second on the 5090; classical fallback when the server is down; `panic_hunt`
+green; the MCP acceptance test gains a select-by-text task.
 
 ## Phase 4: Models and workflows as data
 

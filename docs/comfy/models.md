@@ -108,7 +108,18 @@ Sources: [Z-Image Turbo ComfyUI guide (thundercompute)](https://www.thundercompu
 | Qwen-Image-Edit-2509 | the previous editor | Apache-2.0 | keep for compatibility with existing LoRAs. |
 | BiRefNet | matting / background removal | MIT | ComfyUI custom nodes; fast; no diffusion needed. |
 | RMBG-2.0 (BRIA) | background removal | non-commercial | do not make default. |
-| SAM 2 | promptable segmentation (point/box) | Apache-2.0 | ComfyUI custom nodes; candidate for "select subject" that feeds Generative Fill. |
+| **SAM 3.1** (Meta, 2026-03-27) | open-vocabulary segmentation: text prompts ("red car", `eye:2, window panels:4`, ≤ 32 tokens, comma-separated terms), point/box prompts, video tracking (Object Multiplex) | **SAM License** (custom, see below) | **Native in ComfyUI** (PR #13408 by kijai, a dependency-free re-implementation); templates "SAM3: Image Segmentation" / "SAM3: Video Segmentation" under Utility; one checkpoint `checkpoints/sam3.1_multiplex_fp16.safetensors` from `Comfy-Org/sam3.1` (≈ 1.75 GB); the official `facebook/sam3` weights are gated behind accepting the licence. **This is the model for Select by text, ML Select Subject and object masks that feed Generative Fill.** |
+| SAM 2 | promptable segmentation (point/box) | Apache-2.0 | superseded by SAM 3.1 for us; keep as the permissive fallback. |
+
+**SAM License in one paragraph** (read 2026-10-08 from `facebookresearch/sam3/LICENSE`; not legal
+advice): a non-exclusive, worldwide, royalty-free licence to use, reproduce, distribute and modify
+the "SAM Materials" (code, weights, docs) for research **and** commercial use, with no user or
+revenue thresholds. Conditions: pass the licence on with any redistribution, acknowledge SAM in
+publications, comply with trade controls; no reverse engineering; **no ITAR, military/warfare,
+nuclear, espionage or weapons end uses**; suing Meta over the materials terminates the licence;
+Meta may change the terms with immediate effect. Outputs (masks) are not restricted. For an
+open-source editor this is workable: the app ships no weights, points the user at the gated
+download, and shows the licence summary once. Sources: [Meta SAM 3 / 3.1 repo](https://github.com/facebookresearch/sam3) · [SAM License](https://github.com/facebookresearch/sam3/blob/main/LICENSE) · [ComfyUI SAM 3.1 guide (official)](https://docs.comfy.org/tutorials/utility/video-segment-sam3) · [ComfyUI PR #13408](https://github.com/Comfy-Org/ComfyUI/pull/13408) · [SAM 3.1 release note (third party)](https://the-agent-report.com/2026/05/meta-sam-3-1-video-detection-multiplexing-may21/) · [Ultralytics SAM 3 page](https://docs.ultralytics.com/models/sam-3).
 | SeedVR2, 4x-UltraSharp, SUPIR | upscalers | **verify** (SeedVR2 is reported Apache-2.0; 4x-UltraSharp CC BY-NC-SA; SUPIR non-commercial) | Generative Upscale lane; licences must be checked per model before listing. |
 
 Sources: [FLUX.2 / Z-Image on AWS (hands-on)](https://builder.aws.com/content/363GAtT4hAB7stB8mbva5H1h1Ab/running-flux-2-and-z-image-diffusion-models-on-aws-a-hands-on-implementation-guide) · [best ComfyUI models 2026](https://iimagined.ai/blog/best-comfyui-models-2026) · [open-model comparison](https://www.pixazo.ai/blog/top-open-source-image-generation-models).
@@ -121,7 +132,9 @@ Sources: [FLUX.2 / Z-Image on AWS (hands-on)](https://builder.aws.com/content/36
 | Generative Expand (`generate.expand`) | Qwen-Image-Edit-2511 | Qwen-Image-2.1 | pad composite to the new canvas, mask = padding (feathered inward) → same as Fill |
 | Generate Image (`generate.image`) | Z-Image Turbo | Krea 2 Turbo | prompt (+ optional reference / style LoRA) → new layer or new document |
 | Instruction edit (`generate.edit`) | Qwen-Image-Edit-2511 | Qwen-Image-2.1 (multi-ref) | layer or composite + instruction (+ optional mask, references) → new layer |
-| Remove Background (`generate.removeBackground`) | BiRefNet | Qwen-Image-2.1 RGBA | layer → alpha matte → layer mask (never destroys pixels) |
+| Select by text (`select.byText`) | SAM 3.1 | SAM 3.1 | prompt → instance masks → a selection (union, or one instance by index); the selection then drives Fill, Remove, masks, anything |
+| Select Subject / Sky / Hair (ML) (`select.subjectML`) | SAM 3.1 ("person", "sky"…) or BiRefNet for soft hair mattes | SAM 3.1 + BiRefNet refine | replaces the classical `select.subject` path when the server is up |
+| Remove Background (`generate.removeBackground`) | SAM 3.1 or BiRefNet | Qwen-Image-2.1 RGBA | layer → alpha matte → layer mask (never destroys pixels) |
 | Harmonize (`generate.edit` preset) | Qwen-Image-Edit-2511 | Qwen-Image-2.1 | pasted layer + composite context + "match lighting and colour" → new layer |
 | Generative Upscale (`generate.upscale`) | ESRGAN-class (licence-checked) | SeedVR2 | layer → upscale-model node → new layer / Image Size |
 | Generate Similar | same model as the source layer | — | stored prompt + new seed |

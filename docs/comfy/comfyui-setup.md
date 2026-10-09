@@ -52,6 +52,7 @@ repack is not gated.
 | Qwen-Image-2.1 (research licence) | `diffusion_models/` | the int8 file from the official 2.1 template |
 | Qwen-Image-2.1 text encoder | `text_encoders/` | the Qwen3-VL-8B encoder file from the 2.1 template |
 | Z-Image Turbo (Apache-2.0) | `diffusion_models/` | Comfy-Org BF16 release |
+| SAM 3.1 (select by text, mattes; SAM License) | `checkpoints/` | `sam3.1_multiplex_fp16.safetensors` from `Comfy-Org/sam3.1` (≈ 1.75 GB; native nodes, templates "SAM3: Image Segmentation" under Utility) |
 | Background removal | custom nodes' own folders | BiRefNet weights (MIT) |
 
 The exact encoder file names for the Qwen templates are in the template's "Download models"

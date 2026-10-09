@@ -63,8 +63,8 @@ or map the engine already understands.
 
 | # | Feature | Model class | Lands as | Why it matters | Effort |
 |---|---|---|---|---|---|
-| P1 | **Select by text** ("select the dog", "the red car") | grounded segmentation (Grounding DINO / Florence-2 → SAM 2) | a selection (then Generative Fill, or anything else) | the single biggest UX win after Fill: no lasso | S–M |
-| P2 | **Select Subject / Sky / Hair (ML)** | BiRefNet, SAM 2, sky-segmentation models | selection or layer mask; swaps the matte source of `cutout_cmds.rs` | upstream's classical versions are weak on hair and glass | S |
+| P1 | **Select by text** ("select the dog", "the red car", `eye:2`) | **SAM 3.1** (open-vocabulary, text + point/box prompts; native in ComfyUI) | a selection (then Generative Fill, or anything else) | the single biggest UX win after Fill: no lasso. See §2.1 | S–M |
+| P2 | **Select Subject / Sky / Hair (ML)** | SAM 3.1 for instances ("person", "sky"); BiRefNet for soft hair/glass mattes | selection or layer mask; swaps the matte source of `cutout_cmds.rs` | upstream's classical versions are weak on hair and glass | S |
 | P3 | **Depth map** | Depth Anything / Marigold-class | an alpha channel or a layer; drives Lens Blur (depth-based), fog, relighting, parallax export | upstream lists depth-blur under Neural Filters | S |
 | P4 | **Normal / edge maps** | normal estimators, canny/HED | channels; inputs for ControlNet in G9/G11 | composition control | S |
 | P5 | **Face and body landmarks** | face landmark / pose models | guides or paths; **Face-Aware Liquify** (upstream's roadmap says it "needs a landmark model") | closes an upstream gap | M |
@@ -72,6 +72,39 @@ or map the engine already understands.
 | P7 | **Image → prompt (interrogation)** | VLM captioner (Qwen3-VL / Florence-2) | fills the prompt box; stored on the layer | "make another one like this" | XS once an LLM/VLM path exists |
 | P8 | **Auto crop / composition suggestions** | saliency + VLM | crop presets offered in the Crop tool | nice-to-have | S |
 | P9 | **Smart tagging and metadata** | VLM | XMP keywords; alt text for export | accessibility, LightCraft hand-off | S |
+
+### 2.1 Select by text with SAM 3.1 (design sketch)
+
+SAM 3.1 (Meta, 2026-03-27) segments every instance of a short text concept, optionally refined by
+points or boxes, and ComfyUI runs it natively from one 1.75 GB checkpoint
+(`sam3.1_multiplex_fp16.safetensors`; templates under Utility). Licence: the SAM License, which
+allows commercial use without thresholds but bans military/weapons uses and requires passing the
+licence on ([`models.md`](models.md) has the summary). It is the right first perception
+integration because it needs no diffusion model, answers in well under a second on the 5090, and
+upgrades four existing paths at once.
+
+Commands (engine module `select_ml_cmds.rs`, same crate plumbing as `generate.*`):
+
+| Id | Params | Result |
+|---|---|---|
+| `select.byText` | `{"prompt":str (≤32 tokens, comma-separated terms, "term:N" caps),"instance":int?=all,"mode":"new|add|subtract|intersect"="new","layer":id?=composite,"feather":px=0}` | the selection; returns `{instances:[{index,bbox,score}]}` so the UI and agents can pick one |
+| `select.subjectML` | `{"what":"subject|sky|person|hair|…"="subject","refine":bool=true}` | selection; `refine` runs a BiRefNet-class matte inside SAM's mask for soft edges |
+| `select.byPoint` (Object Selection tool, ML mode) | `{"points":[[x,y,label]],"box":[x0,y0,x1,y1]?}` | selection from SAM's point/box prompts |
+
+Pipeline: composite (or the named layer) → PNG upload → SAM 3.1 template with the prompt →
+instance masks back as PNG → `photocraft_algo::selection::mask_to_surface` → `Document.selection`
+(combined with the current selection per `mode`) in one undo step, as a background job
+(`jobs::edit_job`) so the UI stays responsive and Esc cancels. Masks come back at the request's
+resolution; the crop-with-margin logic from Generative Fill is reused when a layer is targeted.
+
+UI: a prompt field in the Select menu (**Select › Select by Text…**) and in the Object Selection
+tool's options bar (ML mode); the contextual task bar shows the instance strip ("dog 1 of 3")
+with next/previous; results feed straight into Generative Fill, layer masks and Quick Mask.
+Falls back to the classical `select.subject` when the server is down, with a status message.
+
+What it upgrades: Select Subject (P2), Remove Background's matte (G6), the object masks that
+make Remove (G5) and Fill (G1) one click, and the assistant's "select the lamp" step (L1).
+Video tracking (Object Multiplex) is irrelevant to PhotoCraft but matters for FilmCraft.
 
 ## 3. Language (a local LLM / VLM)
 
