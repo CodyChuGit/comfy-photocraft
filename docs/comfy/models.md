@@ -77,12 +77,18 @@ Sources: [Qwen/Qwen-Image-2.1 model card](https://huggingface.co/Qwen/Qwen-Image
 |---|---|
 | Weights | `Qwen/Qwen-Image-Edit-2511`; ComfyUI files `qwen_image_edit_2511_fp8mixed.safetensors` (24 GB cards) and `qwen_image_edit_2511_bf16.safetensors` |
 | Released | 2025-12-23 (the Edit line ships dated snapshots: 2509 on 2025-09-22, then 2511) |
-| Capabilities | Single- and multi-image instruction editing, strong text rendering, pose/identity consistency; community Lightning LoRAs give 4–8-step edits |
-| ComfyUI | Native since December 2025 (`TextEncodeQwenImageEditPlus` family of nodes; official templates on docs.comfy.org) |
-| Licence | **Permissive: Apache-2.0** |
+| Capabilities | Single- and multi-image instruction editing, strong text rendering, pose/identity consistency; Lightning LoRAs give 4–8-step edits |
+| ComfyUI | Native since December 2025 (`TextEncodeQwenImageEditPlus` family of nodes; official templates on docs.comfy.org). The official template (2026-10) chains UNETLoader → ModelSamplingAuraFlow 3.1 → CFGNorm 1.0 → (Lightning LoRA) → KSampler euler/simple, 40 steps CFG 4 (Comfy's note: 20 steps CFG 4 is fine) or 4 steps CFG 1 with the LoRA, and puts `FluxKontextMultiReferenceLatentMethod index_timestep_zero` on both conditionings |
+| Speed tiers | **Lightning LoRAs by lightx2v, Apache-2.0** (checked 2026-10-09): `Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors` and `…-8steps-V1.0-bf16.safetensors`, 850 MB each, in `ComfyUI/models/loras`. PhotoCraft templates: `qwen-edit-2511/fill` (40 steps), `fill-lightning-8` (the `auto` tier when its LoRA is installed), `fill-lightning-4`, and `fill-guided` (mask as a second reference image: best placement, 1.5–3× slower). The same repository's `qwen_image_edit_2511_fp8_e4m3fn_scaled.safetensors` (19 GB) gave noise with our graph under `--fast fp8_matrix_mult` on 2026-10-09: not used. Numbers in [`benchmarks.md`](benchmarks.md) |
+| Licence | **Permissive: Apache-2.0** (model and Lightning LoRAs) |
 | Role here | **Default editor** for Generative Fill, Expand, Remove and Harmonize in any build that must stay commercially usable. |
 
-Sources: [Qwen/Qwen-Image-Edit-2511](https://huggingface.co/Qwen/Qwen-Image-Edit-2511) · [ComfyUI blog: Qwen Image Edit 2511](https://blog.comfy.org/p/qwen-image-edit-2511-and-qwen-image) · [ComfyUI docs: Qwen-Image-Edit-2511 workflow](https://docs.comfy.org/tutorials/image/qwen/qwen-image-edit-2511) · [local guide (third party)](https://localaimaster.com/blog/qwen-image-edit-local-guide).
+Sources: [Qwen/Qwen-Image-Edit-2511](https://huggingface.co/Qwen/Qwen-Image-Edit-2511) · [ComfyUI blog: Qwen Image Edit 2511](https://blog.comfy.org/p/qwen-image-edit-2511-and-qwen-image) · [ComfyUI docs: Qwen-Image-Edit-2511 workflow](https://docs.comfy.org/tutorials/image/qwen/qwen-image-edit-2511) · [official template JSON](https://github.com/Comfy-Org/workflow_templates/blob/main/templates/image_qwen_image_edit_2511.json) · [lightx2v/Qwen-Image-Edit-2511-Lightning](https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning) (Apache-2.0) · [local guide (third party)](https://localaimaster.com/blog/qwen-image-edit-local-guide).
+
+Qwen-Image-2.1's few-step option, `Viggle/Qwen-Image-2.1-viggle-turbo` (6 steps, v0.3, 2026-09), is
+under the same **Qwen Research License** as the base model and needs the author's custom nodes (a
+sigma schedule and an unmerged LoRA loader) rather than a stock `LoraLoaderModelOnly`; it is not
+shipped as a template. `QwenImage21Cache` (in our 2.1 templates) is the other 2.1 speed lever.
 
 Note: there is **no** "Qwen-Image-Edit-2512". `Qwen-Image-2512` (2025-12-31, Apache-2.0) is the
 text-to-image base of that generation; its editing counterpart is Edit-2511.
@@ -128,7 +134,7 @@ Sources: [FLUX.2 / Z-Image on AWS (hands-on)](https://builder.aws.com/content/36
 
 | Feature (command) | Default (permissive build) | Best quality (user opts in) | Workflow shape |
 |---|---|---|---|
-| Generative Fill (`generate.fill`) | Qwen-Image-Edit-2511 | Qwen-Image-2.1 | composite crop (selection bounds + context margin) + mask → edit model with inpaint conditioning → paste back under the mask |
+| Generative Fill (`generate.fill`) | Qwen-Image-Edit-2511, `auto` = the Lightning 8-step tier when its LoRA is installed, else 40 steps | Qwen-Image-2.1 | composite crop (selection bounds + context margin, sent at ≤ 1 MP) + mask → edit model with inpaint conditioning → resampled back (Lanczos) under the selection's full-resolution mask |
 | Generative Expand (`generate.expand`) | Qwen-Image-Edit-2511 | Qwen-Image-2.1 | pad composite to the new canvas, mask = padding (feathered inward) → same as Fill |
 | Generate Image (`generate.image`) | Z-Image Turbo | Krea 2 Turbo | prompt (+ optional reference / style LoRA) → new layer or new document |
 | Instruction edit (`generate.edit`) | Qwen-Image-Edit-2511 | Qwen-Image-2.1 (multi-ref) | layer or composite + instruction (+ optional mask, references) → new layer |

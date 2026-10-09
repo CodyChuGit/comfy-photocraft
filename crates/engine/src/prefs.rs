@@ -720,7 +720,9 @@ pub struct Integrations {
     /// Diffusion model file for the text-to-image templates (empty = each template's default).
     pub default_generate_model: String,
     /// Workflow template `generate.fill` uses when the call names none (`generate.models` lists
-    /// them; `qwen-edit-2511/fill` is the permissive default, `qwen-2.1/fill` the research one).
+    /// them). `auto` takes the fastest permissive tier whose model files the server has
+    /// (`qwen-edit-2511/fill-lightning-8` with its LoRA installed, else `qwen-edit-2511/fill`);
+    /// `qwen-2.1/fill` is the research one.
     pub default_fill_template: String,
     /// Workflow template `generate.image` uses when the call names none.
     pub default_image_template: String,
@@ -740,7 +742,7 @@ impl Default for Integrations {
             comfy_server: "http://127.0.0.1:8188".into(),
             default_edit_model: String::new(),
             default_generate_model: String::new(),
-            default_fill_template: "qwen-edit-2511/fill".into(),
+            default_fill_template: "auto".into(),
             default_image_template: "krea2-turbo/image".into(),
             generative_timeout_secs: 600,
             allow_research_models: false,

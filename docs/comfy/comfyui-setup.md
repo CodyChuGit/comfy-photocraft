@@ -28,9 +28,39 @@ python main.py --listen 127.0.0.1 --port 8188 --preview-method auto
   `--listen 0.0.0.0` exposes every model on the machine to the LAN.
 - `--preview-method auto` makes the server stream low-resolution previews over the WebSocket while
   sampling (Phase 2 shows them on the canvas).
-- `--lowvram` / `--highvram` are not needed on 32 GB; leave memory management to the server.
 - Base URL assumed throughout: `http://127.0.0.1:8188`. It becomes the preference
   `integrations.comfyServer` (Edit › Preferences › AI Integrations…) in Phase 1.
+
+### Speed flags (researched 2026-10-09, measured in [`benchmarks.md`](benchmarks.md))
+
+ComfyUI's `--fast` is a bundle of experimental optimisations; name the ones you want rather
+than passing a bare `--fast`, which also turns on whatever a later version adds.
+
+| Flag | What it does | For us |
+|---|---|---|
+| `--fast fp8_matrix_mult` | Hardware FP8 matrix multiplication for fp8 (scaled) models on Ada and Blackwell (SM ≥ 8.9); Ampere falls back to the slow emulated path | **Yes on RTX 40/50**, measured ~5 % on the 2511 `fp8mixed` file, nothing lost. lightx2v's `fp8_e4m3fn_scaled` 2511 file was 35 % faster but produced noise with our graph: stay on Comfy-Org's `fp8mixed` |
+| `--fast fp16_accumulation` | fp16 accumulation in matmuls; Comfy ships a `run_nvidia_gpu_fast_fp16_accumulation.bat`; the maintainer says it only speeds up **fp16** models, not bf16/fp8; outputs change at the same seed and the docs say quality may drop | No: our models run bf16, fp8 or int8 |
+| `--fast autotune` | per-resolution kernel autotuning; the first run at a new size pays seconds (an old issue reported minutes) | Optional; measure |
+| `--fast cublas_ops` | needs an extra package (comfy-kitchen's cublas extra) | No |
+| `--highvram` | keep models in VRAM instead of unloading them after use | **No, measured:** with 2511 fp8 (20 GB) + its 8.7 GB encoder resident, 2 GB stayed free on the 32 GB card, the 40-step run got slower (192 s vs 166 s) and the Lightning LoRA run thrashed on reload |
+| `--reserve-vram N` | VRAM kept free for the OS and other apps | 24 GB card that drives the monitors: `--reserve-vram 2` |
+| `--use-sage-attention` | SageAttention kernels (~30 % faster sampling in community reports) | Not yet: needs a wheel built for this exact torch 2.14 / cu130 / Python 3.13, and the global flag is reported to produce black images with Qwen; the per-node patch needs KJNodes |
+| `--lowvram` | a no-op while dynamic VRAM is on | No |
+
+The development PC's recommended launch is `C:\Users\5090\ComfyUI\start-comfyui-fast.ps1`
+(`--fast fp8_matrix_mult`); the plain `start-comfyui.ps1` stays as the baseline.
+
+### Other cards (RTX 3090 / 24 GB class)
+
+- Ampere has no FP8 tensor cores: fp8 weights still load (they are upcast for compute), so
+  `qwen_image_edit_2511_fp8mixed` (20 GB) fits a 24 GB card with the 8.7 GB text encoder
+  offloaded to RAM by ComfyUI's dynamic VRAM; expect roughly 2–3× the 5090's step times.
+- The step count is the lever that matters there: install the Apache-2.0 Lightning LoRA
+  (850 MB) and PhotoCraft's `auto` fill template takes the 8-step tier by itself; the 4-step
+  tier is the fallback for the impatient.
+- Leave the VRAM mode flags alone; add `--reserve-vram 2` if the card also drives the display.
+  GGUF quantisations (`unsloth/Qwen-Image-Edit-2511-GGUF`) need the ComfyUI-GGUF custom node
+  and are not covered by the shipped templates.
 
 ## 3. Model files
 

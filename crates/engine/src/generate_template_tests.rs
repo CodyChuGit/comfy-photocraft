@@ -73,12 +73,13 @@ fn the_default_template_preferences_pick_the_template() {
     assert_eq!(st.prompts[1].1["6"]["class_type"], "EmptyLatentImage");
     drop(st);
 
-    // An explicit param still wins, and an empty preference means the built-in default.
+    // An explicit param still wins, and an empty preference means `auto` (the Lightning tier,
+    // whose LoRA the fake lists).
     let r = s.execute(FILL, json!({"prompt": "x", "template": "qwen-edit-2511/fill"})).unwrap();
     assert_eq!(r["template"], "qwen-edit-2511/fill");
     s.edit_prefs(|p| p.integrations.default_fill_template = String::new());
     let r = s.execute(FILL, json!({"prompt": "x"})).unwrap();
-    assert_eq!(r["template"], DEFAULT_FILL_TEMPLATE);
+    assert_eq!(r["template"], AUTO_FILL_ORDER[0]);
 
     // A preference naming an unknown or wrong-task template is a clear error, not a panic.
     s.edit_prefs(|p| p.integrations.default_fill_template = "nope/fill".into());

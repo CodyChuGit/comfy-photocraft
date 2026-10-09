@@ -33,6 +33,15 @@ pub const MODELS: &str = "generate.models";
 pub const VARIATION: &str = "generate.variation";
 /// Most results one `generate.fill` call makes (`variations`).
 pub const MAX_VARIATIONS: u32 = 4;
+/// The template value (and preference) that picks a fill template by what the server has.
+pub const AUTO_TEMPLATE: &str = "auto";
+/// `auto` tries these in order and takes the first whose model files the server lists: the
+/// Lightning tier (8 steps, Apache-2.0 LoRA) when its LoRA is installed, else the 40-step base.
+pub const AUTO_FILL_ORDER: &[&str] = &["qwen-edit-2511/fill-lightning-8", DEFAULT_FILL_TEMPLATE];
+/// A fill request is downscaled to this many pixels before it is sent (the editing models work
+/// at about one megapixel, Photoshop's Generative Fill renders at most 1024 px on a side) and
+/// the result is resampled back; the layer mask keeps the selection's full-resolution edge.
+const MAX_FILL_REQUEST_PIXELS: u64 = 1024 * 1024;
 /// Seeds stay below 2^53 so they survive a round trip through JSON numbers.
 const MAX_SEED: u64 = 1 << 53;
 pub const DEFAULT_FILL_TEMPLATE: &str = "qwen-edit-2511/fill";
@@ -130,6 +139,8 @@ struct FillPlan {
     rect: Rect,
     /// How many results to make (consecutive seeds); only the first is visible.
     variations: u32,
+    /// Pick the template inside the job from what the server has (`AUTO_FILL_ORDER`).
+    auto: bool,
 }
 
 pub(crate) fn opt_str<'a>(cmd: &str, p: &'a Value, key: &str, max: usize) -> Result<Option<&'a str>> {
@@ -176,9 +187,18 @@ fn template_or(pref: &str, fallback: &str) -> String {
 fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
     let (default_template, default_model) = {
         let integrations = &s.prefs().integrations;
-        (template_or(&integrations.default_fill_template, DEFAULT_FILL_TEMPLATE), integrations.default_edit_model.clone())
+        (template_or(&integrations.default_fill_template, AUTO_TEMPLATE), integrations.default_edit_model.clone())
     };
-    let Common { template, prompt, negative, seed, steps, guidance, models, name } = plan_common(s, FILL, p, &default_template, Task::Fill, &default_model)?;
+    // `auto` (the preference's default) is resolved inside the job from the server's model
+    // list; the plan validates the base template it falls back to.
+    let requested = opt_str(FILL, p, "template", 200)?.map(str::to_string).unwrap_or(default_template);
+    let auto = requested == AUTO_TEMPLATE;
+    let mut q = p.clone();
+    if auto && let Some(o) = q.as_object_mut() {
+        o.remove("template");
+    }
+    let Common { template, prompt, negative, seed, steps, guidance, models, name } =
+        plan_common(s, FILL, &q, if auto { DEFAULT_FILL_TEMPLATE } else { &requested }, Task::Fill, &default_model)?;
     let margin = opt_num(FILL, p, "margin", 0.0, 1.0)?.unwrap_or(0.25);
     let variations = match opt_num(FILL, p, "variations", 1.0, f64::from(MAX_VARIATIONS))? {
         None => 1,
@@ -208,35 +228,206 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
         )));
     }
     let name = name.unwrap_or_else(|| format!("Generative Fill: {}", short(&prompt)));
-    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations })
+    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto })
 }
 
-/// Bilinear resize, for a backend that returns a different size than it was given.
-pub(crate) fn resize_rgba8(src: &Rgba8, w: u32, h: u32) -> Result<Rgba8> {
-    let (sw, sh) = (src.width as usize, src.height as usize);
-    if sw == 0 || sh == 0 || w == 0 || h == 0 {
-        return Err(EngineError::Other("cannot resize an empty image".into()));
+/// The first of `candidates` whose model files the server lists (one `/models/<folder>` call per
+/// folder), else `fallback`. Only permissive templates belong in `candidates`.
+pub(crate) fn resolve_auto(backend: &dyn GenerativeBackend, candidates: &[&str], fallback: &str) -> String {
+    let mut folders: BTreeMap<String, Option<Vec<String>>> = BTreeMap::new();
+    for id in candidates {
+        let Ok(t) = template::find(id) else { continue };
+        let installed = t.meta.models.iter().all(|slot| {
+            let files = folders.entry(slot.folder.clone()).or_insert_with(|| backend.model_files(&slot.folder).ok());
+            files.as_ref().is_some_and(|f| f.iter().any(|x| x == &slot.default))
+        });
+        if installed {
+            return (*id).to_string();
+        }
     }
-    let at = |x: usize, y: usize, c: usize| -> f32 { src.data.get((y * sw + x) * 4 + c).map_or(0.0, |&v| f32::from(v)) };
-    let mut out = Vec::with_capacity(w as usize * h as usize * 4);
-    for y in 0..h as usize {
-        let fy = ((y as f32 + 0.5) * sh as f32 / h as f32 - 0.5).clamp(0.0, (sh - 1) as f32);
-        let y0 = fy as usize;
-        let y1 = (y0 + 1).min(sh - 1);
-        let ty = fy - y0 as f32;
-        for x in 0..w as usize {
-            let fx = ((x as f32 + 0.5) * sw as f32 / w as f32 - 0.5).clamp(0.0, (sw - 1) as f32);
-            let x0 = fx as usize;
-            let x1 = (x0 + 1).min(sw - 1);
-            let tx = fx - x0 as f32;
-            for c in 0..4 {
-                let top = at(x0, y0, c) * (1.0 - tx) + at(x1, y0, c) * tx;
-                let bottom = at(x0, y1, c) * (1.0 - tx) + at(x1, y1, c) * tx;
-                out.push((top * (1.0 - ty) + bottom * ty + 0.5).clamp(0.0, 255.0) as u8);
+    fallback.to_string()
+}
+
+/// The size a `w`×`h` fill request is sent at: unchanged up to [`MAX_FILL_REQUEST_PIXELS`], else
+/// scaled down (aspect kept) to multiples of 16, never below 64 on a side.
+pub(crate) fn request_size(w: u32, h: u32) -> (u32, u32) {
+    fit_pixels(w, h, MAX_FILL_REQUEST_PIXELS)
+}
+
+/// `w`×`h` shrunk (aspect kept, multiples of 16, at least 64 on a side) until it has at most
+/// `max_pixels` pixels; unchanged when it already fits.
+pub(crate) fn fit_pixels(w: u32, h: u32, max_pixels: u64) -> (u32, u32) {
+    let pixels = u64::from(w) * u64::from(h);
+    if pixels <= max_pixels || w == 0 || h == 0 {
+        return (w, h);
+    }
+    let scale = (max_pixels as f64 / pixels as f64).sqrt();
+    let fit = |v: u32| (((f64::from(v) * scale) as u32) / SIZE_STEP * SIZE_STEP).max(MIN_SIDE);
+    (fit(w), fit(h))
+}
+
+/// Lanczos-3 kernel, widened by `scale` (> 1 when shrinking) so downsampling averages instead of
+/// aliasing.
+fn lanczos3(x: f32) -> f32 {
+    let x = x.abs();
+    if x < 1e-6 {
+        1.0
+    } else if x >= 3.0 {
+        0.0
+    } else {
+        let px = std::f32::consts::PI * x;
+        3.0 * px.sin() * (px / 3.0).sin() / (px * px)
+    }
+}
+
+/// Triangle (tent) kernel: no negative lobes, for masks.
+fn triangle(x: f32) -> f32 {
+    (1.0 - x.abs()).max(0.0)
+}
+
+/// A resampling kernel and its radius in source pixels (at 1:1).
+#[derive(Clone, Copy)]
+struct Filter {
+    kernel: fn(f32) -> f32,
+    radius: f32,
+}
+const LANCZOS: Filter = Filter { kernel: lanczos3, radius: 3.0 };
+const TENT: Filter = Filter { kernel: triangle, radius: 1.0 };
+
+/// Per-output-index taps of a separable resampler: (first source index, normalised weights).
+fn taps(src_len: usize, dst_len: usize, f: Filter) -> Vec<(usize, Vec<f32>)> {
+    let scale = src_len as f32 / dst_len as f32;
+    let widen = scale.max(1.0);
+    let support = f.radius * widen;
+    (0..dst_len)
+        .map(|i| {
+            let centre = (i as f32 + 0.5) * scale - 0.5;
+            let lo = ((centre - support).floor().max(0.0)) as usize;
+            let hi = ((centre + support).ceil() as usize).min(src_len.saturating_sub(1));
+            let mut weights: Vec<f32> = (lo..=hi).map(|j| (f.kernel)((j as f32 - centre) / widen)).collect();
+            let sum: f32 = weights.iter().sum();
+            if sum.abs() > 1e-6 {
+                for w in &mut weights {
+                    *w /= sum;
+                }
+            } else if let Some(w) = weights.first_mut() {
+                *w = 1.0;
+            }
+            (lo, weights)
+        })
+        .collect()
+}
+
+/// Separable resample of interleaved 8-bit samples (`ch` per pixel) from `sw`×`sh` to `dw`×`dh`.
+fn resample_u8(src: &[u8], sw: usize, sh: usize, ch: usize, dw: usize, dh: usize, f: Filter) -> Vec<u8> {
+    let xt = taps(sw, dw, f);
+    let yt = taps(sh, dh, f);
+    // Horizontal pass into f32 rows, then vertical.
+    let mut mid = vec![0.0f32; dw * sh * ch];
+    for y in 0..sh {
+        let row = &src[y * sw * ch..((y + 1) * sw * ch).min(src.len())];
+        for (x, (lo, ws)) in xt.iter().enumerate() {
+            let out = &mut mid[(y * dw + x) * ch..(y * dw + x + 1) * ch];
+            for (k, w) in ws.iter().enumerate() {
+                let start = ((lo + k) * ch).min(row.len().saturating_sub(ch));
+                for (o, p) in out.iter_mut().zip(row.iter().skip(start)) {
+                    *o += w * f32::from(*p);
+                }
             }
         }
     }
+    let mut dst = vec![0u8; dw * dh * ch];
+    for (y, (lo, ws)) in yt.iter().enumerate() {
+        for x in 0..dw {
+            for c in 0..ch {
+                let mut acc = 0.0f32;
+                for (k, w) in ws.iter().enumerate() {
+                    acc += w * mid.get(((lo + k) * dw + x) * ch + c).copied().unwrap_or(0.0);
+                }
+                if let Some(d) = dst.get_mut((y * dw + x) * ch + c) {
+                    *d = (acc + 0.5).clamp(0.0, 255.0) as u8;
+                }
+            }
+        }
+    }
+    dst
+}
+
+/// Lanczos-3 resize (both ways), for requests over the size cap and for a backend that returns
+/// a different size than it was given.
+pub(crate) fn resize_rgba8(src: &Rgba8, w: u32, h: u32) -> Result<Rgba8> {
+    if src.width == 0 || src.height == 0 || w == 0 || h == 0 {
+        return Err(EngineError::Other("cannot resize an empty image".into()));
+    }
+    if (src.width, src.height) == (w, h) {
+        return Ok(src.clone());
+    }
+    let out = resample_u8(&src.data, src.width as usize, src.height as usize, 4, w as usize, h as usize, LANCZOS);
     Rgba8::new(w, h, out).map_err(gen_err)
+}
+
+/// Soften a mask outward: a falloff of about `radius` pixels beyond its edge, the inside kept at
+/// full coverage (two box blurs ≈ a triangle filter, then `max` with the original). The latent
+/// noise mask then blends the regenerated area into its surroundings instead of cutting a hard
+/// rectangle; the layer mask keeps the selection's real edge.
+pub(crate) fn feather_outward(mask: &Gray8, radius: usize) -> Result<Gray8> {
+    let (w, h) = (mask.width as usize, mask.height as usize);
+    if radius == 0 || w == 0 || h == 0 {
+        return Ok(mask.clone());
+    }
+    let mut cur: Vec<f32> = mask.data.iter().map(|v| f32::from(*v)).collect();
+    for _ in 0..2 {
+        cur = box_blur(&cur, w, h, radius, true);
+        cur = box_blur(&cur, w, h, radius, false);
+    }
+    let out: Vec<u8> = cur.iter().zip(&mask.data).map(|(b, o)| (*o).max((b + 0.5).clamp(0.0, 255.0) as u8)).collect();
+    Gray8::new(mask.width, mask.height, out).map_err(gen_err)
+}
+
+/// One box-blur pass of radius `r` along rows (`horizontal`) or columns, edges clamped.
+fn box_blur(src: &[f32], w: usize, h: usize, r: usize, horizontal: bool) -> Vec<f32> {
+    let (len, lines) = if horizontal { (w, h) } else { (h, w) };
+    let at = |line: usize, i: usize| -> f32 {
+        let idx = if horizontal { line * w + i } else { i * w + line };
+        src.get(idx).copied().unwrap_or(0.0)
+    };
+    let mut out = vec![0.0f32; src.len()];
+    let window = (2 * r + 1) as f32;
+    for line in 0..lines {
+        // Running sum over a window clamped to the line's ends.
+        let mut sum = 0.0f32;
+        for i in 0..=r.min(len.saturating_sub(1)) {
+            sum += at(line, i);
+        }
+        sum += at(line, 0) * r as f32;
+        for i in 0..len {
+            let idx = if horizontal { line * w + i } else { i * w + line };
+            if let Some(o) = out.get_mut(idx) {
+                *o = sum / window;
+            }
+            let leaving = at(line, i.saturating_sub(r));
+            let entering = at(line, (i + r + 1).min(len.saturating_sub(1)));
+            sum += entering - leaving;
+        }
+    }
+    out
+}
+
+/// The outward feather of a request mask: 2 % of the longer side, 4 to 24 pixels.
+pub(crate) fn feather_radius(w: u32, h: u32) -> usize {
+    ((f64::from(w.max(h)) * 0.02).round() as usize).clamp(4, 24)
+}
+
+/// Mask resize with a tent filter (no ringing, coverage stays within 0..=255).
+pub(crate) fn resize_gray8(src: &Gray8, w: u32, h: u32) -> Result<Gray8> {
+    if src.width == 0 || src.height == 0 || w == 0 || h == 0 {
+        return Err(EngineError::Other("cannot resize an empty mask".into()));
+    }
+    if (src.width, src.height) == (w, h) {
+        return Ok(src.clone());
+    }
+    let out = resample_u8(&src.data, src.width as usize, src.height as usize, 1, w as usize, h as usize, TENT);
+    Gray8::new(w, h, out).map_err(gen_err)
 }
 
 /// Write RGBA8 pixels into a raster layer over `rect`, converting to the layer's own format
@@ -442,10 +633,9 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
 fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_fill(s, p)?;
     let backend = backend(s)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto } = plan;
     let label = name.clone();
     let template_id = template.meta.id.clone();
-    let tid = template_id.clone();
     crate::jobs::edit_job(
         s,
         &label,
@@ -458,9 +648,17 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
             let k = sel.channels().max(1);
             let coverage: Vec<f32> = sel.read_region(rect).chunks_exact(k).map(|c| c.first().copied().unwrap_or(0.0).clamp(0.0, 1.0)).collect();
             let mask = Gray8::new(w, h, coverage.iter().map(|c| (c * 255.0 + 0.5) as u8).collect()).map_err(gen_err)?;
+            // The model gets a softened mask so it blends the edge; the layer mask below stays
+            // the selection itself.
+            let mask = feather_outward(&mask, feather_radius(w, h))?;
             ctx.check()?;
+            // Large areas go out at the models' working size and come back resampled; the layer
+            // mask below keeps the selection's full-resolution edge either way.
+            let (rw, rh) = request_size(w, h);
+            let (image, mask) = if (rw, rh) == (w, h) { (image, mask) } else { (resize_rgba8(&image, rw, rh)?, resize_gray8(&mask, rw, rh)?) };
+            let template_id = if auto { resolve_auto(backend.as_ref(), AUTO_FILL_ORDER, &template_id) } else { template_id };
             let mut req = Request {
-                template: template_id,
+                template: template_id.clone(),
                 prompt,
                 negative,
                 seed,
@@ -475,7 +673,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
             // One backend run per variation, consecutive seeds, each its own masked layer; the
             // first is visible, the alternates sit hidden above it (`generate.variation` switches).
             let n = variations.max(1);
-            let mut made: Vec<(LayerId, u64, String, u64)> = Vec::with_capacity(n as usize);
+            let mut made: Vec<(LayerId, u64, String, u64, photocraft_genai::Timings)> = Vec::with_capacity(n as usize);
             for i in 0..n {
                 req.seed = seed.wrapping_add(u64::from(i)) % MAX_SEED;
                 let (lo, hi) = (0.05 + 0.9 * i as f32 / n as f32, 0.05 + 0.9 * (i + 1) as f32 / n as f32);
@@ -496,19 +694,21 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
                 layer.visible = i == 0;
                 let nid = doc.insert_above(*active, layer);
                 *active = Some(nid);
-                made.push((nid, resp.seed, resp.run_id, resp.elapsed_ms));
+                made.push((nid, resp.seed, resp.run_id, resp.elapsed_ms, resp.timings));
             }
             ctx.progress(0.96, "Placing");
             // The visible result is the active layer.
             *active = made.first().map(|m| m.0);
-            Ok((made, w, h))
+            Ok((made, w, h, (rw, rh), template_id))
         },
-        move |(made, w, h)| {
+        move |(made, w, h, (rw, rh), template_id)| {
             let first = made.first();
             json!({
-                "layer": first.map(|m| m.0.0), "seed": first.map(|m| m.1), "runId": first.map(|m| m.2.clone()), "template": tid,
+                "layer": first.map(|m| m.0.0), "seed": first.map(|m| m.1), "runId": first.map(|m| m.2.clone()), "template": template_id,
                 "layers": made.iter().map(|m| m.0.0).collect::<Vec<_>>(), "seeds": made.iter().map(|m| m.1).collect::<Vec<_>>(),
-                "width": w, "height": h, "ms": made.iter().map(|m| m.3).sum::<u64>(),
+                "width": w, "height": h, "requestWidth": rw, "requestHeight": rh,
+                "ms": made.iter().map(|m| m.3).sum::<u64>(),
+                "timings": made.iter().map(|m| serde_json::to_value(m.4).unwrap_or(Value::Null)).collect::<Vec<_>>(),
             })
         },
     )
@@ -591,7 +791,9 @@ fn run_models(s: &mut Session, p: &Value) -> Result<Value> {
             "needsImage": m.needs_image, "needsMask": m.needs_mask, "models": slots,
         }));
     }
-    Ok(json!({"server": health, "templates": templates}))
+    // What `auto` would pick right now (needs the server's model lists).
+    let auto_fill = backend.as_ref().filter(|_| online).map(|b| resolve_auto(b.as_ref(), AUTO_FILL_ORDER, DEFAULT_FILL_TEMPLATE));
+    Ok(json!({"server": health, "templates": templates, "autoFill": auto_fill}))
 }
 
 fn always(_: &Session) -> std::result::Result<(), String> {
@@ -605,7 +807,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Fill…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template},"model":{file?=Preferences},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","ms"} (steps and guidance 0 = the template's defaults; margin = context around the selection as a fraction of its larger side; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; a background job: the result is a new layer above the active one, masked to the selection; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; margin = context around the selection as a fraction of its larger side; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; areas over one megapixel are sent downscaled and come back resampled; a background job: the result is a new layer above the active one, masked to the selection; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: fill_enabled,
             run: run_fill,
             journal: true,

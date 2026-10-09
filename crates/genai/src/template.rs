@@ -119,6 +119,11 @@ pub struct Meta {
     /// Empty = the prompt as typed.
     #[serde(default)]
     pub prompt_format: String,
+    /// The wrapper used instead when the prompt already is an instruction (it starts with an
+    /// imperative verb such as "remove" or "replace", see [`IMPERATIVE_OPENERS`]); empty = use
+    /// `prompt_format` for those too.
+    #[serde(default)]
+    pub prompt_format_imperative: String,
     #[serde(default)]
     pub notes: String,
 }
@@ -138,11 +143,83 @@ struct File {
 
 const BUILTIN: &[&str] = &[
     include_str!("../workflows/qwen-edit-2511-fill.json"),
+    include_str!("../workflows/qwen-edit-2511-fill-lightning-8.json"),
+    include_str!("../workflows/qwen-edit-2511-fill-lightning-4.json"),
+    include_str!("../workflows/qwen-edit-2511-fill-guided.json"),
     include_str!("../workflows/qwen-2.1-fill.json"),
     include_str!("../workflows/krea2-turbo-image.json"),
     include_str!("../workflows/qwen-2.1-image.json"),
     include_str!("../workflows/sam3.1-segment.json"),
 ];
+
+/// Verbs a prompt can open with when it is already an edit instruction ("remove the car",
+/// "make the sky stormy") rather than a description of new content ("a red boat").
+pub const IMPERATIVE_OPENERS: &[&str] = &[
+    "add",
+    "remove",
+    "delete",
+    "erase",
+    "replace",
+    "change",
+    "make",
+    "turn",
+    "put",
+    "fill",
+    "paint",
+    "convert",
+    "swap",
+    "move",
+    "give",
+    "extend",
+    "clean",
+    "restore",
+    "fix",
+    "repair",
+    "cover",
+    "color",
+    "colour",
+    "recolor",
+    "recolour",
+    "blur",
+    "sharpen",
+    "brighten",
+    "darken",
+    "transform",
+    "draw",
+    "place",
+    "insert",
+    "render",
+    "create",
+    "generate",
+    "show",
+    "hide",
+    "open",
+    "close",
+    "rotate",
+    "flip",
+    "crop",
+    "redraw",
+    "repaint",
+    "retouch",
+    "smooth",
+    "straighten",
+    "upscale",
+    "enhance",
+    "edit",
+    "modify",
+    "adjust",
+    "apply",
+    "let",
+    "keep",
+    "set",
+    "write",
+];
+
+/// Does the prompt start with one of [`IMPERATIVE_OPENERS`] (case-insensitive, first word)?
+pub fn is_imperative(prompt: &str) -> bool {
+    let first = prompt.trim().split(|c: char| !c.is_alphanumeric()).next().unwrap_or("").to_ascii_lowercase();
+    !first.is_empty() && IMPERATIVE_OPENERS.contains(&first.as_str())
+}
 
 /// Every compiled-in template. Parsing cannot fail for shipped files (a test checks it); a file
 /// that fails anyway is skipped rather than taking the others down.
@@ -233,9 +310,13 @@ impl Template {
         Ok(())
     }
 
-    /// The prompt as the model should see it (`meta.promptFormat` applied).
+    /// The prompt as the model should see it: `meta.promptFormatImperative` when the prompt
+    /// already is an instruction (see [`is_imperative`]) and the template has one, else
+    /// `meta.promptFormat`; an empty format passes the prompt through.
     pub fn format_prompt(&self, prompt: &str) -> String {
-        let f = self.meta.prompt_format.trim();
+        let prompt = prompt.trim();
+        let imperative = self.meta.prompt_format_imperative.trim();
+        let f = if is_imperative(prompt) && !imperative.is_empty() { imperative } else { self.meta.prompt_format.trim() };
         if f.is_empty() {
             prompt.to_string()
         } else if f.contains("{prompt}") {
@@ -311,6 +392,24 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn prompts_are_wrapped_as_descriptions_or_as_instructions() {
+        assert!(is_imperative("Remove the person on the left") && is_imperative("replace it with grass") && is_imperative("  make it night"));
+        assert!(!is_imperative("a small red boat") && !is_imperative("") && !is_imperative("Adding machines"));
+        let t = find("qwen-edit-2511/fill-lightning-8").unwrap_or_else(|e| panic!("{e}"));
+        let noun = t.format_prompt(" a small red boat ");
+        assert!(noun.starts_with("Add a small red boat to this image"), "{noun}");
+        let verb = t.format_prompt("remove the person on the left");
+        assert!(verb.starts_with("remove the person on the left. Fit the result"), "{verb}");
+        // The 2.1 template keeps its mask instruction either way.
+        let q = find("qwen-2.1/fill").unwrap_or_else(|e| panic!("{e}"));
+        assert!(q.format_prompt("replace the boat with a buoy").contains("as follows: replace the boat with a buoy"));
+        assert!(q.format_prompt("a buoy").contains("so that it shows a buoy"));
+        // A template without formats passes the prompt through.
+        let s = find("sam3.1/segment").unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(s.format_prompt("the dog"), "the dog");
+    }
+
+    #[test]
     fn every_builtin_template_parses() {
         assert_eq!(builtin().len(), BUILTIN.len(), "a built-in template failed to parse");
         for t in builtin() {
@@ -348,8 +447,10 @@ mod tests {
 
     #[test]
     fn prompt_formats_wrap_the_prompt() {
-        let plain = find("qwen-edit-2511/fill").unwrap_or_else(|e| panic!("{e}"));
+        let plain = find("sam3.1/segment").unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(plain.format_prompt("a red bicycle"), "a red bicycle");
+        let edit = find("qwen-edit-2511/fill").unwrap_or_else(|e| panic!("{e}"));
+        assert!(edit.format_prompt("a red bicycle").starts_with("Add a red bicycle to this image"));
         let wrapped = find("qwen-2.1/fill").unwrap_or_else(|e| panic!("{e}"));
         let p = wrapped.format_prompt("a red bicycle");
         assert!(p.contains("a red bicycle") && p.contains("image 2") && !p.contains("{prompt}"), "{p}");

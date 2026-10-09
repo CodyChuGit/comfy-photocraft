@@ -19,12 +19,15 @@ use photocraft_geom::Rect;
 use serde_json::{Map, Value, json};
 
 use crate::commands::CommandSpec;
-use crate::generate_cmds::{self, Common, JobProgress, bad, gen_err, opt_num, opt_str, resize_rgba8, short};
+use crate::generate_cmds::{self, Common, JobProgress, bad, fit_pixels, gen_err, opt_num, opt_str, resize_gray8, resize_rgba8, short};
 use crate::{EngineError, Result, Session};
 
 pub const BY_TEXT: &str = "select.byText";
 pub const SUBJECT_ML: &str = "select.subjectML";
 pub const DEFAULT_SEGMENT_TEMPLATE: &str = "sam3.1/segment";
+/// A detector request is sent at most this large (SAM 3.1 works at about 1 megapixel inside;
+/// the masks come back at the request size and are resampled to the canvas).
+const MAX_SEGMENT_REQUEST_PIXELS: u64 = 2048 * 1024;
 
 fn enabled(s: &Session) -> std::result::Result<(), String> {
     generate_cmds::web_unavailable()?;
@@ -108,6 +111,8 @@ fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Resu
                 None => photocraft_compose::render(doc, area).to_rgba8().pixels,
             };
             let image = Rgba8::new(w, h, rgba8).map_err(gen_err)?;
+            let (rw, rh) = fit_pixels(w, h, MAX_SEGMENT_REQUEST_PIXELS);
+            let image = if (rw, rh) == (w, h) { image } else { resize_rgba8(&image, rw, rh)? };
             let mut params = BTreeMap::new();
             params.insert("threshold".to_string(), json!(threshold));
             let req = Request {
@@ -130,11 +135,13 @@ fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Resu
             };
             ctx.check()?;
             ctx.progress(0.95, "Selecting");
-            // Every result image is a mask: its red channel is the coverage of one instance.
+            // Every result image is a mask: its red channel is the coverage of one instance,
+            // brought to the canvas size with a tent filter (no ringing on a mask).
             let mut instances: Vec<(Vec<f32>, Rect, u64)> = Vec::new();
             for img in resp.images {
-                let img = if (img.width, img.height) == (w, h) { img } else { resize_rgba8(&img, w, h)? };
-                let cov: Vec<f32> = img.data.as_chunks::<4>().0.iter().map(|p| f32::from(p[0]) / 255.0).collect();
+                let red = photocraft_genai::Gray8::new(img.width, img.height, img.data.as_chunks::<4>().0.iter().map(|p| p[0]).collect()).map_err(gen_err)?;
+                let red = if (red.width, red.height) == (w, h) { red } else { resize_gray8(&red, w, h)? };
+                let cov: Vec<f32> = red.data.iter().map(|v| f32::from(*v) / 255.0).collect();
                 let (bounds, count) = coverage_bounds(&cov, area);
                 if count > 0 {
                     instances.push((cov, bounds, count));

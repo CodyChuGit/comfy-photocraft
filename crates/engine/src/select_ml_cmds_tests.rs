@@ -116,6 +116,26 @@ fn the_active_layer_can_be_sampled_instead_of_the_composite() {
 }
 
 #[test]
+fn big_canvases_are_sent_downscaled_and_the_masks_come_back_at_canvas_size() {
+    // 2400×1800 = 4.3 MP goes out at ≤ 2 MP; the fake finds the centre quarter of what it got.
+    let fake = FakeComfy::start().unwrap();
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 2400, "height": 1800})).unwrap();
+    s.execute("layer.new.layer", json!({})).unwrap();
+    s.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
+    let r = s.execute(BY_TEXT, json!({"prompt": "the lighthouse"})).unwrap();
+    assert_eq!(r["count"], 1);
+    let sent = photocraft_genai::png::decode_rgba8(&fake.state().uploads[0].1).unwrap();
+    assert!(u64::from(sent.width) * u64::from(sent.height) <= 2048 * 1024, "{}×{}", sent.width, sent.height);
+    assert!(sent.width.is_multiple_of(16) && sent.height.is_multiple_of(16) && sent.width > sent.height);
+    let b = selection_bounds(&s).unwrap();
+    // The centre quarter of the canvas, give or take the resampling at the edge.
+    assert!((b.x0 - 600).abs() <= 3 && (b.y0 - 450).abs() <= 3 && (b.x1 - 1800).abs() <= 3 && (b.y1 - 1350).abs() <= 3, "{b:?}");
+    let pixels = r["instances"][0]["pixels"].as_u64().unwrap();
+    assert!((pixels as i64 - 1200 * 900).abs() < 1200 * 900 / 50, "{pixels}");
+}
+
+#[test]
 fn parameters_are_validated_and_the_command_needs_a_document() {
     let fake = FakeComfy::start().unwrap();
     let mut s = session(&fake.url);

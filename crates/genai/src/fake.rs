@@ -38,6 +38,9 @@ pub struct Options {
     /// What a detector graph (`SAM3_Detect`) "finds": one mask image per rectangle, given as
     /// normalised `[x0, y0, x1, y1]` of the uploaded image. Empty = nothing found.
     pub segments: Vec<[f32; 4]>,
+    /// Model files left out of `/models/<folder>` (by default every built-in template's files
+    /// are "installed"); e.g. a Lightning LoRA, to exercise the `auto` fallback.
+    pub missing_files: Vec<String>,
 }
 
 impl Default for Options {
@@ -52,6 +55,7 @@ impl Default for Options {
             missing_node: None,
             websocket: true,
             segments: vec![[0.25, 0.25, 0.75, 0.75]],
+            missing_files: Vec::new(),
         }
     }
 }
@@ -281,10 +285,13 @@ fn route(method: &str, path: &str, body: &[u8], ctype: &str, opts: &Options, sta
         }
         ("GET", p) if p.starts_with("/models/") => {
             let folder = &p["/models/".len()..];
-            let files: Vec<String> = template::builtin()
+            let mut files: Vec<String> = template::builtin()
                 .iter()
                 .flat_map(|t| t.meta.models.iter().filter(|s| s.folder == folder).map(|s| s.default.clone()).collect::<Vec<_>>())
+                .filter(|f| !opts.missing_files.contains(f))
                 .collect();
+            files.sort();
+            files.dedup();
             json(200, json!(files))
         }
         ("POST", "/upload/image") | ("POST", "/upload/mask") => match multipart_image(body, ctype) {

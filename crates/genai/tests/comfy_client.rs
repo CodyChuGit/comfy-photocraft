@@ -68,7 +68,9 @@ fn a_run_uploads_queues_waits_and_downloads() {
     assert_eq!(st.prompts.len(), 1);
     let (_, graph, client_id) = &st.prompts[0];
     assert_eq!(client_id.len(), 32);
-    assert_eq!(graph["6"]["inputs"]["prompt"], "a red bicycle leaning on the wall");
+    // The 2511 fill wraps a description as an edit instruction (`meta.promptFormat`).
+    let prompt = graph["6"]["inputs"]["prompt"].as_str().unwrap_or_default();
+    assert!(prompt.starts_with("Add a red bicycle leaning on the wall to this image"), "{prompt}");
     assert_eq!(graph["14"]["inputs"]["seed"], 1234);
     assert_eq!(graph["14"]["inputs"]["steps"], 40, "template default");
     assert_eq!(graph["14"]["inputs"]["cfg"], 4.0, "template default");

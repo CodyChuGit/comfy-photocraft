@@ -189,6 +189,21 @@ pub struct Response {
     /// The server's id for the run (ComfyUI's `prompt_id`), for logs and reproduction.
     pub run_id: String,
     pub elapsed_ms: u64,
+    /// Where the time went (benchmarks, `generate.*` results).
+    pub timings: Timings,
+}
+
+/// Milliseconds spent in each stage of a run. `queue` is the wait between queueing the prompt
+/// and the server starting on it (other jobs, model loading counts as `run`); `run` is the
+/// server's execution; the rest is the client's own work and the transfers.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Timings {
+    pub encode_ms: u64,
+    pub upload_ms: u64,
+    pub queue_ms: u64,
+    pub run_ms: u64,
+    pub download_ms: u64,
 }
 
 /// Progress and cancellation, implemented by the engine's job context.

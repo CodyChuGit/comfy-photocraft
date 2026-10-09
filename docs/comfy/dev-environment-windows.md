@@ -84,6 +84,14 @@ cargo run --release -p photocraft-ui-egui --example snapshot -- --out ui.png --s
 `WGPU_FORCE_FALLBACK_ADAPTER=1` (the software adapter) works too. `--script` takes a JSON array
 of control-protocol calls; from PowerShell put `--%` before `--` and escape the quotes as `\"`,
 one invocation per line, e.g. `--script "[[\"ui.menu.invoke\",{\"id\":\"generate.fill\"}]]"`.
+
+PowerShell 5.1 and JSON arguments in general: an argument with `\"` escapes and **no spaces**
+survives a normal call (`& $exe run $img --params '{\"x\":1}'`), but one with spaces (a prompt)
+is re-quoted wrongly and the CLI sees extra positional arguments ("run needs exactly one of
+<file> or --new"). The dependable form is the stop-parsing token with the dynamic parts in
+environment variables, which `--%` expands cmd-style: `$env:P = '{\"prompt\":\"a red boat\"}'`
+then `& $exe --% run %IMG% --cmd generate.fill --params "%P%"`. `docs/comfy/bench/bench-fill.ps1`
+is written that way. Never assign to `$args` in a script (it is PowerShell's own parameter array).
 `--click-at X,Y` opens a top menu (Edit is at 90,16; Select at 261,16 in a 1440×900 capture) and a
 `ui.pointer` call with `"tool":"RectMarquee","button":"secondary"` opens the selection context
 menu. The dialog and menu captures of the Phase 2 slice are in `C:\Users\5090\ComfyUI\photocraft-tests\ui-*.png`.

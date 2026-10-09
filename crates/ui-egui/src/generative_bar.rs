@@ -135,14 +135,15 @@ fn load_templates(app: &mut PhotocraftApp) {
     app.ui.generative_bar.templates = templates;
 }
 
-/// The template id the next run uses: the bar's choice or the preference's default.
+/// The template id the next run uses: the bar's choice or the preference's default (`auto` =
+/// the engine picks the fastest permissive tier the server has).
 fn current_template(app: &PhotocraftApp) -> String {
     let chosen = app.ui.generative_bar.template.trim();
     if !chosen.is_empty() {
         return chosen.to_string();
     }
     let pref = app.session.prefs().integrations.default_fill_template.trim();
-    if pref.is_empty() { photocraft_engine::generate_cmds::DEFAULT_FILL_TEMPLATE.to_string() } else { pref.to_string() }
+    if pref.is_empty() { photocraft_engine::generate_cmds::AUTO_TEMPLATE.to_string() } else { pref.to_string() }
 }
 
 /// Run `generate.fill` with the bar's prompt, template and variations. In the desktop app it
@@ -390,11 +391,12 @@ fn idle(ui: &mut egui::Ui, app: &mut PhotocraftApp, results: &[u64], default_tem
         bar.focus = false;
     }
     let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-    // Template picker: every fill template, research ones only when the preference allows.
+    // Template picker: Auto (the fastest permissive tier the server has), then every fill
+    // template, research ones only when the preference allows.
     let mut current = default_template.to_string();
-    let options: Vec<(String, &str)> =
-        bar.templates.iter().filter(|c| c.allowed || research || c.id == current).map(|c| (c.id.clone(), c.name.as_str())).collect();
-    if !options.is_empty() && crate::widgets::dropdown(ui, "generative-template", &mut current, &options, 150.0) {
+    let mut options: Vec<(String, &str)> = vec![(photocraft_engine::generate_cmds::AUTO_TEMPLATE.to_string(), "Auto")];
+    options.extend(bar.templates.iter().filter(|c| c.allowed || research || c.id == current).map(|c| (c.id.clone(), c.name.as_str())));
+    if crate::widgets::dropdown(ui, "generative-template", &mut current, &options, 150.0) {
         bar.template = current;
     }
     // Variations.

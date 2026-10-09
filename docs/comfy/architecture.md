@@ -162,11 +162,16 @@ own.
 ### 2.4 Pixels in and out
 
 - **Crop with context.** For Fill/Edit the request image is the flattened composite over the
-  selection's bounds grown by `margin` (default 25 % of the larger side, clamped to the model's
-  `max_side`), rendered by `photocraft_compose::render(doc, rect)` (the CPU reference, already used
-  by exports and tests), converted to RGBA8 sRGB through `photocraft-cms` when the document is
-  16/32-bit or not sRGB (rule 2 in `AGENTS.md`: never assume 8-bit sRGB inside the engine; the
-  conversion happens at the backend boundary and is reversed on the way back).
+  selection's bounds grown by `margin` (default 25 % of the larger side), rendered by
+  `photocraft_compose::render(doc, rect)` (the CPU reference, already used by exports and tests),
+  converted to RGBA8 sRGB through `photocraft-cms` when the document is 16/32-bit or not sRGB
+  (rule 2 in `AGENTS.md`: never assume 8-bit sRGB inside the engine; the conversion happens at the
+  backend boundary and is reversed on the way back). Since 2026-10-09 a request larger than one
+  megapixel is sent downscaled (Lanczos-3 for pixels, a tent filter for the mask; the editing
+  models work at about 1 MP, as Photoshop's Generative Fill does) and the result is resampled back
+  under the selection's full-resolution layer mask; segmentation requests are capped at 2 MP.
+  Upload names are content hashes, so ComfyUI's node cache (loader, text encoder, VAE encode) is
+  reused across variations and re-rolls of the same selection.
 - **Mask.** The selection surface (`doc.selection: Option<Surface>`, used by filters at
   `filters.rs:222-223`) cropped to the same rect, as 8-bit coverage; Fill feathers it outward by a
   few pixels so the model blends the seam.
@@ -255,7 +260,7 @@ no new section, menu row or dialog page is needed:
 | `generativeTimeoutSecs` | 600 | `generate_cmds::backend` → the backend's deadline | **Phase 1, implemented** |
 | `allowResearchModels` | false | `plan_fill` refuses research-only templates unless on; `generate.models` reports `allowed` | **Phase 1, implemented** |
 | `defaultGenerateModel` | `""` (the template's default file) | `generate_cmds::plan_image` | **Phase 1, implemented** |
-| `defaultFillTemplate` / `defaultImageTemplate` | `qwen-edit-2511/fill` / `krea2-turbo/image` | `plan_fill` / `plan_image` (a research template here still needs `allowResearchModels`) | **Phase 1, implemented** |
+| `defaultFillTemplate` / `defaultImageTemplate` | `auto` / `krea2-turbo/image` | `plan_fill` / `plan_image` (a research template here still needs `allowResearchModels`); `auto` is resolved inside the job from the server's model lists (`generate_cmds::AUTO_FILL_ORDER`: the Lightning 8-step tier when its LoRA is installed, else the 40-step base) | **Phase 1, implemented; `auto` 2026-10-09** |
 | `generativePreviews` | true | task bar overlay | Phase 2 |
 | `freeVramAfterRun` | false | client (`POST /free`) | Phase 2 |
 | `generativeContentFilter` | true | the moderation hook required by community licences | Phase 2 |

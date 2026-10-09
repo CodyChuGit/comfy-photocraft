@@ -1,7 +1,7 @@
 //! PNG in and out, through `photocraft-codecs`. Images cross the server boundary as PNG because
 //! every ComfyUI loader and saver speaks it losslessly.
 
-use photocraft_codecs::{ChannelLayout, EncodeOptions, Format, Image, SampleType};
+use photocraft_codecs::{ChannelLayout, EncodeOptions, Format, Image, PngCompression, SampleType};
 
 use crate::{Error, Gray8, Result, Rgba8};
 
@@ -9,16 +9,22 @@ fn enc(e: photocraft_codecs::CodecError) -> Error {
     Error::Image(e.to_string())
 }
 
+/// Uploads cross a loopback socket and are read once: the fastest deflate level wins (lossless
+/// either way; a megapixel RGBA encodes in a few milliseconds instead of tens).
+fn upload_options() -> EncodeOptions {
+    EncodeOptions { png_compression: PngCompression::Fast, embed_icc: false, embed_metadata: false, ..EncodeOptions::default() }
+}
+
 /// Encode straight-alpha RGBA8 as PNG.
 pub fn encode_rgba8(img: &Rgba8) -> Result<Vec<u8>> {
     let image = Image::from_u8(img.width, img.height, ChannelLayout::Rgba, img.data.clone()).map_err(enc)?;
-    photocraft_codecs::encode(&image, Format::Png, &EncodeOptions::default()).map_err(enc)
+    photocraft_codecs::encode(&image, Format::Png, &upload_options()).map_err(enc)
 }
 
 /// Encode an 8-bit mask as a grayscale PNG.
 pub fn encode_gray8(mask: &Gray8) -> Result<Vec<u8>> {
     let image = Image::from_u8(mask.width, mask.height, ChannelLayout::Gray, mask.data.clone()).map_err(enc)?;
-    photocraft_codecs::encode(&image, Format::Png, &EncodeOptions::default()).map_err(enc)
+    photocraft_codecs::encode(&image, Format::Png, &upload_options()).map_err(enc)
 }
 
 /// Decode any image the codecs know into RGBA8 (16-bit and float results are quantised, gray is

@@ -98,6 +98,14 @@ entries of 2026-10-09. The generated schema dialog remains for Generate Image, S
 for a hidden bar. Open: item 5 (generative layer metadata), the committed control-protocol script
 test of the DoD, installed-model badges in the picker, preview frames.
 
+**Performance pass 2026-10-09** (numbers in [`benchmarks.md`](benchmarks.md)): Lightning tiers
+for 2511 with `defaultFillTemplate = auto` picking the 8-step tier when its LoRA is installed, a
+1 MP request cap with Lanczos resampling, content-addressed uploads (the encoder is cached across
+variations), prompt wrapping and an outward-feathered request mask against seams, `--fast
+fp8_matrix_mult` on the server. A Lightning-8 fill is 16 s on the 5090, a Qwen-Image-2.1 re-roll
+2.6 s. Next levers are listed in `benchmarks.md` §4 (sampling at the request's own size for
+small selections, a working FP8-tensor-core checkpoint, SageAttention, step caching).
+
 ## Phase 3: The Firefly core set
 
 - **Generative Expand** (`generate.expand`): hooks Image › Canvas Size and the Crop tool's

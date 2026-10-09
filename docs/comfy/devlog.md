@@ -4,6 +4,70 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-09 (performance pass): Lightning tiers, `auto`, request sizing, server flags
+
+**Landed**
+
+- `qwen-edit-2511/fill` now matches ComfyUI's official 2511 graph exactly (CFGNorm after
+  ModelSamplingAuraFlow, `FluxKontextMultiReferenceLatentMethod index_timestep_zero` on both
+  conditionings). Two Lightning tiers, `fill-lightning-8` and `fill-lightning-4` (Apache-2.0
+  LoRAs by lightx2v, `LoraLoaderModelOnly` after CFGNorm, CFG 1), and the preference default
+  `defaultFillTemplate = auto`: the job asks the server which files it has (`/models/<folder>`)
+  and takes the first of `AUTO_FILL_ORDER` (`fill-lightning-8`, then the 40-step base) whose
+  files are all installed. `generate.models` reports `autoFill`; the task bar's picker starts
+  with Auto. BYOB stays: the 850 MB LoRA is a download the user makes.
+- Request sizing: a fill request over 1 MP is sent downscaled (Lanczos-3 pixels, tent-filtered
+  mask, multiples of 16) and the result is resampled back under the full-resolution layer mask;
+  `resize_rgba8` is Lanczos-3 everywhere (was bilinear); segmentation requests are capped at 2 MP
+  and their masks come back through the tent filter. `requestWidth/Height` and per-variation
+  `timings` (`encodeMs`, `uploadMs`, `queueMs`, `runMs`, `downloadMs`) are in the result.
+- Uploads: PNG at the fastest deflate level (loopback, read once) and **content-addressed
+  names** (FNV-1a of the bytes), so ComfyUI's node cache keeps the loader, the 7 B vision text
+  encoder and the VAE encode across variations and re-rolls of one selection.
+- `docs/comfy/bench/bench-fill.ps1` (the live benchmark), `docs/comfy/benchmarks.md` (numbers),
+  `start-comfyui-fast.ps1` on the dev PC with `--fast fp8_matrix_mult --highvram`, the flag table
+  and a 24 GB / RTX 3090 section in `comfyui-setup.md`, Lightning facts in `models.md`.
+- Tests: auto resolution with and without the LoRA on the fake (`Options.missing_files`),
+  the 1 MP cap end to end (upload size, placement, timings), resampler behaviour, the 2 MP
+  segmentation cap; 33 engine generate/select tests, genai 29.
+
+- Prompt wrapping for the 2511 fills: a description ("a red boat") becomes "Add {prompt} to
+  this image, fitting the scene's perspective, lighting and surroundings naturally. Change
+  nothing else."; a prompt that already opens with an imperative verb (`template::is_imperative`,
+  "remove the car") becomes "{prompt}. Fit the result…" (`promptFormatImperative`, also on the
+  2.1 fill). The request mask is **feathered outward** (2 % of the longer side, 4–24 px, two box
+  blurs then `max` with the original) so the latent noise mask blends the edge; the layer mask
+  stays the selection. Opt-in `qwen-edit-2511/fill-guided` passes the mask as a second
+  reference image for the best placement at 1.5–3× the time.
+
+**Measured** (all tables and the method in `benchmarks.md`; the lighthouse, a 576×512 request):
+
+| Fill, warm | default flags, unique uploads | `fp8_matrix_mult`, cached encoder (re-roll) |
+|---|---|---|
+| 2511 base, 40 steps CFG 4 | 162 s | 153 s |
+| 2511 Lightning 8 | 18.6 s | 16.0 s |
+| 2511 Lightning 4 | 12–16 s | 8.1 s |
+| Qwen-Image-2.1, 25 steps | 4.5 s | 2.6 s |
+
+A 2511 fill is sampling-bound at the model's 1 MP working size (~2 s per Lightning step, ~4 s
+per base step with CFG 4); the client's share is 2 ms encode, 5 ms upload, under 0.4 s download.
+
+**Findings**
+
+- Quality, three cases at fixed seeds (benchmarks §3): the plain prompt with a hard mask gave a
+  cut-off boat with a rectangular seam at one seed; the shipped wrapper + feather gave no seam
+  in any case and the boat on the water at seed 11; placement at seed 7 stays the model's
+  choice (rocks) unless `fill-guided` or Qwen-Image-2.1 is used, both of which put it on the water.
+- `--highvram` is harmful with 2511 fp8 on 32 GB (2 GB free, LoRA reload thrashed); dynamic
+  VRAM already keeps a family resident. lightx2v's `fp8_e4m3fn_scaled` 2511 file ran 35 % faster
+  but returned noise in the masked area with our graph; removed. `fp16_accumulation` does
+  nothing for bf16/fp8/int8 models. Shipped flag: `--fast fp8_matrix_mult` (~5 %).
+- Two benchmark runs overlapped on the GPU once (a background task kept running after I thought
+  it had died); the numbers above come from clean, sequential foreground runs.
+- PowerShell: variable names are case-insensitive (`$seed` is `$Seed`), `.NET`'s working
+  directory is not PowerShell's (`[IO.File]` needs absolute paths), and `"$f:"` is a drive
+  reference; all three bit the benchmark scripts once.
+
 ## 2026-10-09 (late night): Phase 2, the generative task bar and variations
 
 **Landed**

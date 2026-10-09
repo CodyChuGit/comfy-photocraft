@@ -22,7 +22,7 @@ use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket};
 
 use crate::template::{self, Template};
-use crate::{Error, GenerativeBackend, Health, Progress, Request, Response, Result, Rgba8, png};
+use crate::{Error, GenerativeBackend, Health, Progress, Request, Response, Result, Rgba8, Timings, png};
 
 /// Largest response body the client accepts (a 2K RGBA PNG is a few MB; this leaves room).
 const MAX_BODY: u64 = 256 * 1024 * 1024;
@@ -379,10 +379,18 @@ impl ComfyBackend {
         let _ = self.client.delete_queued(prompt_id);
     }
 
-    /// Wait for `prompt_id`: progress from the socket, completion from the history.
-    fn wait(&self, prompt_id: &str, mut socket: Option<WebSocket<MaybeTlsStream<TcpStream>>>, progress: &dyn Progress, started: Instant) -> Result<Value> {
+    /// Wait for `prompt_id`: progress from the socket, completion from the history. Also returns
+    /// when the server was first seen working on it (`None` when no socket message said so).
+    fn wait(
+        &self,
+        prompt_id: &str,
+        mut socket: Option<WebSocket<MaybeTlsStream<TcpStream>>>,
+        progress: &dyn Progress,
+        started: Instant,
+    ) -> Result<(Value, Option<Instant>)> {
         let mut last_poll: Option<Instant> = None;
         let mut poll_now = true;
+        let mut first_activity: Option<Instant> = None;
         loop {
             if progress.cancelled() {
                 self.cancel(prompt_id);
@@ -398,7 +406,11 @@ impl ComfyBackend {
                         if let Ok(m) = serde_json::from_str::<Value>(t.as_str()) {
                             let data = &m["data"];
                             let mine = data["prompt_id"].as_str().is_none_or(|p| p == prompt_id);
-                            match m["type"].as_str().unwrap_or("") {
+                            let kind = m["type"].as_str().unwrap_or("");
+                            if mine && first_activity.is_none() && matches!(kind, "execution_start" | "executing" | "progress" | "executed") {
+                                first_activity = Some(Instant::now());
+                            }
+                            match kind {
                                 "progress" if mine => {
                                     let (v, max) = (data["value"].as_f64().unwrap_or(0.0), data["max"].as_f64().unwrap_or(1.0).max(1.0));
                                     progress.report(0.05 + 0.85 * (v / max).clamp(0.0, 1.0) as f32, &format!("Sampling {}/{}", v as u64, max as u64));
@@ -431,12 +443,26 @@ impl ComfyBackend {
                     }
                     let done = entry["status"]["completed"].as_bool() == Some(true) || !entry["outputs"].as_object().is_none_or(|o| o.is_empty());
                     if done {
-                        return Ok(entry);
+                        return Ok((entry, first_activity));
                     }
                 }
             }
         }
     }
+}
+
+/// Upload names come from the bytes (FNV-1a 64), so the same picture always lands on the same
+/// server file: ComfyUI keys its node cache on file content, and the loader, the text encoder
+/// and the VAE encode are then reused across variations and re-rolls of one selection (several
+/// seconds each with a 7 B vision encoder). The encoder writes no timestamps, so equal pixels
+/// give equal bytes.
+fn upload_name(kind: &str, bytes: &[u8]) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in bytes {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("photocraft-{h:016x}-{kind}.png")
 }
 
 impl GenerativeBackend for ComfyBackend {
@@ -497,13 +523,24 @@ impl GenerativeBackend for ComfyBackend {
         bindings.insert("cfg".into(), serde_json::Number::from_f64(f64::from(cfg)).map(Value::Number).unwrap_or(Value::from(1)));
         bindings.insert("prefix".into(), Value::String(format!("photocraft/{client_id}")));
 
+        let mut timings = Timings::default();
         if let Some(img) = &req.image {
             progress.report(0.01, "Uploading");
-            let name = self.client.upload_image(&format!("photocraft-{client_id}-image.png"), &png::encode_rgba8(img)?)?;
+            let t = Instant::now();
+            let bytes = png::encode_rgba8(img)?;
+            timings.encode_ms += t.elapsed().as_millis() as u64;
+            let t = Instant::now();
+            let name = self.client.upload_image(&upload_name("image", &bytes), &bytes)?;
+            timings.upload_ms += t.elapsed().as_millis() as u64;
             bindings.insert("image".into(), Value::String(name));
         }
         if let Some(mask) = &req.mask {
-            let name = self.client.upload_image(&format!("photocraft-{client_id}-mask.png"), &png::encode_gray8(mask)?)?;
+            let t = Instant::now();
+            let bytes = png::encode_gray8(mask)?;
+            timings.encode_ms += t.elapsed().as_millis() as u64;
+            let t = Instant::now();
+            let name = self.client.upload_image(&upload_name("mask", &bytes), &bytes)?;
+            timings.upload_ms += t.elapsed().as_millis() as u64;
             bindings.insert("mask".into(), Value::String(name));
         }
         let wants_size = tpl.placeholders().iter().any(|p| *p == "width" || *p == "height");
@@ -525,20 +562,27 @@ impl GenerativeBackend for ComfyBackend {
         let socket = self.client.open_socket(&client_id);
         let prompt_id = self.client.queue_prompt(&graph, &client_id)?;
         progress.report(0.03, "Queued");
-        let entry = self.wait(&prompt_id, socket, progress, started)?;
+        let queued = Instant::now();
+        let (entry, first_activity) = self.wait(&prompt_id, socket, progress, started)?;
+        let finished = Instant::now();
+        let began = first_activity.unwrap_or(queued);
+        timings.queue_ms = began.duration_since(queued).as_millis() as u64;
+        timings.run_ms = finished.duration_since(began).as_millis() as u64;
 
         progress.report(0.92, "Downloading");
+        let t = Instant::now();
         let mut images = Vec::new();
         for (name, sub, kind) in output_images(&entry, &tpl.meta.save_node) {
             progress.check_cancel()?;
             let bytes = self.client.view(&name, &sub, &kind)?;
             images.push(png::decode_rgba8(&bytes)?);
         }
+        timings.download_ms = t.elapsed().as_millis() as u64;
         if images.is_empty() {
             return Err(Error::NoOutput(format!("prompt {prompt_id} finished without an image")));
         }
         progress.report(1.0, "Done");
-        Ok(Response { images, seed: req.seed, run_id: prompt_id, elapsed_ms: started.elapsed().as_millis() as u64 })
+        Ok(Response { images, seed: req.seed, run_id: prompt_id, elapsed_ms: started.elapsed().as_millis() as u64, timings })
     }
 
     fn model_files(&self, folder: &str) -> Result<Vec<String>> {
