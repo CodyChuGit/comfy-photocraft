@@ -509,6 +509,36 @@ mod tests {
     }
 
     #[test]
+    fn generative_expand_paints_a_frame_dragged_beyond_the_canvas() {
+        // comfy-photocraft: the Crop tool's expand state. With the option on, the overhang goes
+        // to generate.expand (the model paints it); with it off, the canvas just grows.
+        let fake = photocraft_genai::fake::FakeComfy::start().unwrap();
+        let mut app = app(SampleType::U8);
+        app.session.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
+        app.ui.tool_options.crop_generative = true;
+        app.crop.default_frame = false;
+        app.ui.crop_rect = Some([0.0, 0.0, 264.0, 100.0]);
+        crate::canvas::commit_crop(&mut app);
+        let doc = &app.session.active().unwrap().doc;
+        assert_eq!((doc.size.width, doc.size.height), (264, 100));
+        assert_eq!(doc.layers.last().unwrap().name, "Generative Expand");
+        assert_eq!(fake.state().prompts.len(), 1);
+        assert_eq!(fake.state().prompts[0].1["21"]["class_type"], "ImageCrop", "the expand template");
+        // Part inside, part beyond: crop to the inside first, then expand by the overhang.
+        app.ui.crop_rect = Some([64.0, 0.0, 328.0, 100.0]);
+        crate::canvas::commit_crop(&mut app);
+        let doc = &app.session.active().unwrap().doc;
+        assert_eq!((doc.size.width, doc.size.height), (264, 100), "200 inside + 64 beyond");
+        assert_eq!(fake.state().prompts.len(), 2);
+        // Option off: a plain crop, nothing generated.
+        app.ui.tool_options.crop_generative = false;
+        app.ui.crop_rect = Some([0.0, 0.0, 300.0, 100.0]);
+        crate::canvas::commit_crop(&mut app);
+        assert_eq!(app.session.active().unwrap().doc.size.width, 300);
+        assert_eq!(fake.state().prompts.len(), 2);
+    }
+
+    #[test]
     fn degenerate_and_bad_input_never_panics() {
         let mut app = app(SampleType::U8);
         for r in [[0.0; 4], [5.0, 5.0, 5.0, 5.0], [10.0, 10.0, 0.0, 0.0], [f64::NAN, 0.0, 10.0, 10.0], [f64::INFINITY, 0.0, f64::MAX, 1e300]] {

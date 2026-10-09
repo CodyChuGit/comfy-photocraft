@@ -473,6 +473,10 @@ pub struct ToolOptions {
     pub crop_ratio: String,
     #[serde(default = "yes")]
     pub crop_delete: bool,
+    /// Crop options bar › Generative Expand (comfy-photocraft): a frame dragged beyond the canvas
+    /// has the model paint the added area (`generate.expand`) instead of leaving it empty.
+    #[serde(default)]
+    pub crop_generative: bool,
     /// Magic Eraser opacity % (tolerance, anti-alias, contiguous and sample-all are shared with the
     /// Magic Wand and Paint Bucket).
     pub magic_eraser_opacity: f32,
@@ -562,6 +566,7 @@ impl Default for ToolOptions {
             move_show_transform: false,
             crop_ratio: String::new(),
             crop_delete: true,
+            crop_generative: false,
             magic_eraser_opacity: 100.0,
             bg_sampling: "continuous".into(),
             bg_limits: "contiguous".into(),

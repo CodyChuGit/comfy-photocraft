@@ -4,6 +4,38 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-09 (late): the leftovers of Phases 2 and 3
+
+**Landed**
+
+- Generative layer metadata (Phase 2 item 5): every layer a generative command makes carries a
+  `GenerativeInfo` (command, prompt as typed, resolved template, seed, steps, guidance, edge,
+  request rect, name; images add size and transparent) as JSON in a PSD additional-layer-info
+  block keyed `cpGn`, so upstream's `Layer` is untouched and the record survives PSD round
+  trips and `Layer::duplicate`. `generate.info` reads it.
+- `generate.similar` (Edit › Generate Similar, translated ×13, enabled on a generative layer):
+  runs what made the layer again with a new seed in the same place, the layer's mask as the
+  area (no selection needed), the result a layer above it. Fills and edits re-run as they were
+  (the same resolved template); an expanded area is filled again with the expand's prompt
+  through the fill templates (its canvas already exists); a generated image is generated
+  again as a layer. Research gate as usual.
+- The picker's installed badges: `generate.models` takes `async: true` and probes the server
+  on a worker (`jobs::run`, result = the usual answer); the bar starts it when it loads its
+  templates, keeps the job id, and marks templates whose files the server lacks "(not
+  installed)" (translated). The bar never waits for the server.
+- The Crop tool's expand state (Phase 3): a Generative Expand checkbox in the Crop options bar
+  (`ToolOptions::crop_generative`); on ↵ with a frame beyond the canvas, `commit_crop` crops to
+  the part inside first (when that is not the whole canvas) and then runs `generate.expand`
+  with the overhang as pads, so the model paints the new area; an empty prompt continues the
+  scene. Off, the canvas just grows as before.
+- The control-protocol script test of the Phase 2 DoD already existed as
+  `generative_bar_tests::the_menu_opens_the_bar_and_generate_runs_the_fill_with_variations`
+  (select → `ui.set` → generate → `ui.inspect` against the fake); the roadmap now says so.
+- Tests: two engine tests (metadata + similar for fills, duplication; images and expands), the
+  crop test (beyond, partly inside, option off), the bar test checks the badges.
+
+**Open**: preview frames in the bar; a permissive matting default; Qwen-Image-Layered.
+
 ## 2026-10-09 (late, Phase 3): Generative Edit, and the automatic purge on a model switch
 
 **Landed**

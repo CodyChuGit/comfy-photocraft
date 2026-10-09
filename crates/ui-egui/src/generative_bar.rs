@@ -31,6 +31,10 @@ pub struct TemplateChoice {
     pub name: String,
     /// Research-licence templates are listed but disabled until the preference allows them.
     pub allowed: bool,
+    /// Whether the server has every model file the template needs (None until the background
+    /// probe answers, or when no server answers); the picker marks the missing ones.
+    #[serde(default)]
+    pub installed: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -64,6 +68,9 @@ pub struct GenerativeBar {
     /// The job whose progress the bar drew this frame (the modal progress dialog stays away).
     #[serde(skip)]
     showing_job: Option<u64>,
+    /// The background `generate.models` probe filling in [`TemplateChoice::installed`].
+    #[serde(skip)]
+    probe_job: Option<u64>,
 }
 
 impl Default for GenerativeBar {
@@ -82,6 +89,7 @@ impl Default for GenerativeBar {
             results_doc: None,
             had_selection: false,
             showing_job: None,
+            probe_job: None,
         }
     }
 }
@@ -127,12 +135,37 @@ fn load_templates(app: &mut PhotocraftApp) {
                         id: t["id"].as_str()?.to_string(),
                         name: t["name"].as_str().unwrap_or_default().to_string(),
                         allowed: t["allowed"].as_bool().unwrap_or(false),
+                        installed: None,
                     })
                 })
                 .collect()
         })
         .unwrap_or_default();
     app.ui.generative_bar.templates = templates;
+    // Which of them the server has: asked on a worker (the desktop app) so the bar never waits
+    // for the server; inline (tests, web) the answer lands at once. No server configured: the
+    // badges stay unknown.
+    if app.ui.generative_bar.probe_job.is_none() && !app.session.prefs().integrations.comfy_server.trim().is_empty() {
+        match app.run("generate.models", json!({"probe": true, "async": true})) {
+            Ok(v) if v.get("pending").and_then(Value::as_bool) == Some(true) => app.ui.generative_bar.probe_job = v.get("job").and_then(Value::as_u64),
+            Ok(v) => apply_installed(app, &v),
+            Err(_) => {}
+        }
+    }
+}
+
+/// Mark each picker template installed or not from a `generate.models` answer (a template is
+/// installed when every one of its model files is; unknown stays unknown).
+fn apply_installed(app: &mut PhotocraftApp, v: &Value) {
+    let Some(list) = v["templates"].as_array() else { return };
+    for t in list {
+        let Some(id) = t["id"].as_str() else { continue };
+        let slots: Vec<Option<bool>> = t["models"].as_array().map(|a| a.iter().map(|m| m["installed"].as_bool()).collect()).unwrap_or_default();
+        let installed = if slots.iter().any(Option::is_none) { None } else { Some(slots.iter().all(|s| *s == Some(true))) };
+        if let Some(c) = app.ui.generative_bar.templates.iter_mut().find(|c| c.id == id) {
+            c.installed = installed;
+        }
+    }
 }
 
 /// The template id the next run uses: the bar's choice or the preference's default (`auto` =
@@ -187,6 +220,13 @@ fn apply_result(app: &mut PhotocraftApp, v: &Value, doc: Option<usize>) {
 /// A background job ended: a fill records its result layers in the bar, whether the bar started
 /// it or a script / the dialog did (while the bar has no job of its own).
 pub fn on_event(app: &mut PhotocraftApp, e: &JobEvent) {
+    if app.ui.generative_bar.probe_job == Some(e.id.0) {
+        app.ui.generative_bar.probe_job = None;
+        if let JobOutcome::Done(v) = &e.outcome {
+            apply_installed(app, v);
+        }
+        return;
+    }
     let active = app.session.active_index();
     let bar = &mut app.ui.generative_bar;
     let own = bar.job == Some(e.id.0);
@@ -394,8 +434,16 @@ fn idle(ui: &mut egui::Ui, app: &mut PhotocraftApp, results: &[u64], default_tem
     // Template picker: Auto (the fastest permissive tier the server has), then every fill
     // template, research ones only when the preference allows.
     let mut current = default_template.to_string();
+    // Templates the server lacks files for stay listed (the engine says what is missing) but
+    // say so.
+    let labels: Vec<(String, String)> = bar
+        .templates
+        .iter()
+        .filter(|c| c.allowed || research || c.id == current)
+        .map(|c| (c.id.clone(), if c.installed == Some(false) { format!("{} ({})", c.name, tl!("not installed")) } else { c.name.clone() }))
+        .collect();
     let mut options: Vec<(String, &str)> = vec![(photocraft_engine::generate_cmds::AUTO_TEMPLATE.to_string(), "Auto")];
-    options.extend(bar.templates.iter().filter(|c| c.allowed || research || c.id == current).map(|c| (c.id.clone(), c.name.as_str())));
+    options.extend(labels.iter().map(|(id, l)| (id.clone(), l.as_str())));
     if crate::widgets::dropdown(ui, "generative-template", &mut current, &options, 150.0) {
         bar.template = current;
     }

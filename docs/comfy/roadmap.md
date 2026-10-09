@@ -11,8 +11,8 @@ code map is in [`codebase-orientation.md`](codebase-orientation.md).
 |---|---|---|
 | 0 Foundation | ✅ 2026-10-08 | This documentation, the Windows toolchain, a green release build, the `comfy-photocraft` branch |
 | 1 Backend + headless Generative Fill | ✅ 2026-10-09: live against ComfyUI 0.39.0 with Qwen-Image-2.1, Krea 2 Turbo and Qwen-Image-Edit-2511 (numbers in the dev log) | `photocraft-genai` crate, ComfyUI client, `generate.fill` / `generate.image` (pulled forward from Phase 3) / `generate.health` / `generate.models` from the CLI and MCP |
-| 2 Generative Fill in the app | 🟡 2026-10-09: menu rows, the task bar under the selection (prompt, template picker, variations, progress, switcher) and the Preferences page work end to end; layer metadata and the script test pending | Prompt bar, progress, variations, generative layers with masks, model picker, preferences |
-| 3 The Firefly core set | 🟢 2026-10-09: Generate Image (with a transparent option), Generative Expand, Generative Edit (`generate.edit`, the whole picture by instruction, masked to the selection) and Remove Background (`generate.removeBackground`, Qwen-Image-2.1's RGBA matte, research opt-in) live; a permissive matting model and the Crop tool's expand state pending | Expand, Generate Image, instruction Edit, Remove Background |
+| 2 Generative Fill in the app | 🟢 2026-10-09: menu rows, the task bar under the selection (prompt, template picker with installed badges, variations, progress, switcher), the Preferences page, generative layer metadata with Generate Similar, and the control-protocol test (`generative_bar_tests`) | Prompt bar, progress, variations, generative layers with masks, model picker, preferences |
+| 3 The Firefly core set | 🟢 2026-10-09: Generate Image (with a transparent option), Generative Expand (also from the Crop tool), Generative Edit (`generate.edit`, the whole picture by instruction, masked to the selection) and Remove Background (`generate.removeBackground`, Qwen-Image-2.1's RGBA matte, research opt-in) live; a permissive matting model pending | Expand, Generate Image, instruction Edit, Remove Background |
 | 3.5 Select by text (SAM 3.1) | 🟡 2026-10-09: `select.byText` and `select.subjectML` live (text prompts); point/box prompts and soft-matte refinement pending | `select.byText`, ML Select Subject, point/box object selection, SAM-backed mattes for Remove Background |
 | 4 Models and workflows as data | ⬜ | Model catalogue, workflow template import, references, LoRAs, downloads with checksums |
 | 4.5 Assistant | ⬜ | In-app assistant panel over a local LLM/VLM, driving the command registry; prompt enhancement, auto-naming |
@@ -95,8 +95,18 @@ fills and screenshots is committed as a test; `ui.inspect` exposes the task bar 
 as hidden sibling layers switched by `generate.variation`), 6 (generated Preferences page) and 7
 in its first form (the bar's template picker, research templates gated) are in; see the dev log
 entries of 2026-10-09. The generated schema dialog remains for Generate Image, Select by Text and
-for a hidden bar. Open: item 5 (generative layer metadata), the committed control-protocol script
-test of the DoD, installed-model badges in the picker, preview frames.
+for a hidden bar. **Closed 2026-10-09 (late):** item 5, generative layer metadata: every layer
+a generative command makes carries a `GenerativeInfo` (command, prompt as typed, resolved
+template, seed, steps, guidance, edge, request rect, name; for images the size and the
+transparent flag) in a PSD additional-layer-info block (`cpGn`, so it survives PSD round trips
+and duplication); `generate.info` reads it and `generate.similar` (Edit › Generate Similar,
+enabled on such a layer) runs it again with a new seed in the same place, the layer's mask as
+the area, the result above it. The picker's installed badges: the bar starts a background
+`generate.models` probe (`async: true`) and marks templates whose files the server lacks "(not
+installed)". The control-protocol script test of the DoD is
+`generative_bar_tests::the_menu_opens_the_bar_and_generate_runs_the_fill_with_variations`
+(select → `ui.set` → generate → `ui.inspect`, against the fake server). Still open: preview
+frames.
 
 **Performance pass 2026-10-09** (numbers in [`benchmarks.md`](benchmarks.md)): Lightning tiers
 for 2511 with `defaultFillTemplate = auto` picking the 8-step tier when its LoRA is installed, a
@@ -143,10 +153,12 @@ Edit…): the composite goes to the official 2511 edit graph with no noise mask 
 templates, `edit-lightning-8` and `edit`, `auto` between them), the result is a layer masked
 to the selection when there is one; and the **automatic purge** before a run whose model files
 differ from the last run's (`run_switching`, every generative command), which replaces the
-31–131 s thrash after a graph switch with one reload. Open: the Crop tool's expand state, a
-prompt study for Expand, Qwen-Image-Layered ("image to layers": ComfyUI ships
-`EmptyQwenImageLayeredLatentImage` and official templates; the weights are not installed here),
-a permissive matting default.
+31–131 s thrash after a graph switch with one reload. The **Crop tool's expand state** followed:
+the Crop options bar has a Generative Expand checkbox; with it on, a frame dragged beyond the
+canvas crops to the part inside (when that is not the whole canvas) and then has the model
+paint the overhang through `generate.expand` (`canvas::commit_crop`). Open: a prompt study for
+Expand, Qwen-Image-Layered ("image to layers": ComfyUI ships `EmptyQwenImageLayeredLatentImage`
+and official templates; the weights are not installed here), a permissive matting default.
 
 ## Phase 3.5: Select by text (SAM 3.1)
 

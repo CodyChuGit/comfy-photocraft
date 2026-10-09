@@ -195,6 +195,11 @@ own.
   makes the mask exactly the selection (or the added canvas). The composite under the mask is
   untouched. For RGBA outputs (`alpha_is_matte`) the alpha becomes the mask instead of being baked
   into the pixels, so Remove Background never destroys data.
+- **Memory.** Every layer a generative command makes carries a `GenerativeInfo` (the command,
+  the prompt as typed, the resolved template, seed, steps, guidance, edge, the request rect and
+  the name; images add their size and transparent flag) as JSON in a PSD additional-layer-info
+  block keyed `cpGn`: no change to upstream's `Layer`, and it survives PSD round trips and
+  `Layer::duplicate`. `generate.info` reads it; `generate.similar` re-runs it.
 - **Depth.** The new layer takes the document's depth and profile; 8-bit model output is
   up-converted at the boundary. 32-bit float documents get linear-light results converted from
   sRGB, like `io` does for imports.
@@ -212,6 +217,8 @@ to shared files).
 | `generate.image` | Edit › Generate Image… | `{"prompt","model","seed","steps","width","height","transparent":bool=false,"references":[path|layer]?,"target":"layer"|"document"}` | backend |
 | `generate.edit` | Edit › Generative Edit… | `{"prompt":instruction,"negative"?,"steps"?,"guidance"?,"edge":"soft|hard","variations":1..4,"seed"?,"template":id?=auto,"model"?,"name"?}` → the composite re-rendered by instruction as a new layer, masked to the selection when there is one | document, backend |
 | `generate.removeBackground` | Edit › Remove Background (Generative)… | `{"prompt":str?=what to keep,"asSelection":bool=false,"sampleAllLayers":bool=false,"mode","layer":id?=active,"seed"?,"template"?,"model"?}` → the model's RGBA matte as the layer's mask or the selection | unlocked pixel layer, backend |
+| `generate.similar` | Edit › Generate Similar | `{"layer":id?=active,"seed"?,"variations":1..4}` → runs what made the layer again with a new seed in the same place (its mask is the area), a new layer above it | a generative layer, backend |
+| `generate.info` | — | `{"layer":id?=active}` → `{"generative":{command,prompt,template,seed,…}|null}` | document (query) |
 | `generate.upscale` | Image › Generative Upscale… | `{"model","factor":2|4}` | pixel layer, backend |
 | `generate.models` | — | `{}` → `{models:[…], server}` | always (query, `journal: false`) |
 | `generate.health` | — | `{}` → `{ok, version, vramFree, queue}` | always (query) |

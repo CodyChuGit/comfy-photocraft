@@ -21,6 +21,7 @@ use photocraft_genai::template::{self, License, Template};
 use photocraft_genai::{GenerativeBackend, Gray8, Health, Request, Rgba8, Task};
 use photocraft_geom::Rect;
 use photocraft_raster::Surface;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::commands::{CommandSpec, layer_param};
@@ -75,6 +76,51 @@ pub(crate) const MATTE_DEFAULT_PROMPT: &str = "Remove the background, and output
 /// A matte request goes out at up to this many pixels: the model's own working size, and the
 /// matte only needs to be resampled back, not the pixels.
 const MAX_MATTE_REQUEST_PIXELS: u64 = 1024 * 1024;
+
+pub(crate) const INFO: &str = "generate.info";
+pub(crate) const SIMILAR: &str = "generate.similar";
+
+/// The PSD additional-layer-info key a generative layer keeps its [`GenerativeInfo`] under
+/// (JSON). An unmodelled block, so it survives PSD round trips and `Layer::duplicate`.
+pub const GENERATIVE_BLOCK: [u8; 4] = *b"cpGn";
+
+/// What a generative layer remembers about the run that made it: `generate.info` reads it,
+/// `generate.similar` re-runs it with a new seed.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct GenerativeInfo {
+    /// `generate.fill`, `generate.expand`, `generate.edit` or `generate.image`.
+    pub command: String,
+    /// The prompt as typed (the template's wrapper is applied again on a re-run).
+    pub prompt: String,
+    pub negative: String,
+    /// The template that ran (`auto` resolved).
+    pub template: String,
+    pub seed: u64,
+    pub steps: u32,
+    pub guidance: f32,
+    pub edge: String,
+    /// The request rectangle on the canvas: x, y, width, height.
+    pub rect: [i32; 4],
+    pub name: String,
+    /// `generate.image` only: the size asked for and whether transparency was.
+    pub width: u32,
+    pub height: u32,
+    pub transparent: bool,
+}
+
+/// Remember `info` on `layer` (replacing an earlier one).
+pub(crate) fn set_generative_info(layer: &mut Layer, info: &GenerativeInfo) {
+    layer.psd_blocks.retain(|(k, _)| *k != GENERATIVE_BLOCK);
+    if let Ok(bytes) = serde_json::to_vec(info) {
+        layer.psd_blocks.push((GENERATIVE_BLOCK, Arc::new(bytes)));
+    }
+}
+
+/// The run that made `layer`, if a generative command did.
+pub fn generative_info(layer: &Layer) -> Option<GenerativeInfo> {
+    layer.psd_blocks.iter().find(|(k, _)| *k == GENERATIVE_BLOCK).and_then(|(_, d)| serde_json::from_slice(d).ok())
+}
 
 pub(crate) const EDIT: &str = "generate.edit";
 pub(crate) const DEFAULT_EDIT_TEMPLATE: &str = "qwen-edit-2511/edit";
@@ -621,7 +667,11 @@ fn write_rgba8(layer: &mut Layer, src: &Rgba8, rect: Rect) -> Result<()> {
 /// Everything `generate.image` needs, validated before any network work.
 struct ImagePlan {
     template: Template,
+    /// The prompt the model gets (wrapped for transparency when asked).
     prompt: String,
+    /// The prompt as typed, remembered on the layer.
+    typed: String,
+    transparent: bool,
     negative: String,
     seed: u64,
     steps: u32,
@@ -667,16 +717,7 @@ pub(crate) fn plan_common(s: &Session, cmd: &str, p: &Value, default_template: &
             template.meta.id
         )));
     }
-    let seed = match p.get("seed") {
-        None | Some(Value::Null) => photocraft_genai::random_seed(),
-        Some(v) => {
-            let x = v
-                .as_f64()
-                .filter(|x| x.is_finite() && *x >= 0.0 && x.fract() == 0.0 && *x < 9_007_199_254_740_992.0)
-                .ok_or_else(|| bad(cmd, "`seed` must be a non-negative integer below 2^53"))?;
-            x as u64
-        }
-    };
+    let seed = parse_seed(cmd, p)?;
     // 0 (the generated dialog's default) means the template's own step count.
     let steps = opt_num(cmd, p, "steps", 0.0, 250.0)?.map_or(0, |x| x.round() as u32);
     let guidance = opt_num(cmd, p, "guidance", 0.0, 30.0)?.map_or(0.0, |x| x as f32);
@@ -690,6 +731,20 @@ pub(crate) fn plan_common(s: &Session, cmd: &str, p: &Value, default_template: &
     }
     template.model_bindings(&models).map_err(|e| bad(cmd, e.to_string()))?;
     Ok(Common { template, prompt, negative, seed, steps, guidance, models, name })
+}
+
+/// `seed`: absent or null = random; else a whole number below 2^53.
+pub(crate) fn parse_seed(cmd: &str, p: &Value) -> Result<u64> {
+    match p.get("seed") {
+        None | Some(Value::Null) => Ok(photocraft_genai::random_seed()),
+        Some(v) => {
+            let x = v
+                .as_f64()
+                .filter(|x| x.is_finite() && *x >= 0.0 && x.fract() == 0.0 && *x < 9_007_199_254_740_992.0)
+                .ok_or_else(|| bad(cmd, "`seed` must be a non-negative integer below 2^53"))?;
+            Ok(x as u64)
+        }
+    }
 }
 
 /// A side length rounded down to the latent grid, within the allowed range.
@@ -727,7 +782,9 @@ fn plan_image(s: &Session, p: &Value) -> Result<ImagePlan> {
     let name = name.unwrap_or_else(|| format!("Generated: {}", short(&prompt)));
     // A transparent result: the template says how its model is asked for one (Qwen-Image-2.1
     // decodes RGBA); the layer keeps the alpha the PNG comes back with.
-    let prompt = if opt_bool(IMAGE, p, "transparent", false)? {
+    let transparent = opt_bool(IMAGE, p, "transparent", false)?;
+    let typed = prompt.clone();
+    let prompt = if transparent {
         let format = template.meta.prompt_format_transparent.trim();
         if format.is_empty() {
             return Err(bad(IMAGE, format!("template `{}` cannot output transparency; `qwen-2.1/image` can", template.meta.id)));
@@ -736,7 +793,7 @@ fn plan_image(s: &Session, p: &Value) -> Result<ImagePlan> {
     } else {
         prompt
     };
-    Ok(ImagePlan { template, prompt, negative, seed, steps, guidance, name, models, width, height, to_document })
+    Ok(ImagePlan { template, prompt, typed, transparent, negative, seed, steps, guidance, name, models, width, height, to_document })
 }
 
 fn image_enabled(_: &Session) -> std::result::Result<(), String> {
@@ -748,9 +805,24 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
     let backend = backend(s)?;
     let server = server_key(s);
     let server_doc = server.clone();
-    let ImagePlan { template, prompt, negative, seed, steps, guidance, name, models, width, height, to_document } = plan;
+    let ImagePlan { template, prompt, typed, transparent, negative, seed, steps, guidance, name, models, width, height, to_document } = plan;
     let label = name.clone();
     let tid = template.meta.id.clone();
+    // What the result layer remembers (`generate.similar` re-runs it).
+    let info = GenerativeInfo {
+        command: IMAGE.to_string(),
+        prompt: typed,
+        negative: negative.clone(),
+        template: tid.clone(),
+        seed,
+        steps,
+        guidance,
+        name: name.clone(),
+        width,
+        height,
+        transparent,
+        ..GenerativeInfo::default()
+    };
     let req = Request {
         template: template.meta.id.clone(),
         prompt,
@@ -780,6 +852,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
                 let mut doc = Document::new(doc_name, Size::new(out.width, out.height), ColorMode::Rgb, SampleType::U8);
                 let mut layer = Layer::raster("Generated", doc.pixel_format());
                 write_rgba8(&mut layer, &out, doc.bounds())?;
+                set_generative_info(&mut layer, &GenerativeInfo { seed: resp.seed, rect: [0, 0, out.width as i32, out.height as i32], ..info });
                 doc.layers.push(layer);
                 let index = s.add_document(doc, None);
                 Ok(
@@ -801,6 +874,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
             ctx.progress(0.96, "Placing");
             let mut layer = Layer::raster(name, doc.pixel_format());
             write_rgba8(&mut layer, &out, canvas)?;
+            set_generative_info(&mut layer, &GenerativeInfo { seed: resp.seed, rect: [canvas.x0, canvas.y0, w as i32, h as i32], ..info });
             let nid = doc.insert_above(*active, layer);
             *active = Some(nid);
             Ok((nid, resp.seed, resp.run_id, resp.elapsed_ms, w, h))
@@ -814,6 +888,8 @@ struct FillJob {
     backend: Arc<dyn GenerativeBackend>,
     /// The server's key for [`run_switching`].
     server: String,
+    /// The command the layers remember ([`GenerativeInfo::command`]).
+    command: &'static str,
     template_id: String,
     auto: bool,
     /// The candidates `auto` picks from ([`AUTO_FILL_ORDER`] or [`AUTO_EXPAND_ORDER`]).
@@ -864,7 +940,7 @@ fn fill_region(
         let p = o.picture;
         prefill_outside(&mut image, Rect::new(p.x0 - rect.x0, p.y0 - rect.y0, p.x1 - rect.x0, p.y1 - rect.y0));
     }
-    let FillJob { backend, server, template_id, auto, auto_order, prompt, negative, seed, steps, guidance, name, models, variations, edge } = job;
+    let FillJob { backend, server, command, template_id, auto, auto_order, prompt, negative, seed, steps, guidance, name, models, variations, edge } = job;
     let mask = Gray8::new(w, h, coverage.iter().map(|c| (c * 255.0 + 0.5) as u8).collect()).map_err(gen_err)?;
     // The model gets a softened mask so it re-renders a band around the area and blends it (much
     // wider for an expand, whose seam runs along a whole picture edge and whose sky or water tone
@@ -935,6 +1011,25 @@ fn fill_region(
         let mut mask_surface = Surface::with_default(PixelFormat::GRAY8, &[0.0]);
         mask_surface.write_region(rect, &layer_coverage);
         layer.mask = Some(LayerMask { surface: mask_surface, enabled: true, linked: true, density: 1.0, feather: 0.0 });
+        set_generative_info(
+            &mut layer,
+            &GenerativeInfo {
+                command: command.to_string(),
+                prompt: req.prompt.clone(),
+                negative: req.negative.clone(),
+                template: template_id.clone(),
+                seed: req.seed,
+                steps: req.steps,
+                guidance: req.guidance,
+                edge: match edge {
+                    Edge::Soft => "soft".into(),
+                    Edge::Hard => "hard".into(),
+                },
+                rect: [rect.x0, rect.y0, rect.width() as i32, rect.height() as i32],
+                name: name.clone(),
+                ..GenerativeInfo::default()
+            },
+        );
         layer.visible = i == 0;
         let nid = doc.insert_above(*active, layer);
         *active = Some(nid);
@@ -1004,6 +1099,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let job = FillJob {
         backend,
         server: server_key(s),
+        command: FILL,
         template_id: template.meta.id.clone(),
         auto,
         auto_order: AUTO_FILL_ORDER,
@@ -1164,6 +1260,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
     let job = FillJob {
         backend,
         server: server_key(s),
+        command: EXPAND,
         template_id: template.meta.id.clone(),
         auto,
         auto_order: AUTO_EXPAND_ORDER,
@@ -1302,6 +1399,7 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
     let job = FillJob {
         backend,
         server: server_key(s),
+        command: EDIT,
         template_id: template.meta.id.clone(),
         auto,
         auto_order: AUTO_EDIT_ORDER,
@@ -1504,8 +1602,29 @@ fn run_models(s: &mut Session, p: &Value) -> Result<Value> {
         Some(Value::Bool(b)) => *b,
         Some(_) => return Err(bad(MODELS, "`probe` must be true or false")),
     };
+    // `async: true` probes on a worker (the picker's installed badges): a background job whose
+    // result is this command's usual answer.
+    if probe && opt_bool(MODELS, p, "async", false)? {
+        let backend = backend(s)?;
+        return crate::jobs::run(
+            s,
+            "Checking generative models",
+            false,
+            move |ctx| {
+                ctx.progress(0.2, "Asking the server");
+                Ok(models_json(Some(backend.as_ref()), allow_research))
+            },
+            move |_, v| Ok(v),
+        );
+    }
     let backend = if probe { backend(s).ok() } else { None };
-    let health = backend.as_ref().map(|b| b.health());
+    Ok(models_json(backend.as_deref(), allow_research))
+}
+
+/// `generate.models`' answer: every template with its model slots and, with a `backend`, what
+/// the server has installed and what `auto` would pick.
+fn models_json(backend: Option<&dyn GenerativeBackend>, allow_research: bool) -> Value {
+    let health = backend.map(|b| b.health());
     let online = health.as_ref().is_some_and(|h| h.ok);
     let mut folders: BTreeMap<String, Option<Vec<String>>> = BTreeMap::new();
     let mut templates = Vec::new();
@@ -1514,7 +1633,7 @@ fn run_models(s: &mut Session, p: &Value) -> Result<Value> {
         let mut slots = Vec::new();
         for slot in &m.models {
             let files = if online {
-                folders.entry(slot.folder.clone()).or_insert_with(|| backend.as_ref().and_then(|b| b.model_files(&slot.folder).ok())).clone()
+                folders.entry(slot.folder.clone()).or_insert_with(|| backend.and_then(|b| b.model_files(&slot.folder).ok())).clone()
             } else {
                 None
             };
@@ -1529,10 +1648,112 @@ fn run_models(s: &mut Session, p: &Value) -> Result<Value> {
         }));
     }
     // What `auto` would pick right now (needs the server's model lists).
-    let auto_fill = backend.as_ref().filter(|_| online).map(|b| resolve_auto(b.as_ref(), AUTO_FILL_ORDER, DEFAULT_FILL_TEMPLATE));
-    let auto_expand = backend.as_ref().filter(|_| online).map(|b| resolve_auto(b.as_ref(), AUTO_EXPAND_ORDER, DEFAULT_EXPAND_TEMPLATE));
-    let auto_edit = backend.as_ref().filter(|_| online).map(|b| resolve_auto(b.as_ref(), AUTO_EDIT_ORDER, DEFAULT_EDIT_TEMPLATE));
-    Ok(json!({"server": health, "templates": templates, "autoFill": auto_fill, "autoExpand": auto_expand, "autoEdit": auto_edit}))
+    let auto = |order, fallback| backend.filter(|_| online).map(|b| resolve_auto(b, order, fallback));
+    json!({
+        "server": health, "templates": templates,
+        "autoFill": auto(AUTO_FILL_ORDER, DEFAULT_FILL_TEMPLATE),
+        "autoExpand": auto(AUTO_EXPAND_ORDER, DEFAULT_EXPAND_TEMPLATE),
+        "autoEdit": auto(AUTO_EDIT_ORDER, DEFAULT_EDIT_TEMPLATE),
+    })
+}
+
+/// `generate.info`: what a layer remembers about the run that made it.
+fn run_info(s: &mut Session, p: &Value) -> Result<Value> {
+    let id = layer_param(s, p)?;
+    let d = s.active().ok_or(EngineError::NoDocument)?;
+    let layer = d.doc.layer(id).ok_or(EngineError::NoLayer(id))?;
+    Ok(json!({"layer": id.0, "generative": generative_info(layer)}))
+}
+
+fn similar_enabled(s: &Session) -> std::result::Result<(), String> {
+    web_unavailable()?;
+    let d = s.active().ok_or("no document open")?;
+    let layer = crate::active_layer_of(s)?;
+    let _ = d;
+    if generative_info(layer).is_none() {
+        return Err("the active layer was not made by a generative command".into());
+    }
+    Ok(())
+}
+
+/// `generate.similar`: run what made the layer again with a new seed, in the same place (the
+/// layer's mask is the area), as a new layer above it.
+fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
+    let id = layer_param(s, p)?;
+    let d = s.active().ok_or(EngineError::NoDocument)?;
+    let layer = d.doc.layer(id).ok_or(EngineError::NoLayer(id))?;
+    let info = generative_info(layer).ok_or_else(|| EngineError::Other("the layer was not made by a generative command".into()))?;
+    let seed = parse_seed(SIMILAR, p)?;
+    let variations = parse_variations(SIMILAR, p)?;
+    if info.command == IMAGE {
+        // A generated image: the same request, as a layer above this one.
+        let q = json!({
+            "prompt": info.prompt, "negative": info.negative, "template": info.template, "seed": seed, "steps": info.steps,
+            "guidance": info.guidance, "target": "layer", "width": info.width, "height": info.height, "name": info.name,
+            "transparent": info.transparent,
+        });
+        s.edit("Select Layer", |_, active| {
+            *active = Some(id);
+            Ok(())
+        })?;
+        return run_image(s, &q);
+    }
+    let template = template::find(&info.template).map_err(|e| bad(SIMILAR, e.to_string()))?;
+    if template.meta.license == License::Research && !s.prefs().integrations.allow_research_models {
+        return Err(EngineError::Other(format!(
+            "`{}` uses a research-only model; turn on Allow Research-Only Models in Preferences › AI Integrations to use it",
+            template.meta.id
+        )));
+    }
+    let canvas = d.doc.bounds();
+    let rect = Rect::new(info.rect[0], info.rect[1], info.rect[0].saturating_add(info.rect[2]), info.rect[1].saturating_add(info.rect[3])).intersect(&canvas);
+    if rect.is_empty() {
+        return Err(EngineError::Other("the layer's area is no longer on the canvas".into()));
+    }
+    // An expand layer's area is regenerated as a fill (its canvas is already there); edits and
+    // fills run as what they were.
+    let (command, auto, auto_order, template_id) = match info.command.as_str() {
+        c if c == EDIT => (EDIT, false, AUTO_EDIT_ORDER, info.template.clone()),
+        c if c == FILL => (FILL, false, AUTO_FILL_ORDER, info.template.clone()),
+        _ => (FILL, true, AUTO_FILL_ORDER, DEFAULT_FILL_TEMPLATE.to_string()),
+    };
+    let backend = backend(s)?;
+    let job = FillJob {
+        backend,
+        server: server_key(s),
+        command,
+        template_id,
+        auto,
+        auto_order,
+        prompt: info.prompt.clone(),
+        negative: info.negative.clone(),
+        seed,
+        steps: info.steps,
+        guidance: info.guidance,
+        name: info.name.clone(),
+        models: Vec::new(),
+        variations,
+        edge: if info.edge == "hard" { Edge::Hard } else { Edge::Soft },
+    };
+    let label = format!("Generate Similar: {}", short(&info.prompt));
+    crate::jobs::edit_job(
+        s,
+        &label,
+        move |doc, active, ctx| {
+            let n = rect.width() as usize * rect.height() as usize;
+            let coverage: Vec<f32> = match doc.layer(id).and_then(|l| l.mask.as_ref()) {
+                Some(m) => {
+                    let k = m.surface.channels().max(1);
+                    m.surface.read_region(rect).chunks_exact(k).map(|c| c.first().copied().unwrap_or(0.0).clamp(0.0, 1.0)).collect()
+                }
+                None => vec![1.0; n],
+            };
+            // The result lands above the layer it is similar to.
+            *active = Some(id);
+            fill_region(doc, active, ctx, job, rect, coverage, None)
+        },
+        move |(made, w, h, request, template_id)| made_json(&made, w, h, request, &template_id),
+    )
 }
 
 fn always(_: &Session) -> std::result::Result<(), String> {
@@ -1593,6 +1814,27 @@ pub fn specs() -> Vec<CommandSpec> {
             enabled: remove_bg_enabled,
             run: run_remove_bg,
             journal: true,
+        },
+        CommandSpec {
+            id: SIMILAR,
+            label: "Generate Similar",
+            // Placed by the menu catalogue under Edit, with the other generative items.
+            menu: &[],
+            shortcut: None,
+            params: r#"{"layer":{id?=active},"seed":{u64?=random},"variations":int=1} → as the command that made the layer (runs it again with a new seed in the same place: the layer's mask is the area, the result is a new layer above it; a generated image is generated again as a layer; an expanded area is filled again with its prompt; needs a ComfyUI server)"#,
+            enabled: similar_enabled,
+            run: run_similar,
+            journal: true,
+        },
+        CommandSpec {
+            id: INFO,
+            label: "Generative Layer Info",
+            menu: &[],
+            shortcut: None,
+            params: r#"{"layer":{id?=active}} → {"layer","generative":{"command","prompt","negative","template","seed","steps","guidance","edge","rect":[x,y,w,h],"name","width","height","transparent"}|null} (what a layer remembers about the generative run that made it; kept with the layer through PSD round trips)"#,
+            enabled: doc_enabled,
+            run: run_info,
+            journal: false,
         },
         CommandSpec {
             id: VARIATION,
@@ -1657,3 +1899,7 @@ mod matte_tests;
 #[cfg(test)]
 #[path = "generate_edit_tests.rs"]
 mod edit_tests;
+
+#[cfg(test)]
+#[path = "generate_similar_tests.rs"]
+mod similar_tests;

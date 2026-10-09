@@ -3166,6 +3166,34 @@ pub fn commit_crop(app: &mut PhotocraftApp) {
     let (x, y) = (r[0].round(), r[1].round());
     let (w, h) = ((r[2] - r[0]).round().max(1.0), (r[3] - r[1]).round().max(1.0));
     let delete = app.ui.tool_options.crop_delete;
+    // comfy-photocraft: with Generative Expand on, the part of the frame beyond the canvas is
+    // painted by the model: crop to the part inside first (when that is not the whole canvas),
+    // then `generate.expand` grows the canvas by the overhang in one more undo step.
+    if app.ui.tool_options.crop_generative
+        && let Some((cw, ch)) = app.session.active().map(|d| (f64::from(d.doc.size.width), f64::from(d.doc.size.height)))
+    {
+        let (left, top) = ((-x).max(0.0).round(), (-y).max(0.0).round());
+        let (right, bottom) = ((x + w - cw).max(0.0).round(), (y + h - ch).max(0.0).round());
+        if left + top + right + bottom > 0.0 && left.is_finite() && top.is_finite() && right.is_finite() && bottom.is_finite() {
+            let (ix0, iy0) = (x.max(0.0), y.max(0.0));
+            let (ix1, iy1) = ((x + w).min(cw), (y + h).min(ch));
+            let inside_is_whole = ix0 <= 0.0 && iy0 <= 0.0 && ix1 >= cw && iy1 >= ch;
+            if ix1 - ix0 >= 1.0
+                && iy1 - iy0 >= 1.0
+                && !inside_is_whole
+                && app.run("image.crop", json!({"x": ix0, "y": iy0, "width": ix1 - ix0, "height": iy1 - iy0, "deleteCroppedPixels": delete})).is_err()
+            {
+                return;
+            }
+            if let Err(e) = app.run("generate.expand", json!({"left": left, "top": top, "right": right, "bottom": bottom})) {
+                crate::notices::error(app, format!("Generative Expand: {e}"));
+            }
+            if let Some(i) = app.session.active_index() {
+                app.ui.views[i].fit_pending = true;
+            }
+            return;
+        }
+    }
     if app.run("image.crop", json!({"x": x, "y": y, "width": w, "height": h, "deleteCroppedPixels": delete})).is_ok()
         && let Some(i) = app.session.active_index()
     {

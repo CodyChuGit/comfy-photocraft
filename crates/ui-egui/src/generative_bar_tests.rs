@@ -42,7 +42,9 @@ fn the_menu_opens_the_bar_and_generate_runs_the_fill_with_variations() {
     let ids: Vec<&str> = app.ui.generative_bar.templates.iter().map(|t| t.id.as_str()).collect();
     assert!(ids.contains(&"qwen-edit-2511/fill") && ids.contains(&"qwen-2.1/fill"), "{ids:?}");
     assert!(!app.ui.generative_bar.templates.iter().find(|t| t.id == "qwen-2.1/fill").unwrap().allowed, "research template gated");
-    assert!(fake.state().requests.is_empty(), "listing templates for the picker contacts no server");
+    assert!(!fake.state().requests.iter().any(|r| r == "POST /prompt"), "listing templates for the picker queues nothing");
+    // The installed badges: the probe (inline here) found every file of the built-in templates.
+    assert!(app.ui.generative_bar.templates.iter().all(|t| t.installed == Some(true)), "{:?}", app.ui.generative_bar.templates);
 
     // An empty prompt does nothing; a prompt generates, inline here (no background jobs).
     assert!(generate(&mut app).is_err());
