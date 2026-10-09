@@ -40,12 +40,13 @@ fn research_templates_need_the_opt_in() {
     let st = fake.state();
     let g = &st.prompts[0].1;
     assert_eq!(g["6"]["class_type"], "TextEncodeQwenImage21");
-    assert_eq!(g["6"]["inputs"]["image_1"], json!(["4", 0]));
-    assert_eq!(g["6"]["inputs"]["prompt"], "a red bicycle");
+    assert_eq!(g["6"]["inputs"]["images.image_1"], json!(["4", 0]), "the picture to edit (grouped input, dotted API key)");
+    assert_eq!(g["6"]["inputs"]["images.image_2"], json!(["7", 0]), "the selection mask as a reference");
+    let prompt = g["6"]["inputs"]["prompt"].as_str().unwrap();
+    assert!(prompt.contains("a red bicycle") && prompt.contains("image 2"), "wrapped as a local-edit instruction: {prompt}");
     assert_eq!(g["4"]["inputs"]["image"], st.uploads[0].0, "the composite crop");
     assert_eq!(g["7"]["inputs"]["image"], st.uploads[1].0, "the selection mask");
-    assert_eq!(g["9"]["class_type"], "SetLatentNoiseMask");
-    assert_eq!(g["9"]["inputs"]["samples"], json!(["6", 2]), "the encoder's latent of the input");
+    assert_eq!(g["10"]["inputs"]["latent_image"], json!(["6", 2]), "the encoder's empty latent sized to image 1");
     assert_eq!(g["5"]["class_type"], "QwenImage21Cache");
     assert_eq!(g["10"]["inputs"]["steps"], 25, "2.1 default");
     assert_eq!(g["10"]["inputs"]["cfg"], 1.0);

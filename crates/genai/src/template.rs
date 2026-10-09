@@ -114,6 +114,11 @@ pub struct Meta {
     pub placeholders: BTreeMap<String, Kind>,
     #[serde(default)]
     pub models: Vec<ModelSlot>,
+    /// How the user's prompt is wrapped before it reaches the model: `{prompt}` is replaced by
+    /// the text (instruction-following editors want "change X to …", not a bare noun phrase).
+    /// Empty = the prompt as typed.
+    #[serde(default)]
+    pub prompt_format: String,
     #[serde(default)]
     pub notes: String,
 }
@@ -227,6 +232,18 @@ impl Template {
         Ok(())
     }
 
+    /// The prompt as the model should see it (`meta.promptFormat` applied).
+    pub fn format_prompt(&self, prompt: &str) -> String {
+        let f = self.meta.prompt_format.trim();
+        if f.is_empty() {
+            prompt.to_string()
+        } else if f.contains("{prompt}") {
+            f.replace("{prompt}", prompt)
+        } else {
+            format!("{f} {prompt}")
+        }
+    }
+
     /// Placeholder names used in the graph, each once, in first-seen order.
     pub fn placeholders(&self) -> Vec<&str> {
         let mut all = Vec::new();
@@ -326,6 +343,18 @@ mod tests {
         assert_eq!(g["1"]["inputs"]["unet_name"], json!("qwen_image_edit_2511_fp8mixed.safetensors"));
         assert_eq!(g["6"]["inputs"]["clip"], json!(["2", 0]), "links are untouched");
         assert!(g.to_string().find("{{").is_none(), "no placeholder left");
+    }
+
+    #[test]
+    fn prompt_formats_wrap_the_prompt() {
+        let plain = find("qwen-edit-2511/fill").unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(plain.format_prompt("a red bicycle"), "a red bicycle");
+        let wrapped = find("qwen-2.1/fill").unwrap_or_else(|e| panic!("{e}"));
+        let p = wrapped.format_prompt("a red bicycle");
+        assert!(p.contains("a red bicycle") && p.contains("image 2") && !p.contains("{prompt}"), "{p}");
+        let mut t = plain.clone();
+        t.meta.prompt_format = "Make it:".into();
+        assert_eq!(t.format_prompt("blue"), "Make it: blue");
     }
 
     #[test]

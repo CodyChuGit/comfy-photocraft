@@ -487,7 +487,7 @@ impl GenerativeBackend for ComfyBackend {
 
         let client_id = crate::random_id();
         let mut bindings: BTreeMap<String, Value> = tpl.model_bindings(&req.models)?;
-        bindings.insert("prompt".into(), Value::String(req.prompt.clone()));
+        bindings.insert("prompt".into(), Value::String(tpl.format_prompt(&req.prompt)));
         bindings.insert("negative".into(), Value::String(req.negative.clone()));
         bindings.insert("seed".into(), Value::from(req.seed & ((1u64 << 53) - 1)));
         bindings.insert("steps".into(), Value::from(if req.steps == 0 { tpl.meta.defaults.steps } else { req.steps }));

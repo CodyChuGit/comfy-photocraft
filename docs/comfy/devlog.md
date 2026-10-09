@@ -4,6 +4,69 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-09: first live runs against a real ComfyUI (Phase 1 DoD met)
+
+**Setup on the dev PC** (nothing of this is in the repo; the app ships no weights, BYO models):
+ComfyUI v0.39.0 Windows portable (NVIDIA build, 2.0 GB) at `C:\Users\5090\ComfyUI\ComfyUI_windows_portable`,
+embedded Python 3.13.14, torch 2.14.0+cu130, RTX 5090 recognised. Start script
+`C:\Users\5090\ComfyUI\start-comfyui.ps1` (loopback :8188, `--preview-method auto`). Model files
+(Hugging Face, ~100 MB/s): Qwen-Image-2.1 int8 set 16.1 GB, Krea 2 Turbo fp8 set 17.4 GB,
+Qwen-Image-Edit-2511 fp8mixed 19.1 GB + its 8.7 GB encoder (VAE shared with Krea 2). The server
+listed the files without a restart.
+
+**Findings that changed code**
+
+- `TextEncodeQwenImage21`'s `latent` output is an **empty** latent sized to image 1, not an
+  encoding of it (checked in `comfy_extras/nodes_qwen.py`): 2.1 edits in context and regenerates
+  the whole picture, so `SetLatentNoiseMask` cannot inpaint with it. `qwen-2.1/fill` now sends
+  the selection mask as a second reference image and wraps the prompt in a local-edit instruction
+  (`meta.promptFormat`, new); PhotoCraft's layer mask confines the visible change. Result: correct.
+- Grouped ("autogrow") inputs are spelled `images.image_1` in the API format (the server prefixes
+  the group id; the first attempt with `image_1` failed with "unexpected keyword argument").
+- `/object_info` on 0.39.0 has every class the four templates use; `CLIPLoader` offers both
+  `qwen_image` and `krea2`.
+
+**Numbers** (1024² text-to-image; fill = 384×320 selection, 576×512 request; `ms` is the
+command's own timing, which includes upload, queue, sampling and download):
+
+| Run | Template | Time | Notes |
+|---|---|---|---|
+| Text to image, cold | `qwen-2.1/image` | 28.4 s | model + encoder load from disk included |
+| Text to image, warm | `qwen-2.1/image` | 10.8 s | 25 steps |
+| Generative Fill, warm | `qwen-2.1/fill` | 4.7 s | boat placed exactly in the selection, seamless |
+| Text to image, cold | `krea2-turbo/image` | 9.8 s | 8 steps; includes the 12 GB load |
+| Generative Fill, cold | `qwen-edit-2511/fill` | 124.2 s | 40 steps + 19 GB load; see result note below |
+
+Result note: the selection covered water on its left and rocks on its right. 2.1 (mask as a
+reference image + instruction) placed a small boat on the water, matching the scene's light and
+scale, with no visible seam. 2511 (latent noise mask) painted a larger boat on the rocks, inside
+the selection but less plausible; worth retrying with the prompt describing the whole scene and
+with the official template's `CFGNorm` node. Both results stayed inside the mask, as designed.
+Krea 2 Turbo's text-to-image (8 steps) produced a different, photographic composition at the
+same seed; Qwen-Image-2.1's fox test image is near photo quality.
+
+VRAM after the 2.1 runs: 20.6 GB in use of 32 GB (ComfyUI keeps models resident); after all
+three families had run: 21 GB (it swaps between them).
+
+Outputs in `C:\Users\5090\ComfyUI\photocraft-tests\` (`q21-image.png`, `q21-fill.psd/.png`,
+`krea2-image.png`, `q2511-fill.psd/.png`, `q21-fox.png`); the PSDs carry the masked
+"Generative Fill: …" layer above the Background. Headless invocation, from the repo root:
+
+```powershell
+.\target\release\photocraft-cli.exe --% run in.png --cmd prefs.set --params "{\"values\":{\"integrations.allowResearchModels\":true}}" --cmd select.rect --params "{\"x\":320,\"y\":560,\"width\":384,\"height\":320}" --cmd generate.fill --params "{\"prompt\":\"a small red wooden rowing boat floating on the water\",\"template\":\"qwen-2.1/fill\",\"seed\":7}" --out out.psd
+```
+
+(PowerShell: one `--%` command per line; everything after the token is passed verbatim.)
+
+**Still open**
+
+- Judge the 2511 fill quality against 2.1 on more images; consider the official template's
+  `CFGNorm` node and the Lightning 4-step LoRA for 2511.
+- Variations, the task bar and menu rows (Phase 2); `generate.edit` / `expand` /
+  `removeBackground` (Phase 3); `select.byText` with SAM 3.1 (Phase 3.5).
+- The ComfyUI server was left running after the session (`Stop-Process -Name python` or close it
+  from the start script's window to free 21 GB of VRAM).
+
 ## 2026-10-08 (later): Phase 1, the generative backend and `generate.fill`
 
 **Landed**
