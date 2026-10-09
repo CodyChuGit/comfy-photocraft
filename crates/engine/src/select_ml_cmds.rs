@@ -88,6 +88,7 @@ pub(crate) fn coverage_bounds(cov: &[f32], area: Rect) -> (Rect, u64) {
 fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Result<Value> {
     let plan = plan(s, cmd, p)?;
     let backend = generate_cmds::backend(s)?;
+    let server = generate_cmds::server_key(s);
     let Plan { common, mode, instance, threshold, all_layers } = plan;
     let Common { template, prompt, models, .. } = common;
     let label = format!("{label_prefix}: {}", short(&prompt));
@@ -128,7 +129,7 @@ fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Resu
                 size: None,
                 params,
             };
-            let resp = match backend.run(&req, &JobProgress::new(ctx)) {
+            let resp = match generate_cmds::run_switching(backend.as_ref(), &server, &req, &JobProgress::new(ctx)) {
                 Ok(r) => r,
                 Err(photocraft_genai::Error::NoOutput(_)) => return Err(EngineError::Other(format!("nothing matching \"{shown}\" was found"))),
                 Err(e) => return Err(gen_err(e)),

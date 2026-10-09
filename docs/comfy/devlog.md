@@ -4,6 +4,38 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-09 (late, Phase 3): Generative Edit, and the automatic purge on a model switch
+
+**Landed**
+
+- `generate.edit` (Edit › Generative Edit…, translated ×13, generated dialog): the whole
+  composite goes to the official 2511 edit graph as the model is meant to be used, no noise
+  mask, the instruction decides what changes (`qwen-edit-2511/edit-lightning-8` and `edit`,
+  `auto` between them, `AUTO_EDIT_ORDER`, `generate.models` reports `autoEdit`). The result
+  is a layer above the active one, masked to the selection when there is one (soft dithered
+  edge or hard), so "turn the red boat blue" with a marquee on the boat changes the boat and
+  nothing else on the canvas. Descriptions are wrapped as "Change this image so that it shows
+  {prompt}, keeping everything else exactly as it is."; instructions get ". Keep everything
+  else exactly as it is." Shares `fill_region` (variations, sizing, Lanczos, timings); the
+  request carries no mask when the template takes none.
+- `run_switching`: every generative run (fill, expand, edit, image, matte, select by text)
+  goes through it. The engine remembers the model files (`folder/file`) of the last run per
+  server URL (a process-wide static) and asks the server to unload its models before a run
+  whose files differ: the Lightning run after the 40-step base went from 121 s to 20.2 s
+  (`benchmarks.md` §5c). Never on a server's first run; a server that cannot purge runs as
+  before. A test drives Lightning → base → base → Lightning against the fake and counts the
+  `POST /free`s (1, then 2) and their position.
+- Corrected a diagnosis: the 40-step base's 130–148 s is its own cost (two passes a step at
+  CFG 4), not thrash; the thrash was the Lightning tier after it.
+- Four engine tests for edit (whole canvas, no mask upload, wrapping; the selection confines
+  the result; `auto` falls back to the base, validation, `autoEdit`), one for the purge.
+
+**Live** (`bench/edit-*.png`): a dark storm with lightning and the lamp lit at 16 s; the boat
+turned blue inside its selection and nothing else; a sunny day at 20 s after a switch.
+
+**Open**: the Crop tool's expand state; a permissive matting default; Qwen-Image-Layered;
+a 20-step middle tier for the base.
+
 ## 2026-10-09 (late, Phase 3): Remove Background on Qwen-Image-2.1's alpha channel
 
 The user: "qwen2.1 supports alpha channels". It does, natively: the 2.1 VAE decodes RGBA.

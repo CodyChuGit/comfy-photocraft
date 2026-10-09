@@ -176,7 +176,12 @@ own.
   the padding is pre-filled by replicating the picture's edge pixels (a wall of grey leaked its
   tone through the VAE into the edge band as a dark line).
   Upload names are content hashes, so ComfyUI's node cache (loader, text encoder, VAE encode) is
-  reused across variations and re-rolls of the same selection.
+  reused across variations and re-rolls of the same selection. Every run goes through
+  `run_switching`: the engine remembers the model files (`folder/file`) of the last run per
+  server and, when a request loads a different set (the 2511 base instead of its Lightning
+  tier, Qwen-Image-2.1 instead of 2511, SAM), asks the server to unload its models first.
+  Without that ComfyUI loads the new set partially next to the old one and streams weights on
+  every step (31–131 s a run on the 32 GB card); a purge costs one reload.
 - **Mask.** The selection surface (`doc.selection: Option<Surface>`, used by filters at
   `filters.rs:222-223`) cropped to the same rect, as 8-bit coverage; Fill feathers it outward
   (4 % of the request's longer side, 6–48 px, a band of twice that; Expand's band runs into
@@ -205,7 +210,7 @@ to shared files).
 | `generate.fill` | Edit › Generative Fill… | `{"prompt":str,"negative":str?,"model":id?=pref,"seed":u64?,"steps":u16?,"guidance":f32?,"variations":1..8=1,"margin":0..1=0.25,"layer":id?=active,"wait":bool=false}` | document, selection, backend available |
 | `generate.expand` | Edit › Generative Expand… | same + `{"width","height","anchor"}` | document, backend |
 | `generate.image` | Edit › Generate Image… | `{"prompt","model","seed","steps","width","height","transparent":bool=false,"references":[path|layer]?,"target":"layer"|"document"}` | backend |
-| `generate.edit` | Edit › Generative Edit… | `{"instruction","model","references":[]?,"layer":id?=active,"useSelection":bool=true}` | pixel layer, backend |
+| `generate.edit` | Edit › Generative Edit… | `{"prompt":instruction,"negative"?,"steps"?,"guidance"?,"edge":"soft|hard","variations":1..4,"seed"?,"template":id?=auto,"model"?,"name"?}` → the composite re-rendered by instruction as a new layer, masked to the selection when there is one | document, backend |
 | `generate.removeBackground` | Edit › Remove Background (Generative)… | `{"prompt":str?=what to keep,"asSelection":bool=false,"sampleAllLayers":bool=false,"mode","layer":id?=active,"seed"?,"template"?,"model"?}` → the model's RGBA matte as the layer's mask or the selection | unlocked pixel layer, backend |
 | `generate.upscale` | Image › Generative Upscale… | `{"model","factor":2|4}` | pixel layer, backend |
 | `generate.models` | — | `{}` → `{models:[…], server}` | always (query, `journal: false`) |

@@ -10,8 +10,8 @@
 //! Preferences read here: `integrations.comfyServer`, `integrations.defaultEditModel`,
 //! `integrations.generativeTimeoutSecs`, `integrations.allowResearchModels`.
 
-use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use photocraft_algo::selection::{self as sel, SelectionMode};
@@ -75,6 +75,53 @@ pub(crate) const MATTE_DEFAULT_PROMPT: &str = "Remove the background, and output
 /// A matte request goes out at up to this many pixels: the model's own working size, and the
 /// matte only needs to be resampled back, not the pixels.
 const MAX_MATTE_REQUEST_PIXELS: u64 = 1024 * 1024;
+
+pub(crate) const EDIT: &str = "generate.edit";
+pub(crate) const DEFAULT_EDIT_TEMPLATE: &str = "qwen-edit-2511/edit";
+/// What `auto` tries for an edit, fastest permissive tier first.
+pub(crate) const AUTO_EDIT_ORDER: &[&str] = &["qwen-edit-2511/edit-lightning-8", DEFAULT_EDIT_TEMPLATE];
+
+/// The model files (`folder/file`) the last run on each server loaded, for [`run_switching`].
+static LAST_MODELS: Mutex<BTreeMap<String, BTreeSet<String>>> = Mutex::new(BTreeMap::new());
+
+/// The server a session's generative requests go to: the key of [`LAST_MODELS`].
+pub(crate) fn server_key(s: &Session) -> String {
+    s.prefs().integrations.comfy_server.trim().to_string()
+}
+
+/// The model files (`folder/file`) a request loads: the template's slots with the request's
+/// overrides.
+fn model_set(req: &Request) -> BTreeSet<String> {
+    let Ok(t) = template::find(&req.template) else { return BTreeSet::new() };
+    let bound = t.model_bindings(&req.models).unwrap_or_default();
+    t.meta.models.iter().map(|slot| format!("{}/{}", slot.folder, bound.get(&slot.placeholder).and_then(Value::as_str).unwrap_or(&slot.default))).collect()
+}
+
+/// Run `req` on `backend`, first asking the server to unload its models when the request's
+/// model files differ from what the previous run on `server` loaded. ComfyUI keeps the earlier
+/// models resident and, short of memory for the new set, loads it partially and streams the
+/// rest on every step: the first run after a switch between the 2511 base and its Lightning
+/// tier, or from 2511 to Qwen-Image-2.1, took 31–131 s on the 32 GB card against 13–20 s for
+/// the runs after it. A purge costs one reload instead. The first run on a server never purges.
+pub(crate) fn run_switching(
+    backend: &dyn GenerativeBackend,
+    server: &str,
+    req: &Request,
+    progress: &JobProgress,
+) -> photocraft_genai::Result<photocraft_genai::Response> {
+    let set = model_set(req);
+    let switch = !set.is_empty() && LAST_MODELS.lock().unwrap_or_else(PoisonError::into_inner).get(server).is_some_and(|last| *last != set);
+    if switch {
+        photocraft_genai::Progress::report(progress, 0.0, "Unloading the previous models");
+        // A server that cannot purge just runs as before.
+        let _ = backend.free();
+    }
+    let resp = backend.run(req, progress)?;
+    if !set.is_empty() {
+        LAST_MODELS.lock().unwrap_or_else(PoisonError::into_inner).insert(server.to_string(), set);
+    }
+    Ok(resp)
+}
 
 pub(crate) fn bad(cmd: &str, msg: impl Into<String>) -> EngineError {
     EngineError::BadParams { cmd: cmd.into(), msg: msg.into() }
@@ -699,6 +746,8 @@ fn image_enabled(_: &Session) -> std::result::Result<(), String> {
 fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_image(s, p)?;
     let backend = backend(s)?;
+    let server = server_key(s);
+    let server_doc = server.clone();
     let ImagePlan { template, prompt, negative, seed, steps, guidance, name, models, width, height, to_document } = plan;
     let label = name.clone();
     let tid = template.meta.id.clone();
@@ -722,7 +771,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
             &label,
             false,
             move |ctx| {
-                let resp = backend.run(&req, &JobProgress::new(ctx)).map_err(gen_err)?;
+                let resp = run_switching(backend.as_ref(), &server_doc, &req, &JobProgress::new(ctx)).map_err(gen_err)?;
                 ctx.check()?;
                 Ok(resp)
             },
@@ -743,7 +792,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
         s,
         &label,
         move |doc, active, ctx| {
-            let resp = backend.run(&req, &JobProgress::new(ctx)).map_err(gen_err)?;
+            let resp = run_switching(backend.as_ref(), &server, &req, &JobProgress::new(ctx)).map_err(gen_err)?;
             ctx.check()?;
             let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
             let canvas = doc.bounds();
@@ -763,6 +812,8 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
 /// What a fill or expand job needs once its plan is made and the backend is in hand.
 struct FillJob {
     backend: Arc<dyn GenerativeBackend>,
+    /// The server's key for [`run_switching`].
+    server: String,
     template_id: String,
     auto: bool,
     /// The candidates `auto` picks from ([`AUTO_FILL_ORDER`] or [`AUTO_EXPAND_ORDER`]).
@@ -813,7 +864,7 @@ fn fill_region(
         let p = o.picture;
         prefill_outside(&mut image, Rect::new(p.x0 - rect.x0, p.y0 - rect.y0, p.x1 - rect.x0, p.y1 - rect.y0));
     }
-    let FillJob { backend, template_id, auto, auto_order, prompt, negative, seed, steps, guidance, name, models, variations, edge } = job;
+    let FillJob { backend, server, template_id, auto, auto_order, prompt, negative, seed, steps, guidance, name, models, variations, edge } = job;
     let mask = Gray8::new(w, h, coverage.iter().map(|c| (c * 255.0 + 0.5) as u8).collect()).map_err(gen_err)?;
     // The model gets a softened mask so it re-renders a band around the area and blends it (much
     // wider for an expand, whose seam runs along a whole picture edge and whose sky or water tone
@@ -847,8 +898,22 @@ fn fill_region(
         params.insert("ref_w".to_string(), json!((x1 - x0) as u32));
         params.insert("ref_h".to_string(), json!((y1 - y0) as u32));
     }
-    let mut req =
-        Request { template: template_id.clone(), prompt, negative, seed, steps, guidance, image: Some(image), mask: Some(mask), models, size: None, params };
+    // An edit template has no noise mask: the picture goes alone and the selection only masks
+    // the result layer.
+    let wants_mask = template::find(&template_id).map(|t| t.meta.needs_mask).unwrap_or(true);
+    let mut req = Request {
+        template: template_id.clone(),
+        prompt,
+        negative,
+        seed,
+        steps,
+        guidance,
+        image: Some(image),
+        mask: wants_mask.then_some(mask),
+        models,
+        size: None,
+        params,
+    };
     // One backend run per variation, consecutive seeds, each its own masked layer; the first
     // is visible, the alternates sit hidden above it (`generate.variation` switches).
     let n = variations.max(1);
@@ -859,7 +924,7 @@ fn fill_region(
         if n > 1 {
             ctx.progress(lo, &format!("Variation {}/{n}", i + 1));
         }
-        let resp = backend.run(&req, &JobProgress::span(ctx, lo, hi)).map_err(gen_err)?;
+        let resp = run_switching(backend.as_ref(), &server, &req, &JobProgress::span(ctx, lo, hi)).map_err(gen_err)?;
         ctx.check()?;
         let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
         let out = if (out.width, out.height) == (w, h) { out } else { resize_rgba8(&out, w, h)? };
@@ -938,6 +1003,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let label = name.clone();
     let job = FillJob {
         backend,
+        server: server_key(s),
         template_id: template.meta.id.clone(),
         auto,
         auto_order: AUTO_FILL_ORDER,
@@ -1097,6 +1163,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
     let label = name.clone();
     let job = FillJob {
         backend,
+        server: server_key(s),
         template_id: template.meta.id.clone(),
         auto,
         auto_order: AUTO_EXPAND_ORDER,
@@ -1183,6 +1250,90 @@ fn run_variation(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({"shown": shown.map(|l| l.0), "index": index, "count": layers.len()}))
 }
 
+/// `variations`: 1..=[`MAX_VARIATIONS`] whole results with consecutive seeds.
+fn parse_variations(cmd: &str, p: &Value) -> Result<u32> {
+    match opt_num(cmd, p, "variations", 1.0, f64::from(MAX_VARIATIONS))? {
+        None => Ok(1),
+        Some(x) if x.fract() == 0.0 => Ok(x as u32),
+        Some(_) => Err(bad(cmd, format!("`variations` must be a whole number from 1 to {MAX_VARIATIONS}"))),
+    }
+}
+
+fn edit_enabled(s: &Session) -> std::result::Result<(), String> {
+    web_unavailable()?;
+    s.active().map(|_| ()).ok_or_else(|| "no document open".into())
+}
+
+/// `generate.edit`: the whole picture goes to an edit model with an instruction; the result is
+/// a layer over the canvas, masked to the selection when there is one.
+fn plan_edit(s: &Session, p: &Value) -> Result<FillPlan> {
+    let default_model = s.prefs().integrations.default_edit_model.clone();
+    let requested = opt_str(EDIT, p, "template", 200)?.map(str::to_string).unwrap_or_else(|| AUTO_TEMPLATE.to_string());
+    let auto = requested == AUTO_TEMPLATE;
+    let mut q = p.clone();
+    if auto && let Some(o) = q.as_object_mut() {
+        o.remove("template");
+    }
+    let Common { template, prompt, negative, seed, steps, guidance, models, name } =
+        plan_common(s, EDIT, &q, if auto { DEFAULT_EDIT_TEMPLATE } else { &requested }, Task::Edit, &default_model)?;
+    let edge = parse_edge(EDIT, p)?;
+    let variations = parse_variations(EDIT, p)?;
+    let d = s.active().ok_or(EngineError::NoDocument)?;
+    let rect = d.doc.bounds();
+    if rect.is_empty() {
+        return Err(EngineError::Other("the document is empty".into()));
+    }
+    if u64::from(rect.width()) * u64::from(rect.height()) > MAX_REQUEST_PIXELS {
+        return Err(EngineError::Other(format!(
+            "the picture is {}×{} pixels; Generative Edit handles up to 16 megapixels at a time",
+            rect.width(),
+            rect.height()
+        )));
+    }
+    let name = name.unwrap_or_else(|| format!("Generative Edit: {}", short(&prompt)));
+    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge })
+}
+
+fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
+    let plan = plan_edit(s, p)?;
+    let backend = backend(s)?;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge } = plan;
+    let label = name.clone();
+    let job = FillJob {
+        backend,
+        server: server_key(s),
+        template_id: template.meta.id.clone(),
+        auto,
+        auto_order: AUTO_EDIT_ORDER,
+        prompt,
+        negative,
+        seed,
+        steps,
+        guidance,
+        name,
+        models,
+        variations,
+        edge,
+    };
+    crate::jobs::edit_job(
+        s,
+        &label,
+        move |doc, active, ctx| {
+            // The whole canvas is re-rendered; a selection, when there is one, confines what
+            // of it shows (the edit template takes no mask, see `fill_region`).
+            let coverage: Vec<f32> = match doc.selection.as_ref() {
+                Some(sel) => {
+                    let k = sel.channels().max(1);
+                    sel.read_region(rect).chunks_exact(k).map(|c| c.first().copied().unwrap_or(0.0).clamp(0.0, 1.0)).collect()
+                }
+                None => vec![1.0; rect.width() as usize * rect.height() as usize],
+            };
+            fill_region(doc, active, ctx, job, rect, coverage, None)
+        },
+        move |(made, w, h, request, template_id)| made_json(&made, w, h, request, &template_id),
+    )
+}
+
 fn doc_enabled(s: &Session) -> std::result::Result<(), String> {
     s.active().map(|_| ()).ok_or_else(|| "no document open".into())
 }
@@ -1242,6 +1393,7 @@ pub(crate) fn matte_request_size(w: u32, h: u32) -> (u32, u32) {
 fn run_remove_bg(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_remove_bg(s, p)?;
     let backend = backend(s)?;
+    let server = server_key(s);
     let MattePlan { common, layer: id, as_selection, mode, all_layers } = plan;
     let Common { template, prompt, negative, seed, steps, guidance, models, .. } = common;
     let template_id = template.meta.id.clone();
@@ -1291,7 +1443,7 @@ fn run_remove_bg(s: &mut Session, p: &Value) -> Result<Value> {
                 size: None,
                 params: BTreeMap::new(),
             };
-            let resp = backend.run(&req, &JobProgress::new(ctx)).map_err(gen_err)?;
+            let resp = run_switching(backend.as_ref(), &server, &req, &JobProgress::new(ctx)).map_err(gen_err)?;
             ctx.check()?;
             ctx.progress(0.95, if as_selection { "Selecting" } else { "Masking" });
             let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
@@ -1379,7 +1531,8 @@ fn run_models(s: &mut Session, p: &Value) -> Result<Value> {
     // What `auto` would pick right now (needs the server's model lists).
     let auto_fill = backend.as_ref().filter(|_| online).map(|b| resolve_auto(b.as_ref(), AUTO_FILL_ORDER, DEFAULT_FILL_TEMPLATE));
     let auto_expand = backend.as_ref().filter(|_| online).map(|b| resolve_auto(b.as_ref(), AUTO_EXPAND_ORDER, DEFAULT_EXPAND_TEMPLATE));
-    Ok(json!({"server": health, "templates": templates, "autoFill": auto_fill, "autoExpand": auto_expand}))
+    let auto_edit = backend.as_ref().filter(|_| online).map(|b| resolve_auto(b.as_ref(), AUTO_EDIT_ORDER, DEFAULT_EDIT_TEMPLATE));
+    Ok(json!({"server": health, "templates": templates, "autoFill": auto_fill, "autoExpand": auto_expand, "autoEdit": auto_edit}))
 }
 
 fn always(_: &Session) -> std::result::Result<(), String> {
@@ -1417,6 +1570,17 @@ pub fn specs() -> Vec<CommandSpec> {
             params: r#"{"prompt":text,"left":int=0,"top":int=0,"right":int=0,"bottom":int=0,"width":int=0,"height":int=0,"negative":text,"steps":0..250=0,"guidance":0..30=0,"edge":"soft|hard","variations":int=1,"margin":{0..1=0.25},"anchor":{str?=center},"seed":{u64?=random},"template":{id?="auto": the Lightning expand tier when its LoRA is installed, else the 40-step one},"model":{file?=Preferences},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","canvas":[w,h],"offset":[x,y],"width","height","requestWidth","requestHeight","ms","timings"} (adds canvas (left/top/right/bottom in pixels, or a larger width/height placed by anchor: topLeft, top, topRight, left, center, right, bottomLeft, bottom, bottomRight) and has the model paint it, as one undo step: the picture moves by the left/top pads, the result is a new layer over the added area; edge soft = its mask fades across the re-rendered band just inside the old edge (8 % of the picture's longer side), dithered; hard = exactly the added area; an empty prompt continues the scene; otherwise as generate.fill; needs a ComfyUI server)"#,
             enabled: expand_enabled,
             run: run_expand,
+            journal: true,
+        },
+        CommandSpec {
+            id: EDIT,
+            label: "Generative Edit…",
+            // Placed by the menu catalogue under Edit, with the other generative items.
+            menu: &[],
+            shortcut: None,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?="auto": the Lightning edit tier when its LoRA is installed, else the 40-step one},"model":{file?=Preferences},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings"} (edits the whole picture by instruction: "make the sky stormy", "turn the boat blue", "remove the person"; a description such as "a stormy sky" is wrapped as "change this image so that it shows …"; the composite goes to the model and the result is a new layer above the active one; with a selection the layer is masked to it (edge soft = a dithered fade around it, hard = exactly) so only that part of the edit shows; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; pictures over 0.75 megapixels are sent downscaled and come back resampled; a background job; needs a ComfyUI server)"#,
+            enabled: edit_enabled,
+            run: run_edit,
             journal: true,
         },
         CommandSpec {
@@ -1489,3 +1653,7 @@ mod template_tests;
 #[cfg(test)]
 #[path = "generate_matte_tests.rs"]
 mod matte_tests;
+
+#[cfg(test)]
+#[path = "generate_edit_tests.rs"]
+mod edit_tests;

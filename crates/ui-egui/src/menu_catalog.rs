@@ -99,6 +99,7 @@ pub static CATALOG: &[(&[&str], &str, Option<&str>, &str)] = &[
     (&["Edit"], "Generative Fill…", None, "generate.fill"),
     (&["Edit"], "Generate Image…", None, "generate.image"),
     (&["Edit"], "Generative Expand…", None, "generate.expand"),
+    (&["Edit"], "Generative Edit…", None, "generate.edit"),
     (&["Edit"], "Remove Background (Generative)…", None, "generate.removeBackground"),
     (&["Edit"], "---", None, "---"),
     (&["Edit"], "Content-Aware Scale", Some("Cmd+Alt+Shift+C"), "edit.contentAwareScale"),

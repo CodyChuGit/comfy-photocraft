@@ -187,6 +187,7 @@ pub fn has_dialog(command: &str) -> bool {
                 | "generate.fill"
                 | "generate.image"
                 | "generate.expand"
+                | "generate.edit"
                 | "generate.removeBackground"
                 | "select.byText"
         ))

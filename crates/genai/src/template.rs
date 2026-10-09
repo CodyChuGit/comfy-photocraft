@@ -153,6 +153,8 @@ const BUILTIN: &[&str] = &[
     include_str!("../workflows/qwen-edit-2511-fill-guided.json"),
     include_str!("../workflows/qwen-edit-2511-expand-lightning-8.json"),
     include_str!("../workflows/qwen-edit-2511-expand.json"),
+    include_str!("../workflows/qwen-edit-2511-edit-lightning-8.json"),
+    include_str!("../workflows/qwen-edit-2511-edit.json"),
     include_str!("../workflows/qwen-2.1-fill.json"),
     include_str!("../workflows/krea2-turbo-image.json"),
     include_str!("../workflows/qwen-2.1-image.json"),

@@ -143,12 +143,13 @@ different composition at a knife-edge seed. Conclusions about wordings need many
 server state (a prompt study is listed under §6); what stands is that the model does, at some
 seeds, repeat the picture's main object in the new area, whatever the wording.
 
-**Graph switches thrash the server.** Every first run after switching between the base and
-a Lightning graph, or after a purge followed by a fill, took 31, 56, 93, 121 and 131 s
-(2.3–2.5 GB free, torch 63 MB: ComfyUI loads the newly patched model partially and streams the
-rest every step), then 13–20 s for the runs after it. The fix to build (§6): remember the last
-template's model set in the engine and purge before a run that changes it, a 10–15 s reload
-instead of a 2-minute run.
+**Graph switches thrash the server.** Every first Lightning run after the 40-step base, or
+after a purge followed by a fill, took 31, 56, 93 and 121 s (2.3–2.5 GB free, torch 63 MB:
+ComfyUI loads the newly patched model partially and streams the rest every step), then
+13–20 s for the runs after it. (The base's own 130–148 s is not thrash: 40 steps at CFG 4 are
+two model passes a step, about 3.6 s each at 0.75 MP against Lightning's single pass at
+CFG 1.) **Fixed the same day** by the engine's `run_switching` (§5c): it remembers the model
+files of the last run per server and purges before a run that changes them.
 
 ## 4. Native-size sampling (shipped)
 
@@ -196,16 +197,36 @@ resident and costs little: the editing models' own working size is about that.
 The matte is 25 steps of the full model, so it costs a text-to-image; a dedicated matting
 model (BiRefNet, ~1 s) remains the plan for the permissive default.
 
+## 5c. Generative Edit and the automatic purge
+
+`generate.edit` sends the whole 1024² lighthouse at 0.75 MP through the official 2511 edit
+graph (no noise mask); the result is a layer, masked to the selection when there is one
+(`bench/edit-*.png`):
+
+| Case | time | result |
+|---|---|---|
+| "make the sky dark and stormy with heavy clouds", Lightning 8 | 16.0 s steady (22.6 s with the 2511 reload after a 2.1 run) | a storm with lightning, the lamp lit, the sea rough; the rocks and lighthouse kept |
+| "turn the red boat blue" with a 200×120 selection on the boat | 16.1 s | only the boat changed on the canvas (the model re-rendered everything; the mask shows the boat) |
+| "make it a sunny day with a blue sky" | 20.2 s after a model switch, 16 s steady | convincing |
+| the same storm through the 40-step base (`qwen-edit-2511/edit`) | 145–148 s | two passes a step at CFG 4; the Lightning tier is the default for a reason |
+
+**The purge.** Three edits in one process, Lightning → base → Lightning (`purge-live.ps1`):
+16.0 s, 148.5 s (the base's own cost, purged first), **20.2 s** for the Lightning run after
+the base. The same return to Lightning without a purge took 121 s earlier in the day. The
+engine purges only when the model files change and never on a server's first run; separate
+CLI invocations are separate processes, so the CLI only exercises it within one `--cmd` chain.
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP
   on the 5090; the encoder 3–5 s when the pixels change; everything on the PhotoCraft side
   under 0.5 s.
-- Next levers, in order of expected gain: purge automatically before a run whose model set
-  differs from the last one (the graph-switch thrash in §3 costs 30–130 s a time), a working
-  FP8-tensor-core checkpoint (the scaled file gave noise here), SageAttention once a wheel
-  exists for this torch build, TeaCache/EasyCache-style step caching for the 40-step base,
-  detecting the memory-pressure state from `timings` to suggest the purge, and a prompt study
-  for Expand over more seeds (§3: two seeds showed the wording matters and cannot rank it).
+- Next levers, in order of expected gain: a working FP8-tensor-core checkpoint (the scaled
+  file gave noise here), SageAttention once a wheel exists for this torch build, a 20-step
+  middle tier for the base (Comfy's note accepts 20 steps; CFG 4 is still two passes a step),
+  TeaCache/EasyCache-style step caching for the 40-step base, detecting the memory-pressure
+  state from `timings` to suggest a purge, and a prompt study for Expand over more seeds (§3:
+  two seeds showed the wording matters and cannot rank it). The automatic purge on a model-set
+  change shipped (§5c).
 - On a 24 GB Ampere card (RTX 3090) the same tiers apply with roughly 2–3× the step times and
   no FP8 gain; the text encoder will live in RAM; the Lightning 8-step tier is the one to install.
