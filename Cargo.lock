@@ -3961,6 +3961,7 @@ dependencies = [
  "photocraft-doc",
  "photocraft-engine",
  "photocraft-format",
+ "photocraft-genai",
  "photocraft-geom",
  "photocraft-gpu",
  "photocraft-io",
