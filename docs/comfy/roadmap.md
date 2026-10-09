@@ -12,7 +12,7 @@ code map is in [`codebase-orientation.md`](codebase-orientation.md).
 | 0 Foundation | ✅ 2026-10-08 | This documentation, the Windows toolchain, a green release build, the `comfy-photocraft` branch |
 | 1 Backend + headless Generative Fill | ✅ 2026-10-09: live against ComfyUI 0.39.0 with Qwen-Image-2.1, Krea 2 Turbo and Qwen-Image-Edit-2511 (numbers in the dev log) | `photocraft-genai` crate, ComfyUI client, `generate.fill` / `generate.image` (pulled forward from Phase 3) / `generate.health` / `generate.models` from the CLI and MCP |
 | 2 Generative Fill in the app | 🟡 2026-10-09: menu rows, the task bar under the selection (prompt, template picker, variations, progress, switcher) and the Preferences page work end to end; layer metadata and the script test pending | Prompt bar, progress, variations, generative layers with masks, model picker, preferences |
-| 3 The Firefly core set | 🟡 2026-10-09: Generate Image (Phase 1) and Generative Expand (`generate.expand`, Edit › Generative Expand…) live; instruction Edit and Remove Background pending | Expand, Generate Image, instruction Edit, Remove Background |
+| 3 The Firefly core set | 🟡 2026-10-09: Generate Image (Phase 1, now with a transparent option), Generative Expand (`generate.expand`) and Remove Background (`generate.removeBackground`, Qwen-Image-2.1's RGBA matte, research opt-in) live; instruction Edit and a permissive matting model pending | Expand, Generate Image, instruction Edit, Remove Background |
 | 3.5 Select by text (SAM 3.1) | 🟡 2026-10-09: `select.byText` and `select.subjectML` live (text prompts); point/box prompts and soft-matte refinement pending | `select.byText`, ML Select Subject, point/box object selection, SAM-backed mattes for Remove Background |
 | 4 Models and workflows as data | ⬜ | Model catalogue, workflow template import, references, LoRAs, downloads with checksums |
 | 4.5 Assistant | ⬜ | In-app assistant panel over a local LLM/VLM, driving the command registry; prompt enhancement, auto-naming |
@@ -133,9 +133,16 @@ the model only the picture as a reference while the padded canvas is the samplin
 empty prompt continues the scene. Shares the fill pipeline (`fill_region`: Lightning tiers,
 `auto`, sizing, feather, variations). Later the same day: soft, dithered edges by default
 (`edge: soft|hard`), the edge-replicating pre-fill, a 4 % band; the empty prompt is the most
-faithful continuation (`benchmarks.md` §3). Open: `generate.edit`, `generate.removeBackground`,
-the Crop tool's expand state, an automatic purge before a run that changes the model set (the
-first run after a graph switch took 31–131 s on the 32 GB card), a prompt study for Expand.
+faithful continuation (`benchmarks.md` §3). Then **Remove Background** landed on Qwen-Image-2.1's
+RGBA output (`generate.removeBackground`, Edit › Remove Background (Generative)…: the model's
+alpha becomes the layer's mask or, with `asSelection`, the selection; `prompt` names what to
+keep; pixels are never changed) together with `generate.image`'s `transparent` option (the
+layer keeps the alpha the model returns). Both are research-licence opt-ins until a permissive
+matting model (BiRefNet) is wired. Open: `generate.edit`, the Crop tool's expand state, an
+automatic purge before a run that changes the model set (the first run after a graph switch
+took 31–131 s on the 32 GB card), a prompt study for Expand, Qwen-Image-Layered ("image to
+layers": ComfyUI ships `EmptyQwenImageLayeredLatentImage` and official templates; the weights
+are not installed here).
 
 ## Phase 3.5: Select by text (SAM 3.1)
 

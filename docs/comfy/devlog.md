@@ -4,6 +4,50 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-09 (late, Phase 3): Remove Background on Qwen-Image-2.1's alpha channel
+
+The user: "qwen2.1 supports alpha channels". It does, natively: the 2.1 VAE decodes RGBA.
+Probed live before writing code (`bench/probe-rgba-s7.png`, `probe-t2i-alpha-s3.png`):
+ComfyUI's official background-removal recipe returned a colour-type-6 PNG with a soft matte in
+18 s, and a plain text-to-image prompt ending in "isolated on a transparent background, output
+a PNG image" returned a boat with a clean matte in 10 s.
+
+**Landed**
+
+- `generate.removeBackground` (Edit › Remove Background (Generative)…, translated ×13, generated
+  dialog): the layer (or the composite with `sampleAllLayers`) goes to `qwen-2.1/matte`, the
+  official recipe as a template (the 2.1 edit graph, the picture as image_1 at its own size,
+  "Remove the background, and output a PNG image"; `prompt` names what to keep and becomes
+  "Remove the background, keeping only {prompt}, …"). The result's **alpha** comes back as the
+  layer's mask (the Background becomes a normal layer, like the Quick Action) or, with
+  `asSelection`, as the selection combined by `mode`. The pixels the model re-rendered are
+  never used; the layer keeps its own. Requests go out at ≤ 1 MP with sides in multiples of 32
+  (what `TextEncodeQwenImage21` rounds to), the matte comes back through the tent filter, the
+  layer's own transparency goes to the model over mid-grey and multiplies the matte. One undo
+  step; "kept nothing" is an error that changes nothing. Research licence gate as for the other
+  2.1 templates.
+- `generate.image` takes `"transparent": true`: the template's new `promptFormatTransparent`
+  wraps the prompt (only `qwen-2.1/image` has one; others refuse with a clear error) and the
+  layer keeps the alpha the PNG comes back with.
+- Fake server: `Options.matte` gives generated images an alpha rectangle. Five engine tests
+  (mask from alpha with pixels untouched and undo, subject wrapping + Background → layer,
+  as-selection + add mode, validation + licence gate + "kept nothing", transparent image +
+  refusal). Docs: models.md, architecture.md, roadmap; parity/scorecard regenerated.
+
+**Live** (the 1024² lighthouse with the boat, `bench/matte-*.png`, `transparent-compass.png`):
+16.8 s per matte (25 steps, 2.1 int8). The model's own reading kept the boat solid and the
+lighthouse as a ghost; "the red boat" gave a perfect boat cutout (147×46 px); "the lighthouse"
+kept the lighthouse with its rocks, the white tower semi-transparent against the bright sky
+(a model quirk to note in the UI later: name the subject, re-roll, or refine the mask). A
+transparent "vintage brass compass, product photo" came back in 10.8 s as a clean cutout with a
+real soft alpha.
+
+**Open**: a permissive matting model (BiRefNet) as the default so the command works without
+the research opt-in; Qwen-Image-Layered ("image to layers": ComfyUI 0.39 ships
+`EmptyQwenImageLayeredLatentImage` and official templates; needs `qwen_image_layered_bf16` +
+its VAE, not installed) as a Layers › "Split into Layers" feature; transparent fills (the
+model's alpha times the selection) for adding cut-out objects.
+
 ## 2026-10-09 (late): soft, dithered edges for fills and expands
 
 The user: "the borders are harsh, is there a way to do like a noise opacity in the edges so

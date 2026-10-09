@@ -182,6 +182,20 @@ Expand's frame case took 45 s (the log shows the 19.6 GB model re-staged for the
 18 s a moment earlier. The request cap is therefore 0.75 MP (768×1024), which keeps the model
 resident and costs little: the editing models' own working size is about that.
 
+## 5b. Remove Background and transparent generation (Qwen-Image-2.1, int8)
+
+| Case | time | result |
+|---|---|---|
+| `generate.removeBackground`, 1024² lighthouse, no prompt | 16.8 s | boat solid, lighthouse a ghost (the model's reading of "the subject") |
+| …, prompt "the red boat" | 16.7 s | a perfect 147×46 px boat cutout |
+| …, prompt "the lighthouse" | 16.8 s | lighthouse with its rocks; the white tower semi-transparent against the bright sky |
+| …, `asSelection` of the same request | 0.14 s | ComfyUI's cache |
+| `generate.image` + `transparent`, "a vintage brass compass, product photo", 1024² | 10.8 s | a clean cutout with a real soft alpha |
+| the first run after switching from the 2511 models (a purge first) | +~8 s | the 2.1 model and encoder load (6.8 + 8.7 GB) |
+
+The matte is 25 steps of the full model, so it costs a text-to-image; a dedicated matting
+model (BiRefNet, ~1 s) remains the plan for the permissive default.
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP

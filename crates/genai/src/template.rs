@@ -124,6 +124,11 @@ pub struct Meta {
     /// `prompt_format` for those too.
     #[serde(default)]
     pub prompt_format_imperative: String,
+    /// For text-to-image templates whose model can output transparency: how the prompt asks
+    /// for it (`{prompt}` replaced), used when the caller wants an RGBA result. Empty = the
+    /// model cannot, and a request for transparency is refused.
+    #[serde(default)]
+    pub prompt_format_transparent: String,
     #[serde(default)]
     pub notes: String,
 }
@@ -151,6 +156,7 @@ const BUILTIN: &[&str] = &[
     include_str!("../workflows/qwen-2.1-fill.json"),
     include_str!("../workflows/krea2-turbo-image.json"),
     include_str!("../workflows/qwen-2.1-image.json"),
+    include_str!("../workflows/qwen-2.1-matte.json"),
     include_str!("../workflows/sam3.1-segment.json"),
 ];
 

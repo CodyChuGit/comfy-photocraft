@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use photocraft_algo::selection::{self as sel, SelectionMode};
 use photocraft_color::{ColorMode, PixelFormat, SampleType};
 use photocraft_doc::{Document, Layer, LayerId, LayerMask, Size};
 use photocraft_genai::template::{self, License, Template};
@@ -22,7 +23,7 @@ use photocraft_geom::Rect;
 use photocraft_raster::Surface;
 use serde_json::{Value, json};
 
-use crate::commands::CommandSpec;
+use crate::commands::{CommandSpec, layer_param};
 use crate::jobs::JobCtx;
 use crate::{EngineError, Result, Session};
 
@@ -65,6 +66,15 @@ const MAX_SIDE: u32 = 4096;
 /// Largest request image sent to a backend; the selection plus its margin is refused above it.
 const MAX_REQUEST_PIXELS: u64 = 16 * 1024 * 1024;
 const MAX_PROMPT_CHARS: usize = 4000;
+
+pub(crate) const REMOVE_BG: &str = "generate.removeBackground";
+pub(crate) const DEFAULT_MATTE_TEMPLATE: &str = "qwen-2.1/matte";
+/// ComfyUI's official background-removal instruction for Qwen-Image-2.1, sent when the prompt
+/// does not name a subject (it opens with an imperative verb, so the template passes it through).
+pub(crate) const MATTE_DEFAULT_PROMPT: &str = "Remove the background, and output a PNG image";
+/// A matte request goes out at up to this many pixels: the model's own working size, and the
+/// matte only needs to be resampled back, not the pixels.
+const MAX_MATTE_REQUEST_PIXELS: u64 = 1024 * 1024;
 
 pub(crate) fn bad(cmd: &str, msg: impl Into<String>) -> EngineError {
     EngineError::BadParams { cmd: cmd.into(), msg: msg.into() }
@@ -207,6 +217,15 @@ pub(crate) fn opt_str<'a>(cmd: &str, p: &'a Value, key: &str, max: usize) -> Res
             Ok(Some(s))
         }
         Some(_) => Err(bad(cmd, format!("`{key}` must be a string"))),
+    }
+}
+
+/// An optional boolean parameter: absent or null = `default`.
+pub(crate) fn opt_bool(cmd: &str, p: &Value, key: &str, default: bool) -> Result<bool> {
+    match p.get(key) {
+        None | Some(Value::Null) => Ok(default),
+        Some(Value::Bool(b)) => Ok(*b),
+        Some(_) => Err(bad(cmd, format!("`{key}` must be true or false"))),
     }
 }
 
@@ -659,6 +678,17 @@ fn plan_image(s: &Session, p: &Value) -> Result<ImagePlan> {
     let width = side(IMAGE, p, "width", dw)?;
     let height = side(IMAGE, p, "height", dh)?;
     let name = name.unwrap_or_else(|| format!("Generated: {}", short(&prompt)));
+    // A transparent result: the template says how its model is asked for one (Qwen-Image-2.1
+    // decodes RGBA); the layer keeps the alpha the PNG comes back with.
+    let prompt = if opt_bool(IMAGE, p, "transparent", false)? {
+        let format = template.meta.prompt_format_transparent.trim();
+        if format.is_empty() {
+            return Err(bad(IMAGE, format!("template `{}` cannot output transparency; `qwen-2.1/image` can", template.meta.id)));
+        }
+        format.replace("{prompt}", &prompt)
+    } else {
+        prompt
+    };
     Ok(ImagePlan { template, prompt, negative, seed, steps, guidance, name, models, width, height, to_document })
 }
 
@@ -1157,6 +1187,147 @@ fn doc_enabled(s: &Session) -> std::result::Result<(), String> {
     s.active().map(|_| ()).ok_or_else(|| "no document open".into())
 }
 
+/// Everything `generate.removeBackground` needs, validated before any network work.
+struct MattePlan {
+    common: Common,
+    layer: LayerId,
+    /// Load the matte as the selection (combined by `mode`) instead of masking the layer.
+    as_selection: bool,
+    mode: SelectionMode,
+    /// Send the composite rather than the layer alone.
+    all_layers: bool,
+}
+
+fn plan_remove_bg(s: &Session, p: &Value) -> Result<MattePlan> {
+    let layer = layer_param(s, p)?;
+    let doc = &s.active().ok_or(EngineError::NoDocument)?.doc;
+    crate::cutout_cmds::check(doc, doc.layer(layer).ok_or(EngineError::NoLayer(layer))?).map_err(EngineError::Other)?;
+    // The prompt names what to keep; empty = the model's own reading of the subject.
+    let mut q = p.clone();
+    if opt_str(REMOVE_BG, p, "prompt", MAX_PROMPT_CHARS)?.map(str::trim).unwrap_or("").is_empty()
+        && let Some(o) = q.as_object_mut()
+    {
+        o.insert("prompt".into(), Value::String(MATTE_DEFAULT_PROMPT.into()));
+    }
+    let common = plan_common(s, REMOVE_BG, &q, DEFAULT_MATTE_TEMPLATE, Task::Matte, "")?;
+    let as_selection = opt_bool(REMOVE_BG, p, "asSelection", false)?;
+    let mode = match opt_str(REMOVE_BG, p, "mode", 20)? {
+        None | Some("replace") | Some("new") => SelectionMode::Replace,
+        Some("add") => SelectionMode::Add,
+        Some("subtract") => SelectionMode::Subtract,
+        Some("intersect") => SelectionMode::Intersect,
+        Some(other) => return Err(bad(REMOVE_BG, format!("`mode` must be replace, add, subtract or intersect (got `{other}`)"))),
+    };
+    let all_layers = opt_bool(REMOVE_BG, p, "sampleAllLayers", false)?;
+    Ok(MattePlan { common, layer, as_selection, mode, all_layers })
+}
+
+fn remove_bg_enabled(s: &Session) -> std::result::Result<(), String> {
+    web_unavailable()?;
+    let d = s.active().ok_or("no document open")?;
+    crate::cutout_cmds::check(&d.doc, crate::active_layer_of(s)?)
+}
+
+/// The size a matte request goes out at: within [`MAX_MATTE_REQUEST_PIXELS`], sides in
+/// multiples of 32 (TextEncodeQwenImage21 rounds its references to that; sending them rounded
+/// keeps the result the request's size).
+pub(crate) fn matte_request_size(w: u32, h: u32) -> (u32, u32) {
+    let (rw, rh) = fit_pixels(w, h, MAX_MATTE_REQUEST_PIXELS);
+    ((rw / 32).max(1) * 32, (rh / 32).max(1) * 32)
+}
+
+/// `generate.removeBackground`: the model separates the subject and answers with an RGBA image;
+/// its alpha becomes the layer's mask (or the selection). The pixels it came with are the
+/// model's re-rendering and are never used: the layer keeps its own.
+fn run_remove_bg(s: &mut Session, p: &Value) -> Result<Value> {
+    let plan = plan_remove_bg(s, p)?;
+    let backend = backend(s)?;
+    let MattePlan { common, layer: id, as_selection, mode, all_layers } = plan;
+    let Common { template, prompt, negative, seed, steps, guidance, models, .. } = common;
+    let template_id = template.meta.id.clone();
+    let tid = template_id.clone();
+    let label = if as_selection { "Select Subject (Generative)" } else { "Remove Background (Generative)" };
+    crate::jobs::edit_job(
+        s,
+        label,
+        move |doc, _active, ctx| {
+            ctx.progress(0.0, "Rendering");
+            let area = doc.bounds();
+            let (w, h) = (area.width(), area.height());
+            let n = w as usize * h as usize;
+            let layer = if all_layers { None } else { doc.layer(id).and_then(|l| l.surface()) };
+            // The layer's own alpha: transparent pixels go to the model over mid-grey (its
+            // loader drops alpha, and black holes would read as content) and stay out of the
+            // matte afterwards.
+            let mut own_alpha: Option<Vec<u8>> = None;
+            let rgba8: Vec<u8> = match layer {
+                Some(surf) => {
+                    let mut px = vec![[0u8; 4]; n];
+                    surf.read_rgba8_into(area, &mut px);
+                    own_alpha = Some(px.iter().map(|p| p[3]).collect());
+                    px.into_iter()
+                        .flat_map(|p| {
+                            let a = u16::from(p[3]);
+                            let over = |c: u8| ((u16::from(c) * a + 128 * (255 - a)) / 255) as u8;
+                            [over(p[0]), over(p[1]), over(p[2]), 255]
+                        })
+                        .collect()
+                }
+                None => photocraft_compose::render(doc, area).to_rgba8().pixels,
+            };
+            let image = Rgba8::new(w, h, rgba8).map_err(gen_err)?;
+            let (rw, rh) = matte_request_size(w, h);
+            let image = if (rw, rh) == (w, h) { image } else { resize_rgba8(&image, rw, rh)? };
+            let req = Request {
+                template: template_id,
+                prompt,
+                negative,
+                seed,
+                steps,
+                guidance,
+                image: Some(image),
+                mask: None,
+                models,
+                size: None,
+                params: BTreeMap::new(),
+            };
+            let resp = backend.run(&req, &JobProgress::new(ctx)).map_err(gen_err)?;
+            ctx.check()?;
+            ctx.progress(0.95, if as_selection { "Selecting" } else { "Masking" });
+            let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
+            let alpha = Gray8::new(out.width, out.height, out.data.as_chunks::<4>().0.iter().map(|p| p[3]).collect()).map_err(gen_err)?;
+            let alpha = if (alpha.width, alpha.height) == (w, h) { alpha } else { resize_gray8(&alpha, w, h)? };
+            let mut cov: Vec<f32> = alpha.data.iter().map(|v| f32::from(*v) / 255.0).collect();
+            if let Some(own) = own_alpha {
+                for (c, a) in cov.iter_mut().zip(own) {
+                    *c *= f32::from(a) / 255.0;
+                }
+            }
+            let (bounds, count) = crate::select_ml_cmds::coverage_bounds(&cov, area);
+            if count == 0 {
+                return Err(EngineError::Other("the model kept nothing: name the subject in the prompt".into()));
+            }
+            if as_selection {
+                doc.selection = sel::combine(doc.selection.as_ref(), &cov, area, mode);
+            } else {
+                crate::extra_cmds::background_to_layer_for_mask(doc, id);
+                let mut surface = Surface::with_default(PixelFormat::GRAY8, &[0.0]);
+                surface.write_region(area, &cov);
+                doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?.mask = Some(LayerMask { surface, ..LayerMask::reveal_all() });
+                doc.selection = None;
+            }
+            Ok((bounds, count, resp.seed, resp.run_id, resp.elapsed_ms, resp.timings, (rw, rh), (w, h)))
+        },
+        move |(b, count, seed, run_id, ms, timings, (rw, rh), (w, h))| {
+            json!({
+                "layer": id.0, "selection": as_selection, "bounds": [b.x0, b.y0, b.width(), b.height()], "pixels": count,
+                "seed": seed, "template": tid, "runId": run_id, "width": w, "height": h, "requestWidth": rw, "requestHeight": rh,
+                "ms": ms, "timings": [serde_json::to_value(timings).unwrap_or(Value::Null)],
+            })
+        },
+    )
+}
+
 /// Edit › Purge › Generative Models: the server unloads its models and frees their memory. A
 /// server that has had several model families loaded can end up streaming weights on every run
 /// (2 GB of VRAM free, fills three times slower); this resets it, at the price of one reload.
@@ -1232,7 +1403,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generate Image…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"target":"auto|layer|document","width":int=0,"height":int=0,"steps":0..250=0,"guidance":0..30=0,"seed":{u64?=random},"template":{id?=Preferences › Default Image Template},"model":{file?=Preferences},"name":{str?}} → {"layer"|"document","seed","template","runId","width","height","ms"} (target auto = a layer over the whole canvas when a document is open, else a new document; width/height 0 = the document's size or 1024, otherwise 64..4096 rounded down to multiples of 16; steps and guidance 0 = the template's defaults; a background job; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"target":"auto|layer|document","width":int=0,"height":int=0,"transparent":bool=false,"steps":0..250=0,"guidance":0..30=0,"seed":{u64?=random},"template":{id?=Preferences › Default Image Template},"model":{file?=Preferences},"name":{str?}} → {"layer"|"document","seed","template","runId","width","height","ms"} (target auto = a layer over the whole canvas when a document is open, else a new document; width/height 0 = the document's size or 1024, otherwise 64..4096 rounded down to multiples of 16; transparent = ask for the subject alone on a transparent background and keep the alpha the model returns (templates whose model can, such as qwen-2.1/image; others refuse); steps and guidance 0 = the template's defaults; a background job; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: image_enabled,
             run: run_image,
             journal: true,
@@ -1246,6 +1417,17 @@ pub fn specs() -> Vec<CommandSpec> {
             params: r#"{"prompt":text,"left":int=0,"top":int=0,"right":int=0,"bottom":int=0,"width":int=0,"height":int=0,"negative":text,"steps":0..250=0,"guidance":0..30=0,"edge":"soft|hard","variations":int=1,"margin":{0..1=0.25},"anchor":{str?=center},"seed":{u64?=random},"template":{id?="auto": the Lightning expand tier when its LoRA is installed, else the 40-step one},"model":{file?=Preferences},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","canvas":[w,h],"offset":[x,y],"width","height","requestWidth","requestHeight","ms","timings"} (adds canvas (left/top/right/bottom in pixels, or a larger width/height placed by anchor: topLeft, top, topRight, left, center, right, bottomLeft, bottom, bottomRight) and has the model paint it, as one undo step: the picture moves by the left/top pads, the result is a new layer over the added area; edge soft = its mask fades across the re-rendered band just inside the old edge (8 % of the picture's longer side), dithered; hard = exactly the added area; an empty prompt continues the scene; otherwise as generate.fill; needs a ComfyUI server)"#,
             enabled: expand_enabled,
             run: run_expand,
+            journal: true,
+        },
+        CommandSpec {
+            id: REMOVE_BG,
+            label: "Remove Background (Generative)…",
+            // Placed by the menu catalogue under Edit, with the other generative items.
+            menu: &[],
+            shortcut: None,
+            params: r#"{"prompt":text,"asSelection":bool=false,"sampleAllLayers":bool=false,"mode":"replace|add|subtract|intersect","layer":{id?=active},"seed":{u64?=random},"steps":{0..250=0},"guidance":{0..30=0},"template":{id?=qwen-2.1/matte},"model":{file?}} → {"layer","selection","bounds":[x,y,w,h],"pixels","seed","template","runId","width","height","requestWidth","requestHeight","ms","timings"} (the model separates the subject and answers with its matte as an alpha channel: Qwen-Image-2.1, a research-licensed model, see Preferences › AI Integrations › Allow Research-Only Models; prompt = what to keep, e.g. "the lighthouse", empty = the model's own reading; the matte becomes the layer's mask (the Background becomes a normal layer; the pixels are never changed) or, with asSelection, the selection combined by mode; sampleAllLayers sends the composite instead of the layer alone; images over one megapixel are sent downscaled and the matte comes back resampled; a background job; needs a ComfyUI server)"#,
+            enabled: remove_bg_enabled,
+            run: run_remove_bg,
             journal: true,
         },
         CommandSpec {
@@ -1303,3 +1485,7 @@ mod image_tests;
 #[cfg(test)]
 #[path = "generate_template_tests.rs"]
 mod template_tests;
+
+#[cfg(test)]
+#[path = "generate_matte_tests.rs"]
+mod matte_tests;

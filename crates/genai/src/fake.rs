@@ -41,6 +41,10 @@ pub struct Options {
     /// Model files left out of `/models/<folder>` (by default every built-in template's files
     /// are "installed"); e.g. a Lightning LoRA, to exercise the `auto` fallback.
     pub missing_files: Vec<String>,
+    /// Give every generated image an alpha channel: opaque inside this normalised
+    /// `[x0, y0, x1, y1]` rectangle, transparent outside, half on its one-pixel border (a model
+    /// that outputs RGBA, such as Qwen-Image-2.1's matte). None = opaque everywhere.
+    pub matte: Option<[f32; 4]>,
 }
 
 impl Default for Options {
@@ -56,6 +60,7 @@ impl Default for Options {
             websocket: true,
             segments: vec![[0.25, 0.25, 0.75, 0.75]],
             missing_files: Vec::new(),
+            matte: None,
         }
     }
 }
@@ -349,7 +354,30 @@ fn route(method: &str, path: &str, body: &[u8], ctype: &str, opts: &Options, sta
                     })
                     .collect()
             } else {
-                vec![(format!("{id}.png"), Rgba8::solid(size.0, size.1, opts.color).and_then(|i| png::encode_rgba8(&i)).unwrap_or_default())]
+                let image = Rgba8::solid(size.0, size.1, opts.color).map(|mut img| {
+                    if let Some(r) = opts.matte {
+                        let (w, h) = (size.0 as usize, size.1 as usize);
+                        let px = |f: f32, n: usize| ((n as f32 * f.clamp(0.0, 1.0)).round() as usize).min(n);
+                        let (x0, y0, x1, y1) = (px(r[0], w), px(r[1], h), px(r[2], w), px(r[3], h));
+                        for y in 0..h {
+                            for x in 0..w {
+                                let inside = x >= x0 && x < x1 && y >= y0 && y < y1;
+                                let border = inside && (x == x0 || x + 1 == x1 || y == y0 || y + 1 == y1);
+                                if let Some(a) = img.data.get_mut((y * w + x) * 4 + 3) {
+                                    *a = if border {
+                                        128
+                                    } else if inside {
+                                        255
+                                    } else {
+                                        0
+                                    };
+                                }
+                            }
+                        }
+                    }
+                    img
+                });
+                vec![(format!("{id}.png"), image.and_then(|i| png::encode_rgba8(&i)).unwrap_or_default())]
             };
             let names: Vec<String> = files.iter().map(|(n, _)| n.clone()).collect();
             for (name, bytes) in files {

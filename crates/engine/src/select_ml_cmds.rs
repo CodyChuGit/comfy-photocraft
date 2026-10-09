@@ -68,7 +68,7 @@ fn plan(s: &Session, cmd: &str, p: &Value) -> Result<Plan> {
 }
 
 /// Bounding box of the pixels with coverage ≥ 0.5, in document coordinates, and their count.
-fn coverage_bounds(cov: &[f32], area: Rect) -> (Rect, u64) {
+pub(crate) fn coverage_bounds(cov: &[f32], area: Rect) -> (Rect, u64) {
     let w = area.width() as usize;
     let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
     let mut count = 0u64;

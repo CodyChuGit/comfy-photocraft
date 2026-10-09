@@ -204,9 +204,9 @@ to shared files).
 |---|---|---|---|
 | `generate.fill` | Edit › Generative Fill… | `{"prompt":str,"negative":str?,"model":id?=pref,"seed":u64?,"steps":u16?,"guidance":f32?,"variations":1..8=1,"margin":0..1=0.25,"layer":id?=active,"wait":bool=false}` | document, selection, backend available |
 | `generate.expand` | Edit › Generative Expand… | same + `{"width","height","anchor"}` | document, backend |
-| `generate.image` | Edit › Generate Image… | `{"prompt","model","seed","steps","width","height","references":[path|layer]?,"target":"layer"|"document"}` | backend |
+| `generate.image` | Edit › Generate Image… | `{"prompt","model","seed","steps","width","height","transparent":bool=false,"references":[path|layer]?,"target":"layer"|"document"}` | backend |
 | `generate.edit` | Edit › Generative Edit… | `{"instruction","model","references":[]?,"layer":id?=active,"useSelection":bool=true}` | pixel layer, backend |
-| `generate.removeBackground` | Layer › Generative › Remove Background | `{"model"?,"asSelection":bool=false}` | pixel layer, backend |
+| `generate.removeBackground` | Edit › Remove Background (Generative)… | `{"prompt":str?=what to keep,"asSelection":bool=false,"sampleAllLayers":bool=false,"mode","layer":id?=active,"seed"?,"template"?,"model"?}` → the model's RGBA matte as the layer's mask or the selection | unlocked pixel layer, backend |
 | `generate.upscale` | Image › Generative Upscale… | `{"model","factor":2|4}` | pixel layer, backend |
 | `generate.models` | — | `{}` → `{models:[…], server}` | always (query, `journal: false`) |
 | `generate.health` | — | `{}` → `{ok, version, vramFree, queue}` | always (query) |

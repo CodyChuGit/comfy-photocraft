@@ -11,6 +11,7 @@
     "needsImage": false,
     "needsMask": false,
     "defaults": { "steps": 25, "guidance": 1.0 },
+    "promptFormatTransparent": "{prompt}, isolated on a transparent background, output a PNG image",
     "placeholders": {
       "prompt": "string", "negative": "string", "seed": "int", "steps": "int", "cfg": "float",
       "width": "int", "height": "int", "prefix": "string",
@@ -21,7 +22,7 @@
       { "placeholder": "clip", "folder": "text_encoders", "default": "qwen3vl_8b_int8_convrot.safetensors" },
       { "placeholder": "vae", "folder": "vae", "default": "qwen_image_2.1_vae_bf16.safetensors" }
     ],
-    "notes": "Node names and settings follow ComfyUI's official 'Text to Image (Qwen Image 2.1)' template (image_qwen_image_2_1_t2i.json): UNETLoader → QwenImage21Cache, CLIPLoader type qwen_image, TextEncodeQwenImage21 without images (positive and negative), EmptyLatentImage, KSampler euler/simple 25 steps CFG 1, VAEDecode. The optional prompt-enhancement encoder (qwen3.5_9b_qwen_image_2.1_pe_t2i) is left out."
+    "notes": "Node names and settings follow ComfyUI's official 'Text to Image (Qwen Image 2.1)' template (image_qwen_image_2_1_t2i.json): UNETLoader → QwenImage21Cache, CLIPLoader type qwen_image, TextEncodeQwenImage21 without images (positive and negative), EmptyLatentImage, KSampler euler/simple 25 steps CFG 1, VAEDecode. The optional prompt-enhancement encoder (qwen3.5_9b_qwen_image_2.1_pe_t2i) is left out. The 2.1 VAE decodes RGBA: asked for '…, isolated on a transparent background, output a PNG image' (promptFormatTransparent, the official background-removal template's phrasing) the saved PNG carries a real alpha channel (verified live 2026-10-09: a boat with a clean soft matte, 10 s at 1024²)."
   },
   "graph": {
     "1": { "class_type": "UNETLoader", "inputs": { "unet_name": "{{unet}}", "weight_dtype": "default" } },
