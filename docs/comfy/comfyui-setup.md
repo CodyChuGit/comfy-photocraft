@@ -49,8 +49,9 @@ repack is not gated.
 | VAE (shared by Krea 2 and Qwen-Image) | `vae/` | `qwen_image_vae.safetensors` |
 | Qwen-Image-Edit-2511 (Apache-2.0 editor) | `diffusion_models/` | `qwen_image_edit_2511_fp8mixed.safetensors` (or `_bf16`) |
 | Qwen-Image text encoder (2511 line) | `text_encoders/` | the Qwen2.5-VL-7B encoder file from the 2511 template |
-| Qwen-Image-2.1 (research licence) | `diffusion_models/` | the int8 file from the official 2.1 template |
-| Qwen-Image-2.1 text encoder | `text_encoders/` | the Qwen3-VL-8B encoder file from the 2.1 template |
+| Qwen-Image-2.1 (research licence) | `diffusion_models/` | `qwen_image_2.1_int8_convrot.safetensors` (or `qwen_image_2.1_bf16.safetensors`) from `Comfy-Org/Qwen-Image-2.1` |
+| Qwen-Image-2.1 text encoder | `text_encoders/` | `qwen3vl_8b_int8_convrot.safetensors` (or `qwen3vl_8b_bf16.safetensors`); optional prompt enhancers `qwen3.5_9b_qwen_image_2.1_pe_t2i.int8_convrot.safetensors` / `…_pe_i2i.int8_convrot.safetensors` |
+| Qwen-Image-2.1 VAE (its own, not the Qwen-Image one) | `vae/` | `qwen_image_2.1_vae_bf16.safetensors` |
 | Z-Image Turbo (Apache-2.0) | `diffusion_models/` | Comfy-Org BF16 release |
 | SAM 3.1 (select by text, mattes; SAM License) | `checkpoints/` | `sam3.1_multiplex_fp16.safetensors` from `Comfy-Org/sam3.1` (≈ 1.75 GB; native nodes, templates "SAM3: Image Segmentation" under Utility) |
 | Background removal | custom nodes' own folders | BiRefNet weights (MIT) |

@@ -145,49 +145,19 @@ fn short(prompt: &str) -> String {
     s
 }
 
+/// A template id from a preference, or the built-in default when the preference is empty.
+fn template_or(pref: &str, fallback: &str) -> String {
+    let t = pref.trim();
+    if t.is_empty() { fallback.to_string() } else { t.to_string() }
+}
+
 fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
-    let prompt = opt_str(FILL, p, "prompt", MAX_PROMPT_CHARS)?
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .ok_or_else(|| bad(FILL, "`prompt` is required: describe what to generate"))?
-        .to_string();
-    let negative = opt_str(FILL, p, "negative", MAX_PROMPT_CHARS)?.unwrap_or("").to_string();
-    let template_id = opt_str(FILL, p, "template", 100)?.unwrap_or(DEFAULT_FILL_TEMPLATE);
-    let template = template::find(template_id).map_err(|e| bad(FILL, e.to_string()))?;
-    if template.meta.task != Task::Fill {
-        return Err(bad(FILL, format!("template `{template_id}` is not a fill template")));
-    }
-    let integrations = &s.prefs().integrations;
-    if template.meta.license == License::Research && !integrations.allow_research_models {
-        return Err(EngineError::Other(format!(
-            "`{}` uses a research-only model; turn on Allow Research-Only Models in Preferences › AI Integrations to use it",
-            template.meta.id
-        )));
-    }
-    let seed = match p.get("seed") {
-        None | Some(Value::Null) => photocraft_genai::random_seed(),
-        Some(v) => {
-            let x = v
-                .as_f64()
-                .filter(|x| x.is_finite() && *x >= 0.0 && x.fract() == 0.0 && *x < 9_007_199_254_740_992.0)
-                .ok_or_else(|| bad(FILL, "`seed` must be a non-negative integer below 2^53"))?;
-            x as u64
-        }
+    let (default_template, default_model) = {
+        let integrations = &s.prefs().integrations;
+        (template_or(&integrations.default_fill_template, DEFAULT_FILL_TEMPLATE), integrations.default_edit_model.clone())
     };
-    let steps = opt_num(FILL, p, "steps", 1.0, 250.0)?.map_or(0, |x| x.round() as u32);
-    let guidance = opt_num(FILL, p, "guidance", 0.0, 30.0)?.map_or(0.0, |x| x as f32);
+    let Common { template, prompt, negative, seed, steps, guidance, models, name } = plan_common(s, FILL, p, &default_template, Task::Fill, &default_model)?;
     let margin = opt_num(FILL, p, "margin", 0.0, 1.0)?.unwrap_or(0.25);
-    let name = opt_str(FILL, p, "name", 200)?.map(str::to_string);
-    // The diffusion model: the `model` param, else the preference, else the template's default.
-    let mut models = Vec::new();
-    let model =
-        opt_str(FILL, p, "model", 200)?.map(str::to_string).or_else(|| Some(integrations.default_edit_model.trim().to_string()).filter(|m| !m.is_empty()));
-    if let Some(m) = model {
-        let slot =
-            template.meta.models.first().map(|s| s.placeholder.clone()).ok_or_else(|| bad(FILL, format!("template `{template_id}` has no model slot")))?;
-        models.push((slot, m));
-    }
-    template.model_bindings(&models).map_err(|e| bad(FILL, e.to_string()))?;
 
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let sel = d.doc.selection.as_ref().ok_or_else(|| EngineError::Other("make a selection first".into()))?;
@@ -344,9 +314,11 @@ fn side(cmd: &str, p: &Value, key: &str, default: u32) -> Result<u32> {
 }
 
 fn plan_image(s: &Session, p: &Value) -> Result<ImagePlan> {
-    let default_model = s.prefs().integrations.default_generate_model.clone();
-    let Common { template, prompt, negative, seed, steps, guidance, models, name } =
-        plan_common(s, IMAGE, p, DEFAULT_IMAGE_TEMPLATE, Task::Image, &default_model)?;
+    let (default_template, default_model) = {
+        let integrations = &s.prefs().integrations;
+        (template_or(&integrations.default_image_template, DEFAULT_IMAGE_TEMPLATE), integrations.default_generate_model.clone())
+    };
+    let Common { template, prompt, negative, seed, steps, guidance, models, name } = plan_common(s, IMAGE, p, &default_template, Task::Image, &default_model)?;
     let doc_size = s.active().map(|d| (d.doc.bounds().width(), d.doc.bounds().height()));
     let to_document = match opt_str(IMAGE, p, "target", 20)? {
         None => doc_size.is_none(),
@@ -556,3 +528,7 @@ mod tests;
 #[cfg(test)]
 #[path = "generate_image_tests.rs"]
 mod image_tests;
+
+#[cfg(test)]
+#[path = "generate_template_tests.rs"]
+mod template_tests;

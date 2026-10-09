@@ -719,6 +719,11 @@ pub struct Integrations {
     pub default_edit_model: String,
     /// Diffusion model file for the text-to-image templates (empty = each template's default).
     pub default_generate_model: String,
+    /// Workflow template `generate.fill` uses when the call names none (`generate.models` lists
+    /// them; `qwen-edit-2511/fill` is the permissive default, `qwen-2.1/fill` the research one).
+    pub default_fill_template: String,
+    /// Workflow template `generate.image` uses when the call names none.
+    pub default_image_template: String,
     /// Seconds a generation may take before it is interrupted.
     pub generative_timeout_secs: u32,
     /// Offer models whose licence allows research use only (never pre-selected).
@@ -733,6 +738,8 @@ impl Default for Integrations {
             comfy_server: "http://127.0.0.1:8188".into(),
             default_edit_model: String::new(),
             default_generate_model: String::new(),
+            default_fill_template: "qwen-edit-2511/fill".into(),
+            default_image_template: "krea2-turbo/image".into(),
             generative_timeout_secs: 600,
             allow_research_models: false,
         }
@@ -1063,6 +1070,13 @@ fn check_value(path: &str, v: &Value) -> std::result::Result<(), String> {
         let ok = v.as_str().is_some_and(|s| s.len() <= 512 && !s.contains(['/', '\\', '\0']) && !s.contains(".."));
         if !ok {
             return Err(format!("`{path}` must be a plain model file name (no folders)"));
+        }
+    }
+    if path == "integrations.defaultFillTemplate" || path == "integrations.defaultImageTemplate" {
+        let ok =
+            v.as_str().is_some_and(|s| s.len() <= 100 && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '.' | '/' | '_')));
+        if !ok {
+            return Err(format!("`{path}` must be a template id such as qwen-edit-2511/fill (see generate.models)"));
         }
     }
     if let Some((lo, hi)) = range(path) {

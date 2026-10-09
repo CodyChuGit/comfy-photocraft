@@ -131,7 +131,12 @@ struct File {
     graph: Value,
 }
 
-const BUILTIN: &[&str] = &[include_str!("../workflows/qwen-edit-2511-fill.json"), include_str!("../workflows/krea2-turbo-image.json")];
+const BUILTIN: &[&str] = &[
+    include_str!("../workflows/qwen-edit-2511-fill.json"),
+    include_str!("../workflows/qwen-2.1-fill.json"),
+    include_str!("../workflows/krea2-turbo-image.json"),
+    include_str!("../workflows/qwen-2.1-image.json"),
+];
 
 /// Every compiled-in template. Parsing cannot fail for shipped files (a test checks it); a file
 /// that fails anyway is skipped rather than taking the others down.

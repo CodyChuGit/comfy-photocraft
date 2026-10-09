@@ -1,0 +1,40 @@
+{
+  "meta": {
+    "id": "qwen-2.1/fill",
+    "name": "Generative Fill (Qwen-Image-2.1)",
+    "family": "qwen-image-2.1",
+    "task": "fill",
+    "license": "research",
+    "licenseNote": "Qwen-Image-2.1 (Alibaba Qwen, 2026-09-20) ships under the Qwen Research License Agreement: research and evaluation use only; commercial use needs a separate agreement with Alibaba. Turn on Allow Research-Only Models in Preferences › AI Integrations to use it.",
+    "minComfyVersion": "0.37.0",
+    "saveNode": "12",
+    "needsImage": true,
+    "needsMask": true,
+    "defaults": { "steps": 25, "guidance": 1.0 },
+    "placeholders": {
+      "prompt": "string", "negative": "string", "seed": "int", "steps": "int", "cfg": "float",
+      "image": "string", "mask": "string", "prefix": "string",
+      "unet": "string", "clip": "string", "vae": "string"
+    },
+    "models": [
+      { "placeholder": "unet", "folder": "diffusion_models", "default": "qwen_image_2.1_int8_convrot.safetensors" },
+      { "placeholder": "clip", "folder": "text_encoders", "default": "qwen3vl_8b_int8_convrot.safetensors" },
+      { "placeholder": "vae", "folder": "vae", "default": "qwen_image_2.1_vae_bf16.safetensors" }
+    ],
+    "notes": "Node names and settings follow ComfyUI's official 'Image Edit (Qwen Image 2.1)' template (image_qwen_image_2_1_image_edit.json): UNETLoader → QwenImage21Cache, CLIPLoader type qwen_image, TextEncodeQwenImage21 (clip, vae, prompt, negative_prompt, resolution 0 = keep the input's size, image_1; outputs positive, negative and the encoded latent of image_1), KSampler euler/simple 25 steps CFG 1 denoise 1, VAEDecode. Inpainting is added with core nodes: the mask PNG is loaded, turned into a MASK and applied to the encoder's latent with SetLatentNoiseMask, so only the selected area is regenerated. The template's optional prompt-enhancement encoder (qwen3.5_9b_qwen_image_2.1_pe_i2i) is left out; at CFG 1 the negative prompt has no effect but is wired for completeness."
+  },
+  "graph": {
+    "1": { "class_type": "UNETLoader", "inputs": { "unet_name": "{{unet}}", "weight_dtype": "default" } },
+    "2": { "class_type": "CLIPLoader", "inputs": { "clip_name": "{{clip}}", "type": "qwen_image", "device": "default" } },
+    "3": { "class_type": "VAELoader", "inputs": { "vae_name": "{{vae}}" } },
+    "4": { "class_type": "LoadImage", "inputs": { "image": "{{image}}", "upload": "image" } },
+    "5": { "class_type": "QwenImage21Cache", "inputs": { "model": ["1", 0], "device": "auto", "dtype": "default" } },
+    "6": { "class_type": "TextEncodeQwenImage21", "inputs": { "clip": ["2", 0], "vae": ["3", 0], "prompt": "{{prompt}}", "negative_prompt": "{{negative}}", "resolution": 0, "image_1": ["4", 0] } },
+    "7": { "class_type": "LoadImage", "inputs": { "image": "{{mask}}", "upload": "image" } },
+    "8": { "class_type": "ImageToMask", "inputs": { "image": ["7", 0], "channel": "red" } },
+    "9": { "class_type": "SetLatentNoiseMask", "inputs": { "samples": ["6", 2], "mask": ["8", 0] } },
+    "10": { "class_type": "KSampler", "inputs": { "model": ["5", 0], "positive": ["6", 0], "negative": ["6", 1], "latent_image": ["9", 0], "seed": "{{seed}}", "steps": "{{steps}}", "cfg": "{{cfg}}", "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0 } },
+    "11": { "class_type": "VAEDecode", "inputs": { "samples": ["10", 0], "vae": ["3", 0] } },
+    "12": { "class_type": "SaveImage", "inputs": { "images": ["11", 0], "filename_prefix": "{{prefix}}" } }
+  }
+}

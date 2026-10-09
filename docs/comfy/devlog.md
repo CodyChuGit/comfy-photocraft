@@ -30,8 +30,17 @@ can pick up.
   (size defaults to the document, rounded down to the 16-px grid, min 64, resampled back),
   `target: "document"` opens a new RGB 8-bit document of the result's size (default 1024²).
   Krea 2 is a community-licence model: the catalogue says so and nothing pre-selects it for fill.
+- Qwen-Image-2.1 templates (`qwen-2.1/fill`, `qwen-2.1/image`), from ComfyUI's official 2.1
+  image-edit and text-to-image templates: `UNETLoader → QwenImage21Cache`, `CLIPLoader` type
+  `qwen_image`, `TextEncodeQwenImage21` (positive, negative and the encoded latent of `image_1`,
+  resolution 0 keeps the input size), KSampler euler/simple 25 steps CFG 1, the 2.1-specific VAE
+  `qwen_image_2.1_vae_bf16`. Fill masks the encoder's latent with `SetLatentNoiseMask`. Both are
+  **research-licence** templates: refused with a message until `allowResearchModels` is on, and
+  listed as `allowed: false` by `generate.models` meanwhile.
 - Preferences › AI Integrations: `comfyServer`, `defaultEditModel`, `defaultGenerateModel`,
-  `generativeTimeoutSecs`, `allowResearchModels`, each read by the commands and validated.
+  `defaultFillTemplate` (`qwen-edit-2511/fill`), `defaultImageTemplate` (`krea2-turbo/image`),
+  `generativeTimeoutSecs`, `allowResearchModels`, each read by the commands and validated. Setting
+  `defaultFillTemplate = qwen-2.1/fill` with the research opt-in makes 2.1 the everyday editor.
 - Tests: 25 in the genai crate (unit + the client against the fake server: upload/queue/wait/
   download, polling without a socket, overrides, server failure, rejected prompt, cancellation
   interrupts within 3 s, deadline, unreachable server, old server version, health/model files,
