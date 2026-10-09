@@ -194,8 +194,17 @@ resident and costs little: the editing models' own working size is about that.
 | `generate.image` + `transparent`, "a vintage brass compass, product photo", 1024² | 10.8 s | a clean cutout with a real soft alpha |
 | the first run after switching from the 2511 models (a purge first) | +~8 s | the 2.1 model and encoder load (6.8 + 8.7 GB) |
 
-The matte is 25 steps of the full model, so it costs a text-to-image; a dedicated matting
-model (BiRefNet, ~1 s) remains the plan for the permissive default.
+The matte is 25 steps of the full model, so it costs a text-to-image. The permissive route
+(`template: auto` without the research opt-in) is SAM 3.1 instead, hard-edged but fast:
+
+| Case | time | result |
+|---|---|---|
+| Remove Background, prompt "the red boat", SAM 3.1 | 1.5 s (checkpoint load included) | the boat, 146×38 px |
+| Remove Background, no prompt ("the main subject"), SAM 3.1 | 0.5 s | the lighthouse tower, 111×281 px |
+| `select.byPoint` at (350, 665) | 0.3 s | the boat |
+
+A soft matte from a dedicated matting model (BiRefNet) would sit between the two in quality;
+it needs a custom node pack the server does not have, so it is not planned for the default.
 
 ## 5c. Generative Edit and the automatic purge
 

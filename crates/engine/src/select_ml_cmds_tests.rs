@@ -48,6 +48,25 @@ fn by_text_selects_what_the_model_found() {
 }
 
 #[test]
+fn by_point_selects_the_object_under_the_point() {
+    let fake = FakeComfy::start().unwrap();
+    let mut s = session(&fake.url);
+    let r = s.execute(BY_POINT, json!({"x": 30, "y": 20})).unwrap();
+    assert_eq!(r["selected"], true);
+    assert_eq!(selection_bounds(&s), Some(Rect::new(16, 12, 48, 36)), "what the fake detector found");
+    let st = fake.state();
+    let g = &st.prompts[0].1;
+    assert_eq!(g["4"]["class_type"], "SAM3_Detect");
+    assert_eq!(g["4"]["inputs"]["positive_coords"], r#"[{"x":30,"y":20}]"#, "the point in the request's pixels");
+    assert!(g.get("3").is_none(), "no text conditioning");
+    assert_eq!(g["1"]["inputs"]["ckpt_name"], "sam3.1_multiplex_fp16.safetensors");
+    drop(st);
+    for p in [json!({}), json!({"x": 30}), json!({"x": -1, "y": 2}), json!({"x": 64, "y": 2}), json!({"x": "a", "y": 2})] {
+        assert!(matches!(s.execute(BY_POINT, p.clone()), Err(EngineError::BadParams { .. })), "{p}");
+    }
+}
+
+#[test]
 fn modes_combine_with_the_current_selection() {
     let fake = FakeComfy::start().unwrap();
     let mut s = session(&fake.url);

@@ -143,14 +143,54 @@ fn remove_background_validates_and_is_gated_like_the_other_research_templates() 
         assert!(matches!(s.execute(REMOVE_BG, p.clone()), Err(EngineError::BadParams { .. })), "{p}");
     }
     s.edit_prefs(|p| p.integrations.allow_research_models = false);
-    let e = s.execute(REMOVE_BG, json!({})).unwrap_err().to_string();
+    let e = s.execute(REMOVE_BG, json!({"template": "qwen-2.1/matte"})).unwrap_err().to_string();
     assert!(e.contains("research-only"), "{e}");
+    s.edit_prefs(|p| p.integrations.allow_research_models = true);
     // A fully transparent answer: the model "kept nothing", and nothing changes.
     let empty = FakeComfy::start_with(Options { matte: Some([0.0, 0.0, 0.0, 0.0]), ..Options::default() }).unwrap();
     let mut s = session(&empty.url);
     let e = s.execute(REMOVE_BG, json!({})).unwrap_err().to_string();
     assert!(e.contains("kept nothing"), "{e}");
     assert!(s.active().unwrap().doc.layers.last().unwrap().mask.is_none(), "an error leaves no half-done mask");
+}
+
+#[test]
+fn without_the_research_opt_in_remove_background_uses_the_permissive_detector() {
+    // The fake detector "finds" the centre quarter: x 16..48, y 12..36 on 64×48.
+    let fake = FakeComfy::start().unwrap();
+    let mut s = session(&fake.url);
+    s.edit_prefs(|p| p.integrations.allow_research_models = false);
+    let id = s.active().unwrap().active_layer.unwrap();
+    let r = s.execute(REMOVE_BG, json!({"prompt": "the boat"})).unwrap();
+    assert_eq!(r["template"], "sam3.1/segment");
+    assert_eq!(r["bounds"], json!([16, 12, 32, 24]));
+    assert_eq!(mask_at(&s, id, 32, 24), 1.0);
+    assert_eq!(mask_at(&s, id, 2, 2), 0.0);
+    {
+        let st = fake.state();
+        let g = &st.prompts[0].1;
+        assert_eq!(g["4"]["class_type"], "SAM3_Detect");
+        assert_eq!(g["3"]["inputs"]["text"], "the boat");
+        assert_eq!(g["4"]["inputs"]["threshold"], 0.5);
+    }
+    // No subject named: the detector is asked for the main subject. As a selection, too.
+    let r = s.execute(REMOVE_BG, json!({"asSelection": true})).unwrap();
+    assert_eq!(r["selection"], true);
+    assert!(s.active().unwrap().doc.selection.is_some());
+    assert_eq!(fake.state().prompts[1].1["3"]["inputs"]["text"], "the main subject");
+    // Research allowed but the 2.1 files missing: `auto` still falls back to the detector.
+    let bare = FakeComfy::start_with(Options { missing_files: vec!["qwen_image_2.1_int8_convrot.safetensors".into()], ..Options::default() }).unwrap();
+    let mut s = session(&bare.url);
+    let r = s.execute(REMOVE_BG, json!({"prompt": "the boat"})).unwrap();
+    assert_eq!(r["template"], "sam3.1/segment");
+    let m = s.execute(MODELS, json!({})).unwrap();
+    assert_eq!(m["autoMatte"], "sam3.1/segment");
+    s.edit_prefs(|p| p.integrations.allow_research_models = false);
+    assert_eq!(s.execute(MODELS, json!({})).unwrap()["autoMatte"], "sam3.1/segment");
+    // With everything installed and allowed, auto is the matte model.
+    let full = matte_server();
+    let mut s = session(&full.url);
+    assert_eq!(s.execute(MODELS, json!({})).unwrap()["autoMatte"], DEFAULT_MATTE_TEMPLATE);
 }
 
 #[test]

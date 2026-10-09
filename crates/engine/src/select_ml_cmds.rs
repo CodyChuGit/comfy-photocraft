@@ -1,5 +1,6 @@
 //! `select.*` commands backed by a segmentation model (SAM 3.1 through the generative backend):
-//! **Select by Text** ("the dog", "red car", `eye:2`) and the ML **Select Subject**.
+//! **Select by Text** ("the dog", "red car", `eye:2`), the ML **Select Subject**, and **Select
+//! by Point** (the object under a canvas point, through the detector's point prompt).
 //!
 //! The composite (or the active layer) goes to the backend as an image with the phrase; the
 //! model returns one mask per instance. The command turns them into coverage over the canvas,
@@ -24,7 +25,9 @@ use crate::{EngineError, Result, Session};
 
 pub const BY_TEXT: &str = "select.byText";
 pub const SUBJECT_ML: &str = "select.subjectML";
+pub const BY_POINT: &str = "select.byPoint";
 pub const DEFAULT_SEGMENT_TEMPLATE: &str = "sam3.1/segment";
+pub const DEFAULT_POINT_TEMPLATE: &str = "sam3.1/segment-point";
 /// A detector request is sent at most this large (SAM 3.1 works at about 1 megapixel inside;
 /// the masks come back at the request size and are resampled to the canvas).
 const MAX_SEGMENT_REQUEST_PIXELS: u64 = 2048 * 1024;
@@ -42,10 +45,29 @@ struct Plan {
     /// Kept as `f64` so the JSON the server receives is the number the caller gave.
     threshold: f64,
     all_layers: bool,
+    /// Point prompts in canvas pixels (`select.byPoint`); empty for a text prompt.
+    points: Vec<[f64; 2]>,
 }
 
 fn plan(s: &Session, cmd: &str, p: &Value) -> Result<Plan> {
-    let common = generate_cmds::plan_common(s, cmd, p, DEFAULT_SEGMENT_TEMPLATE, Task::Segment, "")?;
+    let default_template = if cmd == BY_POINT { DEFAULT_POINT_TEMPLATE } else { DEFAULT_SEGMENT_TEMPLATE };
+    let common = generate_cmds::plan_common(s, cmd, p, default_template, Task::Segment, "")?;
+    // `points`: [[x, y], …] on the canvas (set by `select.byPoint` from its `x`/`y`).
+    let canvas = s.active().ok_or(EngineError::NoDocument)?.doc.bounds();
+    let mut points = Vec::new();
+    if let Some(list) = p.get("points") {
+        for pt in list.as_array().ok_or_else(|| bad(cmd, "`points` must be a list of [x, y]"))? {
+            let (x, y) = (pt.get(0).and_then(Value::as_f64), pt.get(1).and_then(Value::as_f64));
+            match (x, y) {
+                (Some(x), Some(y))
+                    if x.is_finite() && y.is_finite() && x >= 0.0 && y >= 0.0 && x < f64::from(canvas.width()) && y < f64::from(canvas.height()) =>
+                {
+                    points.push([x, y]);
+                }
+                _ => return Err(bad(cmd, format!("every point must be an [x, y] inside the {}×{} canvas", canvas.width(), canvas.height()))),
+            }
+        }
+    }
     let mode = match opt_str(cmd, p, "mode", 20)? {
         None | Some("replace") | Some("new") => SelectionMode::Replace,
         Some("add") => SelectionMode::Add,
@@ -64,7 +86,7 @@ fn plan(s: &Session, cmd: &str, p: &Value) -> Result<Plan> {
         Some(Value::Bool(b)) => *b,
         Some(_) => return Err(bad(cmd, "`sampleAllLayers` must be true or false")),
     };
-    Ok(Plan { common, mode, instance, threshold, all_layers })
+    Ok(Plan { common, mode, instance, threshold, all_layers, points })
 }
 
 /// Bounding box of the pixels with coverage ≥ 0.5, in document coordinates, and their count.
@@ -89,9 +111,9 @@ fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Resu
     let plan = plan(s, cmd, p)?;
     let backend = generate_cmds::backend(s)?;
     let server = generate_cmds::server_key(s);
-    let Plan { common, mode, instance, threshold, all_layers } = plan;
+    let Plan { common, mode, instance, threshold, all_layers, points } = plan;
     let Common { template, prompt, models, .. } = common;
-    let label = format!("{label_prefix}: {}", short(&prompt));
+    let label = if points.is_empty() { format!("{label_prefix}: {}", short(&prompt)) } else { label_prefix.to_string() };
     let template_id = template.meta.id.clone();
     let shown = prompt.clone();
     crate::jobs::edit_job(
@@ -116,6 +138,19 @@ fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Resu
             let image = if (rw, rh) == (w, h) { image } else { resize_rgba8(&image, rw, rh)? };
             let mut params = BTreeMap::new();
             params.insert("threshold".to_string(), json!(threshold));
+            if !points.is_empty() {
+                // Point prompts in the request's own pixels (SAM3_Detect takes them as JSON).
+                let (sx, sy) = (f64::from(rw) / f64::from(w.max(1)), f64::from(rh) / f64::from(h.max(1)));
+                let scaled: Vec<Value> = points
+                    .iter()
+                    .map(|[x, y]| {
+                        let px = (x * sx).round().clamp(0.0, f64::from(rw.saturating_sub(1)));
+                        let py = (y * sy).round().clamp(0.0, f64::from(rh.saturating_sub(1)));
+                        json!({"x": px as i64, "y": py as i64})
+                    })
+                    .collect();
+                params.insert("points".to_string(), Value::String(Value::Array(scaled).to_string()));
+            }
             let req = Request {
                 template: template_id,
                 prompt,
@@ -196,6 +231,19 @@ fn subject_prompt(what: &str) -> Option<&'static str> {
     })
 }
 
+/// `select.byPoint`: the object under a canvas point, through the detector's point prompt.
+fn run_by_point(s: &mut Session, p: &Value) -> Result<Value> {
+    let num = |key: &str| -> Result<f64> {
+        p.get(key).and_then(Value::as_f64).filter(|v| v.is_finite()).ok_or_else(|| bad(BY_POINT, format!("`{key}` is required: a canvas coordinate")))
+    };
+    let (x, y) = (num("x")?, num("y")?);
+    let mut q = p.as_object().cloned().unwrap_or_else(Map::new);
+    q.insert("points".into(), json!([[x, y]]));
+    // The backend wants a prompt; the point template does not read it.
+    q.insert("prompt".into(), Value::String("point".into()));
+    run_select(s, BY_POINT, &Value::Object(q), "Select by Point")
+}
+
 fn run_subject(s: &mut Session, p: &Value) -> Result<Value> {
     let what = opt_str(SUBJECT_ML, p, "what", 20)?.unwrap_or("subject");
     let prompt = subject_prompt(what)
@@ -216,6 +264,16 @@ pub fn specs() -> Vec<CommandSpec> {
             params: r#"{"prompt":text,"mode":"replace|add|subtract|intersect","threshold":0..1=0.5,"sampleAllLayers":bool=true,"instance":{1..?=all},"template":{id?="sam3.1/segment"},"model":{file?}} → {"selected","count","instances":[{"index","bounds":[x,y,w,h],"pixels"}],"ms"} (prompt: a short phrase such as "the dog", "red car" or "eye:2", comma-separated terms allowed; instance picks one of the found instances, default all; a background job; needs a ComfyUI server with the SAM 3.1 checkpoint, see Preferences › AI Integrations)"#,
             enabled,
             run: run_by_text,
+            journal: true,
+        },
+        CommandSpec {
+            id: BY_POINT,
+            label: "Select by Point",
+            menu: &[],
+            shortcut: None,
+            params: r#"{"x":int,"y":int,"mode":"replace|add|subtract|intersect","threshold":0..1=0.5,"sampleAllLayers":bool=true,"template":{id?="sam3.1/segment-point"},"model":{file?}} → {"selected","count","instances":[{"index","bounds":[x,y,w,h],"pixels"}],"ms"} (the object under canvas point x, y, found by the detector's point prompt; a background job; needs a ComfyUI server with the SAM 3.1 checkpoint)"#,
+            enabled,
+            run: run_by_point,
             journal: true,
         },
         CommandSpec {

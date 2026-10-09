@@ -160,6 +160,7 @@ const BUILTIN: &[&str] = &[
     include_str!("../workflows/qwen-2.1-image.json"),
     include_str!("../workflows/qwen-2.1-matte.json"),
     include_str!("../workflows/sam3.1-segment.json"),
+    include_str!("../workflows/sam3.1-segment-point.json"),
 ];
 
 /// Verbs a prompt can open with when it is already an edit instruction ("remove the car",

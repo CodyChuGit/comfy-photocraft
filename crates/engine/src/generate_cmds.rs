@@ -1445,20 +1445,42 @@ struct MattePlan {
     mode: SelectionMode,
     /// Send the composite rather than the layer alone.
     all_layers: bool,
+    /// What to keep, as typed (empty = the model's own reading of the subject).
+    subject: String,
+    /// `template: auto`: the job may still fall back from the matte model to the detector.
+    auto: bool,
+    /// The planned template is a detector (`Task::Segment`), not a matte model.
+    segment: bool,
 }
+
+/// What the detector is asked for when Remove Background has no subject named.
+const SUBJECT_PROMPT: &str = "the main subject";
 
 fn plan_remove_bg(s: &Session, p: &Value) -> Result<MattePlan> {
     let layer = layer_param(s, p)?;
     let doc = &s.active().ok_or(EngineError::NoDocument)?.doc;
     crate::cutout_cmds::check(doc, doc.layer(layer).ok_or(EngineError::NoLayer(layer))?).map_err(EngineError::Other)?;
-    // The prompt names what to keep; empty = the model's own reading of the subject.
+    let subject = opt_str(REMOVE_BG, p, "prompt", MAX_PROMPT_CHARS)?.map(str::trim).unwrap_or("").to_string();
+    // `auto`: the matte model (research licence) when the preference allows it, else the
+    // permissive detector (SAM 3.1), whose mask is hard-edged but needs no opt-in.
+    let research_ok = s.prefs().integrations.allow_research_models;
+    let requested = opt_str(REMOVE_BG, p, "template", 200)?.unwrap_or(AUTO_TEMPLATE).to_string();
+    let auto = requested == AUTO_TEMPLATE;
+    let template_id: &str =
+        if auto { if research_ok { DEFAULT_MATTE_TEMPLATE } else { crate::select_ml_cmds::DEFAULT_SEGMENT_TEMPLATE } } else { requested.as_str() };
+    let task = match template::find(template_id).map(|t| t.meta.task) {
+        Ok(Task::Matte) => Task::Matte,
+        Ok(Task::Segment) => Task::Segment,
+        Ok(other) => return Err(bad(REMOVE_BG, format!("template `{template_id}` is a {other:?} template, not a matte or a detector"))),
+        Err(e) => return Err(bad(REMOVE_BG, e.to_string())),
+    };
     let mut q = p.clone();
-    if opt_str(REMOVE_BG, p, "prompt", MAX_PROMPT_CHARS)?.map(str::trim).unwrap_or("").is_empty()
-        && let Some(o) = q.as_object_mut()
-    {
-        o.insert("prompt".into(), Value::String(MATTE_DEFAULT_PROMPT.into()));
+    if let Some(o) = q.as_object_mut() {
+        // The prompt the job sends depends on the route; this one satisfies the plan.
+        o.insert("prompt".into(), Value::String(if subject.is_empty() { MATTE_DEFAULT_PROMPT.into() } else { subject.clone() }));
+        o.insert("template".into(), Value::String(template_id.to_string()));
     }
-    let common = plan_common(s, REMOVE_BG, &q, DEFAULT_MATTE_TEMPLATE, Task::Matte, "")?;
+    let common = plan_common(s, REMOVE_BG, &q, template_id, task, "")?;
     let as_selection = opt_bool(REMOVE_BG, p, "asSelection", false)?;
     let mode = match opt_str(REMOVE_BG, p, "mode", 20)? {
         None | Some("replace") | Some("new") => SelectionMode::Replace,
@@ -1468,7 +1490,7 @@ fn plan_remove_bg(s: &Session, p: &Value) -> Result<MattePlan> {
         Some(other) => return Err(bad(REMOVE_BG, format!("`mode` must be replace, add, subtract or intersect (got `{other}`)"))),
     };
     let all_layers = opt_bool(REMOVE_BG, p, "sampleAllLayers", false)?;
-    Ok(MattePlan { common, layer, as_selection, mode, all_layers })
+    Ok(MattePlan { common, layer, as_selection, mode, all_layers, subject, auto, segment: task == Task::Segment })
 }
 
 fn remove_bg_enabled(s: &Session) -> std::result::Result<(), String> {
@@ -1492,16 +1514,29 @@ fn run_remove_bg(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_remove_bg(s, p)?;
     let backend = backend(s)?;
     let server = server_key(s);
-    let MattePlan { common, layer: id, as_selection, mode, all_layers } = plan;
-    let Common { template, prompt, negative, seed, steps, guidance, models, .. } = common;
+    let MattePlan { common, layer: id, as_selection, mode, all_layers, subject, auto, segment } = plan;
+    let Common { template, negative, seed, steps, guidance, models, .. } = common;
     let template_id = template.meta.id.clone();
-    let tid = template_id.clone();
     let label = if as_selection { "Select Subject (Generative)" } else { "Remove Background (Generative)" };
     crate::jobs::edit_job(
         s,
         label,
         move |doc, _active, ctx| {
             ctx.progress(0.0, "Rendering");
+            // The route: the matte model when it is wanted and the server has it, else the
+            // detector (its masks are hard-edged, its licence permissive).
+            let (template_id, segment, models) = if auto && !segment {
+                let t = resolve_auto(backend.as_ref(), &[DEFAULT_MATTE_TEMPLATE], crate::select_ml_cmds::DEFAULT_SEGMENT_TEMPLATE);
+                let seg = t != DEFAULT_MATTE_TEMPLATE;
+                (t, seg, if seg { Vec::new() } else { models })
+            } else {
+                (template_id, segment, models)
+            };
+            let prompt = match (segment, subject.is_empty()) {
+                (true, true) => SUBJECT_PROMPT.to_string(),
+                (false, true) => MATTE_DEFAULT_PROMPT.to_string(),
+                (_, false) => subject.clone(),
+            };
             let area = doc.bounds();
             let (w, h) = (area.width(), area.height());
             let n = w as usize * h as usize;
@@ -1526,28 +1561,41 @@ fn run_remove_bg(s: &mut Session, p: &Value) -> Result<Value> {
                 None => photocraft_compose::render(doc, area).to_rgba8().pixels,
             };
             let image = Rgba8::new(w, h, rgba8).map_err(gen_err)?;
-            let (rw, rh) = matte_request_size(w, h);
+            let (rw, rh) = if segment { fit_pixels(w, h, MAX_SEGMENT_REQUEST_PIXELS) } else { matte_request_size(w, h) };
             let image = if (rw, rh) == (w, h) { image } else { resize_rgba8(&image, rw, rh)? };
-            let req = Request {
-                template: template_id,
-                prompt,
-                negative,
-                seed,
-                steps,
-                guidance,
-                image: Some(image),
-                mask: None,
-                models,
-                size: None,
-                params: BTreeMap::new(),
+            let mut params = BTreeMap::new();
+            if segment {
+                params.insert("threshold".to_string(), json!(0.5));
+            }
+            let req =
+                Request { template: template_id.clone(), prompt, negative, seed, steps, guidance, image: Some(image), mask: None, models, size: None, params };
+            let resp = match run_switching(backend.as_ref(), &server, &req, &JobProgress::new(ctx)) {
+                Ok(r) => r,
+                Err(photocraft_genai::Error::NoOutput(_)) if segment => {
+                    return Err(EngineError::Other("the detector found no subject: name it in the prompt".into()));
+                }
+                Err(e) => return Err(gen_err(e)),
             };
-            let resp = run_switching(backend.as_ref(), &server, &req, &JobProgress::new(ctx)).map_err(gen_err)?;
             ctx.check()?;
             ctx.progress(0.95, if as_selection { "Selecting" } else { "Masking" });
-            let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
-            let alpha = Gray8::new(out.width, out.height, out.data.as_chunks::<4>().0.iter().map(|p| p[3]).collect()).map_err(gen_err)?;
-            let alpha = if (alpha.width, alpha.height) == (w, h) { alpha } else { resize_gray8(&alpha, w, h)? };
-            let mut cov: Vec<f32> = alpha.data.iter().map(|v| f32::from(*v) / 255.0).collect();
+            // The matte model answers with one RGBA image whose alpha is the matte; the detector
+            // with one mask image per instance (red = coverage), unioned.
+            let mut cov: Vec<f32> = vec![0.0; n];
+            let mut images = resp.images.into_iter().peekable();
+            if images.peek().is_none() {
+                return Err(EngineError::Other("the backend returned no image".into()));
+            }
+            for out in images {
+                let channel = if segment { 0 } else { 3 };
+                let plane = Gray8::new(out.width, out.height, out.data.as_chunks::<4>().0.iter().map(|p| p[channel]).collect()).map_err(gen_err)?;
+                let plane = if (plane.width, plane.height) == (w, h) { plane } else { resize_gray8(&plane, w, h)? };
+                for (c, v) in cov.iter_mut().zip(&plane.data) {
+                    *c = c.max(f32::from(*v) / 255.0);
+                }
+                if !segment {
+                    break;
+                }
+            }
             if let Some(own) = own_alpha {
                 for (c, a) in cov.iter_mut().zip(own) {
                     *c *= f32::from(a) / 255.0;
@@ -1566,9 +1614,9 @@ fn run_remove_bg(s: &mut Session, p: &Value) -> Result<Value> {
                 doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?.mask = Some(LayerMask { surface, ..LayerMask::reveal_all() });
                 doc.selection = None;
             }
-            Ok((bounds, count, resp.seed, resp.run_id, resp.elapsed_ms, resp.timings, (rw, rh), (w, h)))
+            Ok((bounds, count, resp.seed, resp.run_id, resp.elapsed_ms, resp.timings, (rw, rh), (w, h), template_id))
         },
-        move |(b, count, seed, run_id, ms, timings, (rw, rh), (w, h))| {
+        move |(b, count, seed, run_id, ms, timings, (rw, rh), (w, h), tid)| {
             json!({
                 "layer": id.0, "selection": as_selection, "bounds": [b.x0, b.y0, b.width(), b.height()], "pixels": count,
                 "seed": seed, "template": tid, "runId": run_id, "width": w, "height": h, "requestWidth": rw, "requestHeight": rh,
@@ -1577,6 +1625,9 @@ fn run_remove_bg(s: &mut Session, p: &Value) -> Result<Value> {
         },
     )
 }
+
+/// A detector request is sent at most this large (SAM 3.1 works at about 1 megapixel inside).
+const MAX_SEGMENT_REQUEST_PIXELS: u64 = 2048 * 1024;
 
 /// Edit › Purge › Generative Models: the server unloads its models and frees their memory. A
 /// server that has had several model families loaded can end up streaming weights on every run
@@ -1649,11 +1700,20 @@ fn models_json(backend: Option<&dyn GenerativeBackend>, allow_research: bool) ->
     }
     // What `auto` would pick right now (needs the server's model lists).
     let auto = |order, fallback| backend.filter(|_| online).map(|b| resolve_auto(b, order, fallback));
+    // Remove Background: the matte model only with the research opt-in, else the detector.
+    let auto_matte = backend.filter(|_| online).map(|b| {
+        if allow_research {
+            resolve_auto(b, &[DEFAULT_MATTE_TEMPLATE], crate::select_ml_cmds::DEFAULT_SEGMENT_TEMPLATE)
+        } else {
+            crate::select_ml_cmds::DEFAULT_SEGMENT_TEMPLATE.to_string()
+        }
+    });
     json!({
         "server": health, "templates": templates,
         "autoFill": auto(AUTO_FILL_ORDER, DEFAULT_FILL_TEMPLATE),
         "autoExpand": auto(AUTO_EXPAND_ORDER, DEFAULT_EXPAND_TEMPLATE),
         "autoEdit": auto(AUTO_EDIT_ORDER, DEFAULT_EDIT_TEMPLATE),
+        "autoMatte": auto_matte,
     })
 }
 
@@ -1810,7 +1870,7 @@ pub fn specs() -> Vec<CommandSpec> {
             // Placed by the menu catalogue under Edit, with the other generative items.
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"asSelection":bool=false,"sampleAllLayers":bool=false,"mode":"replace|add|subtract|intersect","layer":{id?=active},"seed":{u64?=random},"steps":{0..250=0},"guidance":{0..30=0},"template":{id?=qwen-2.1/matte},"model":{file?}} → {"layer","selection","bounds":[x,y,w,h],"pixels","seed","template","runId","width","height","requestWidth","requestHeight","ms","timings"} (the model separates the subject and answers with its matte as an alpha channel: Qwen-Image-2.1, a research-licensed model, see Preferences › AI Integrations › Allow Research-Only Models; prompt = what to keep, e.g. "the lighthouse", empty = the model's own reading; the matte becomes the layer's mask (the Background becomes a normal layer; the pixels are never changed) or, with asSelection, the selection combined by mode; sampleAllLayers sends the composite instead of the layer alone; images over one megapixel are sent downscaled and the matte comes back resampled; a background job; needs a ComfyUI server)"#,
+            params: r#"{"prompt":text,"asSelection":bool=false,"sampleAllLayers":bool=false,"mode":"replace|add|subtract|intersect","layer":{id?=active},"seed":{u64?=random},"steps":{0..250=0},"guidance":{0..30=0},"template":{id?="auto": qwen-2.1/matte (a soft matte from Qwen-Image-2.1's alpha output; research licence, Preferences › AI Integrations › Allow Research-Only Models) when allowed and installed, else sam3.1/segment (the permissive detector, a hard-edged mask)},"model":{file?}} → {"layer","selection","bounds":[x,y,w,h],"pixels","seed","template","runId","width","height","requestWidth","requestHeight","ms","timings"} (prompt = what to keep, e.g. "the lighthouse", empty = the model's own reading of the subject; the matte becomes the layer's mask (the Background becomes a normal layer; the pixels are never changed) or, with asSelection, the selection combined by mode; sampleAllLayers sends the composite instead of the layer alone; images over one megapixel are sent downscaled and the matte comes back resampled; a background job; needs a ComfyUI server; the classical Quick Action layer.removeBackground needs none)"#,
             enabled: remove_bg_enabled,
             run: run_remove_bg,
             journal: true,

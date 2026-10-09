@@ -4,6 +4,29 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-09 (late): Remove Background without the opt-in, and Select by Point
+
+**Landed**
+
+- `generate.removeBackground` works out of the box: `template` defaults to `auto`, which is
+  the Qwen-Image-2.1 matte (soft alpha, research licence) when the preference allows it and
+  the server has the files, else **SAM 3.1** (`sam3.1/segment`, SAM License, no opt-in): the
+  prompt or "the main subject" (the phrase `select.subjectML` uses) goes to the detector and
+  the union of its instance masks becomes the layer mask or the selection, hard-edged. The
+  route is decided in the job (`resolve_auto` over the matte template with the detector as
+  the fallback); a named template of another task is refused; `generate.models` reports
+  `autoMatte`. The classical Quick Action `layer.removeBackground` remains the no-server path.
+- `select.byPoint {"x","y"}` (Phase 3.5): a new template `sam3.1/segment-point` prompts
+  `SAM3_Detect` with `positive_coords` (a literal JSON list in the API format, probed live:
+  the boat under one point in 2 s) and no text; the engine scales the canvas point to the
+  request's pixels. No menu row yet (it needs a click); scripts and MCP can use it, a tool
+  modifier later.
+- Tests: the detector route (prompt, no prompt, as selection, the fallback when the 2.1 files
+  are missing, `autoMatte` either way), by point (coordinates sent, validation).
+
+**Open**: a soft-matte refinement for the detector route (its masks are hard); box prompts;
+preview frames; Qwen-Image-Layered.
+
 ## 2026-10-09 (late): the leftovers of Phases 2 and 3
 
 **Landed**
