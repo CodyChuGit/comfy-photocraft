@@ -12,7 +12,7 @@ code map is in [`codebase-orientation.md`](codebase-orientation.md).
 | 0 Foundation | ✅ 2026-10-08 | This documentation, the Windows toolchain, a green release build, the `comfy-photocraft` branch |
 | 1 Backend + headless Generative Fill | ✅ 2026-10-09: live against ComfyUI 0.39.0 with Qwen-Image-2.1, Krea 2 Turbo and Qwen-Image-Edit-2511 (numbers in the dev log) | `photocraft-genai` crate, ComfyUI client, `generate.fill` / `generate.image` (pulled forward from Phase 3) / `generate.health` / `generate.models` from the CLI and MCP |
 | 2 Generative Fill in the app | 🟡 2026-10-09: menu rows, the task bar under the selection (prompt, template picker, variations, progress, switcher) and the Preferences page work end to end; layer metadata and the script test pending | Prompt bar, progress, variations, generative layers with masks, model picker, preferences |
-| 3 The Firefly core set | ⬜ | Expand, Generate Image, instruction Edit, Remove Background |
+| 3 The Firefly core set | 🟡 2026-10-09: Generate Image (Phase 1) and Generative Expand (`generate.expand`, Edit › Generative Expand…) live; instruction Edit and Remove Background pending | Expand, Generate Image, instruction Edit, Remove Background |
 | 3.5 Select by text (SAM 3.1) | 🟡 2026-10-09: `select.byText` and `select.subjectML` live (text prompts); point/box prompts and soft-matte refinement pending | `select.byText`, ML Select Subject, point/box object selection, SAM-backed mattes for Remove Background |
 | 4 Models and workflows as data | ⬜ | Model catalogue, workflow template import, references, LoRAs, downloads with checksums |
 | 4.5 Assistant | ⬜ | In-app assistant panel over a local LLM/VLM, driving the command registry; prompt enhancement, auto-naming |
@@ -122,6 +122,15 @@ SageAttention, step caching, purge suggestions from the timings).
 
 **DoD.** Each command documented, tested, in `docs/parity.md`-style generated listings, drivable
 over MCP; the ten-task MCP acceptance test gains two generative tasks.
+
+**Status 2026-10-09.** `generate.expand` landed: `left/top/right/bottom` in pixels or a larger
+`width/height` placed by Canvas Size's anchors; one undo step (the canvas grows, the picture
+moves by the left/top pads, the result is a layer whose soft mask blends the re-rendered edge
+band into the picture); its own templates (`qwen-edit-2511/expand-lightning-8`, `expand`) show
+the model only the picture as a reference while the padded canvas is the sampling latent; an
+empty prompt continues the scene. Shares the fill pipeline (`fill_region`: Lightning tiers,
+`auto`, sizing, feather, variations). Open: `generate.edit`, `generate.removeBackground`, the
+Crop tool's expand state.
 
 ## Phase 3.5: Select by text (SAM 3.1)
 

@@ -98,6 +98,7 @@ pub static CATALOG: &[(&[&str], &str, Option<&str>, &str)] = &[
     // Photoshop's generative items (Comfy PhotoCraft: a local ComfyUI backend, `generate.*`).
     (&["Edit"], "Generative Fill…", None, "generate.fill"),
     (&["Edit"], "Generate Image…", None, "generate.image"),
+    (&["Edit"], "Generative Expand…", None, "generate.expand"),
     (&["Edit"], "---", None, "---"),
     (&["Edit"], "Content-Aware Scale", Some("Cmd+Alt+Shift+C"), "edit.contentAwareScale"),
     (&["Edit"], "Puppet Warp", None, "edit.puppetWarp"),

@@ -409,6 +409,104 @@ fn auto_takes_the_lightning_tier_when_its_lora_is_installed_and_the_base_otherwi
 }
 
 #[test]
+fn expand_grows_the_canvas_and_paints_the_added_area_in_one_step() {
+    let fake = FakeComfy::start().unwrap();
+    let mut s = session(&fake.url);
+    s.execute("select.deselect", json!({})).unwrap();
+    let before = composite(&s);
+    let (layers, steps) = {
+        let d = s.active().unwrap();
+        (d.doc.layers.len(), d.history.past_len())
+    };
+    let r = s.execute(EXPAND, json!({"right": 32, "bottom": 16, "seed": 9})).unwrap();
+    assert_eq!(r["canvas"], json!([96, 64]));
+    assert_eq!(r["offset"], json!([0, 0]));
+    assert_eq!(r["template"], AUTO_EXPAND_ORDER[0], "expand has its own Lightning tier");
+    let d = s.active().unwrap();
+    assert_eq!((d.doc.size.width, d.doc.size.height), (96, 64));
+    assert_eq!(d.doc.layers.len(), layers + 1);
+    assert_eq!(d.history.past_len(), steps + 1, "one undo step");
+    let l = d.doc.layer(LayerId(r["layer"].as_u64().unwrap())).unwrap();
+    assert_eq!(l.name, "Generative Expand");
+    let mask = &l.mask.as_ref().unwrap().surface;
+    assert_eq!(mask.read_region(Rect::new(80, 10, 81, 11))[0], 1.0, "the added strip on the right is shown");
+    assert_eq!(mask.read_region(Rect::new(30, 56, 31, 57))[0], 1.0, "so is the strip at the bottom");
+    assert_eq!(mask.read_region(Rect::new(10, 10, 11, 11))[0], 0.0, "the old picture is not");
+    let band = mask.read_region(Rect::new(62, 10, 63, 11))[0];
+    assert!(band > 0.0 && band < 1.0, "the picture's edge band fades into the result: {band}");
+    let after = composite(&s);
+    assert_eq!(after.get(10, 10), before.get(10, 10), "old pixels untouched");
+    assert!(close(after.get(80, 10), FAKE_COLOR) && close(after.get(30, 56), FAKE_COLOR), "the added area is painted");
+    // What the server got: a request covering the whole new canvas (both strips meet at the
+    // corner), nothing transparent in it, and the default prompt as an instruction.
+    let st = fake.state();
+    assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(96), Some(64)));
+    let g = &st.prompts[0].1;
+    let prompt = g["6"]["inputs"]["prompt"].as_str().unwrap_or_default().to_string();
+    assert!(prompt.starts_with("extend the scene beyond its original edges"), "{prompt}");
+    // The model's reference is the picture alone: the 64×48 picture at (0, 0) of the 96×64
+    // request, in the request's upscaled pixels (512 wide → ×5.33).
+    assert_eq!(g["21"]["class_type"], "ImageCrop");
+    assert_eq!((g["21"]["inputs"]["x"].as_u64(), g["21"]["inputs"]["y"].as_u64()), (Some(0), Some(0)));
+    let (cw, ch) = (g["21"]["inputs"]["width"].as_u64().unwrap(), g["21"]["inputs"]["height"].as_u64().unwrap());
+    assert!((330..=352).contains(&cw) && (240..=264).contains(&ch), "{cw}×{ch}");
+    assert_eq!(g["5"]["inputs"]["image"], json!(["21", 0]), "the crop feeds the text encoder's scale");
+    assert_eq!(g["10"]["inputs"]["pixels"], json!(["4", 0]), "the padded canvas is the latent");
+    let sent = photocraft_genai::png::decode_rgba8(&st.uploads[0].1).unwrap();
+    assert!(sent.data.as_chunks::<4>().0.iter().all(|p| p[3] == 255), "no transparent pixels reach the model");
+    // The added canvas reaches the model as mid-grey (the 96×64 rect goes out at 512 px wide).
+    let far = sent.get(sent.width - 2, sent.height / 4).unwrap();
+    assert!(far.iter().take(3).all(|c| (i16::from(*c) - 128).abs() <= 4), "grey pre-fill: {far:?}");
+    let picture = sent.get(sent.width / 4, sent.height / 4).unwrap();
+    assert!(picture.iter().take(3).any(|c| (i16::from(*c) - 128).abs() > 20), "the picture itself is not grey: {picture:?}");
+    drop(st);
+    assert!(s.undo());
+    let d = s.active().unwrap();
+    assert_eq!((d.doc.size.width, d.doc.size.height), (64, 48));
+    assert_eq!(d.doc.layers.len(), layers);
+}
+
+#[test]
+fn expand_takes_a_target_size_with_an_anchor_and_validates() {
+    let fake = FakeComfy::start().unwrap();
+    let mut s = session(&fake.url);
+    let r = s.execute(EXPAND, json!({"width": 96, "anchor": "right", "prompt": "more sea", "seed": 2})).unwrap();
+    assert_eq!(r["canvas"], json!([96, 48]));
+    assert_eq!(r["offset"], json!([32, 0]), "anchored right: the picture moved by the left pad");
+    let d = s.active().unwrap();
+    assert_eq!(d.doc.layer(LayerId(r["layer"].as_u64().unwrap())).unwrap().name, "Generative Expand: more sea");
+    assert_eq!(d.doc.selection.as_ref().unwrap().content_bounds(), Rect::new(42, 8, 62, 24), "the selection moved with the picture");
+    // Only the left strip plus a margin of the picture was requested: x 0..(32 + 24), aligned.
+    assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(64), Some(48)));
+    // (One lock on the fake's state at a time: a second `fake.state()` while a guard lives
+    // would deadlock the test.)
+    let st = fake.state();
+    let g = &st.prompts[0].1;
+    let prompt = g["6"]["inputs"]["prompt"].as_str().unwrap_or_default().to_string();
+    assert!(prompt.starts_with("Extend this image beyond its current edges with more sea"), "{prompt}");
+    // The picture sits at x 32..96 of the 96×48 canvas; the request is x 0..64 (left pad + a
+    // 24 px margin, aligned) at 512 px wide, so the reference crop starts at 32 × 8 = 256.
+    assert_eq!(g["21"]["inputs"]["x"], json!(256));
+    assert_eq!(g["21"]["inputs"]["width"], json!(256));
+    assert_eq!(st.requests.iter().filter(|r| r.as_str() == "GET /models/loras").count(), 1, "auto looked the LoRA up once");
+    drop(st);
+    for p in [
+        json!({}),
+        json!({"left": 0, "right": 0}),
+        json!({"width": 32}),
+        json!({"left": -5}),
+        json!({"right": 2.5}),
+        json!({"width": 200, "anchor": "middle"}),
+        json!({"right": 20000}),
+    ] {
+        assert!(matches!(s.execute(EXPAND, p.clone()), Err(EngineError::BadParams { .. })), "{p}");
+    }
+    let mut empty = Session::new();
+    assert!(!empty.is_enabled(EXPAND));
+    assert!(matches!(empty.execute(EXPAND, json!({"right": 8})), Err(EngineError::Disabled(..))));
+}
+
+#[test]
 fn purge_generative_models_asks_the_server_to_free() {
     let fake = FakeComfy::start().unwrap();
     let mut s = Session::new();
@@ -435,14 +533,15 @@ fn request_rects_grow_to_the_sixteen_pixel_grid_inside_the_canvas() {
 
 #[test]
 fn large_areas_are_sent_at_one_megapixel_and_come_back_full_size() {
-    assert_eq!(request_size(1024, 1024), (1024, 1024));
+    assert_eq!(request_size(1024, 768), (1024, 768), "exactly the 0.75 MP cap: untouched");
+    assert_eq!(request_size(1024, 1024), (880, 880));
     assert_eq!(request_size(4000, 100), (4000, 100), "under the cap, long enough: untouched");
-    assert_eq!(request_size(2048, 1536), (1168, 880));
+    assert_eq!(request_size(2048, 1536), (1024, 768));
     assert_eq!(request_size(200, 150), (512, 384), "small requests go out at 512 px on the longer side");
     assert_eq!(request_size(100, 100), (512, 512));
     assert_eq!(request_size(512, 300), (512, 300), "exactly the floor: untouched");
     let (w, h) = request_size(8000, 8000);
-    assert!(w % 16 == 0 && h % 16 == 0 && u64::from(w) * u64::from(h) <= 1024 * 1024, "{w}×{h}");
+    assert!(w % 16 == 0 && h % 16 == 0 && u64::from(w) * u64::from(h) <= 768 * 1024, "{w}×{h}");
     let (w, h) = request_size(20_000, 64);
     assert!(h == 64 && w < 20_000 && w % 16 == 0, "the short side never drops below 64: {w}×{h}");
 
@@ -456,7 +555,7 @@ fn large_areas_are_sent_at_one_megapixel_and_come_back_full_size() {
     // 1400×1000 grown to the grid: 1408×1008 from (100, 100).
     assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(1408), Some(1008)));
     let (rw, rh) = (r["requestWidth"].as_u64().unwrap(), r["requestHeight"].as_u64().unwrap());
-    assert!(rw * rh <= 1024 * 1024 && rw % 16 == 0 && rh % 16 == 0, "{rw}×{rh}");
+    assert!(rw * rh <= 768 * 1024 && rw % 16 == 0 && rh % 16 == 0, "{rw}×{rh}");
     let st = fake.state();
     let sent = photocraft_genai::png::decode_rgba8(&st.uploads[0].1).unwrap();
     assert_eq!((u64::from(sent.width), u64::from(sent.height)), (rw, rh), "the upload is the downscaled request");

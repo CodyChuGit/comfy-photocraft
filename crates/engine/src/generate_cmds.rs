@@ -32,6 +32,7 @@ pub const HEALTH: &str = "generate.health";
 pub const MODELS: &str = "generate.models";
 pub const VARIATION: &str = "generate.variation";
 pub const FREE: &str = "generate.free";
+pub const EXPAND: &str = "generate.expand";
 /// Most results one `generate.fill` call makes (`variations`).
 pub const MAX_VARIATIONS: u32 = 4;
 /// The template value (and preference) that picks a fill template by what the server has.
@@ -39,10 +40,17 @@ pub const AUTO_TEMPLATE: &str = "auto";
 /// `auto` tries these in order and takes the first whose model files the server lists: the
 /// Lightning tier (8 steps, Apache-2.0 LoRA) when its LoRA is installed, else the 40-step base.
 pub const AUTO_FILL_ORDER: &[&str] = &["qwen-edit-2511/fill-lightning-8", DEFAULT_FILL_TEMPLATE];
+/// The same for Generative Expand, whose templates show the model only the picture as a
+/// reference while the padded canvas is the sampling latent.
+pub const DEFAULT_EXPAND_TEMPLATE: &str = "qwen-edit-2511/expand";
+pub const AUTO_EXPAND_ORDER: &[&str] = &["qwen-edit-2511/expand-lightning-8", DEFAULT_EXPAND_TEMPLATE];
 /// A fill request is downscaled to this many pixels before it is sent (the editing models work
 /// at about one megapixel, Photoshop's Generative Fill renders at most 1024 px on a side) and
 /// the result is resampled back; the layer mask keeps the selection's full-resolution edge.
-const MAX_FILL_REQUEST_PIXELS: u64 = 1024 * 1024;
+/// 0.75 MP rather than 1 MP: on a 32 GB card with Qwen-Image-Edit-2511 fp8 and its 7.9 GB text
+/// encoder resident, a 1 MP latent plus the 1 MP reference pushed the server into offloading
+/// part of the model (a 45 s run instead of 18 s); at 0.75 MP it stays resident.
+const MAX_FILL_REQUEST_PIXELS: u64 = 768 * 1024;
 /// A small request is upscaled until its longer side is this long: the 2511 templates sample at
 /// the request's own size, and a handful of latent tokens cannot carry structure.
 const MIN_FILL_REQUEST_SIDE: u32 = 512;
@@ -454,6 +462,13 @@ pub(crate) fn feather_radius(w: u32, h: u32) -> usize {
     ((f64::from(w.max(h)) * 0.02).round() as usize).clamp(4, 24)
 }
 
+/// The feather of an expand's request mask into the picture: 8 % of the longer side, 8 to 160
+/// pixels. The model re-renders that band of the original, so the new area's tone is carried
+/// across the old edge instead of meeting it.
+pub(crate) fn outpaint_feather_radius(w: u32, h: u32) -> usize {
+    ((f64::from(w.max(h)) * 0.08).round() as usize).clamp(8, 160)
+}
+
 /// Mask resize with a tent filter (no ringing, coverage stays within 0..=255).
 pub(crate) fn resize_gray8(src: &Gray8, w: u32, h: u32) -> Result<Gray8> {
     if src.width == 0 || src.height == 0 || w == 0 || h == 0 {
@@ -666,86 +681,371 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
     )
 }
 
+/// What a fill or expand job needs once its plan is made and the backend is in hand.
+struct FillJob {
+    backend: Arc<dyn GenerativeBackend>,
+    template_id: String,
+    auto: bool,
+    /// The candidates `auto` picks from ([`AUTO_FILL_ORDER`] or [`AUTO_EXPAND_ORDER`]).
+    auto_order: &'static [&'static str],
+    prompt: String,
+    negative: String,
+    seed: u64,
+    steps: u32,
+    guidance: f32,
+    name: String,
+    models: Vec<(String, String)>,
+    variations: u32,
+}
+
+/// The layers a job made: (id, seed, run id, ms, timings), the primary one first.
+type Made = Vec<(LayerId, u64, String, u64, photocraft_genai::Timings)>;
+/// A job's outcome: the layers, the rect's size, the request's size and the template used.
+type Filled = (Made, u32, u32, (u32, u32), String);
+
+/// Regenerate the pixels `coverage` marks (one value per pixel of `rect`) through the backend
+/// Generative Expand's extras for [`fill_region`]: the part of the request that holds the
+/// picture (the rest is empty canvas, painted mid-grey so the model sees "nothing here yet"
+/// rather than black or transparent), and a wider blend: the result layer's mask is the soft
+/// request mask, so the band of the picture the model re-rendered fades into the original
+/// instead of meeting it at a hard line (the classic outpainting seam).
+struct Outpaint {
+    picture: Rect,
+}
+
+/// Regenerate the pixels `coverage` marks (one value per pixel of `rect`) through the backend
+/// and add the results as layers above the active one, each masked to `coverage` (or to the
+/// soft request mask when `outpaint` is set).
+fn fill_region(
+    doc: &mut Document,
+    active: &mut Option<LayerId>,
+    ctx: &JobCtx,
+    job: FillJob,
+    rect: Rect,
+    coverage: Vec<f32>,
+    outpaint: Option<Outpaint>,
+) -> Result<Filled> {
+    ctx.progress(0.0, "Rendering");
+    let (w, h) = (rect.width(), rect.height());
+    let composite = photocraft_compose::render(doc, rect).to_rgba8();
+    let mut image = Rgba8::new(composite.width, composite.height, composite.pixels).map_err(gen_err)?;
+    if let Some(o) = &outpaint {
+        let p = o.picture;
+        prefill_outside(&mut image, Rect::new(p.x0 - rect.x0, p.y0 - rect.y0, p.x1 - rect.x0, p.y1 - rect.y0));
+    }
+    let mask = Gray8::new(w, h, coverage.iter().map(|c| (c * 255.0 + 0.5) as u8).collect()).map_err(gen_err)?;
+    // The model gets a softened mask so it blends the edge (much wider for an expand, whose seam
+    // runs along a whole picture edge and whose sky or water tone has to carry across it); a
+    // fill's layer mask stays the selection itself.
+    let radius = if outpaint.is_some() { outpaint_feather_radius(w, h) } else { feather_radius(w, h) };
+    let mask = feather_outward(&mask, radius)?;
+    let layer_coverage: Vec<f32> = if outpaint.is_some() { mask.data.iter().map(|v| f32::from(*v) / 255.0).collect() } else { coverage };
+    ctx.check()?;
+    // Large areas go out at the models' working size and come back resampled; the layer mask
+    // below keeps the selection's full-resolution edge either way.
+    let (rw, rh) = request_size(w, h);
+    let (image, mask) = if (rw, rh) == (w, h) { (image, mask) } else { (resize_rgba8(&image, rw, rh)?, resize_gray8(&mask, rw, rh)?) };
+    let FillJob { backend, template_id, auto, auto_order, prompt, negative, seed, steps, guidance, name, models, variations } = job;
+    let template_id = if auto { resolve_auto(backend.as_ref(), auto_order, &template_id) } else { template_id };
+    // An expand template crops the model's reference to the picture: its rectangle inside the
+    // request, in the request's (possibly resampled) pixels.
+    let mut params = BTreeMap::new();
+    if let Some(o) = &outpaint {
+        let (sx, sy) = (f64::from(rw) / f64::from(w.max(1)), f64::from(rh) / f64::from(h.max(1)));
+        let p = o.picture;
+        let x0 = (f64::from(p.x0 - rect.x0) * sx).floor().clamp(0.0, f64::from(rw.saturating_sub(16)));
+        let y0 = (f64::from(p.y0 - rect.y0) * sy).floor().clamp(0.0, f64::from(rh.saturating_sub(16)));
+        let x1 = (f64::from(p.x1 - rect.x0) * sx).ceil().clamp(x0 + 16.0, f64::from(rw));
+        let y1 = (f64::from(p.y1 - rect.y0) * sy).ceil().clamp(y0 + 16.0, f64::from(rh));
+        params.insert("ref_x".to_string(), json!(x0 as u32));
+        params.insert("ref_y".to_string(), json!(y0 as u32));
+        params.insert("ref_w".to_string(), json!((x1 - x0) as u32));
+        params.insert("ref_h".to_string(), json!((y1 - y0) as u32));
+    }
+    let mut req =
+        Request { template: template_id.clone(), prompt, negative, seed, steps, guidance, image: Some(image), mask: Some(mask), models, size: None, params };
+    // One backend run per variation, consecutive seeds, each its own masked layer; the first
+    // is visible, the alternates sit hidden above it (`generate.variation` switches).
+    let n = variations.max(1);
+    let mut made: Made = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        req.seed = seed.wrapping_add(u64::from(i)) % MAX_SEED;
+        let (lo, hi) = (0.05 + 0.9 * i as f32 / n as f32, 0.05 + 0.9 * (i + 1) as f32 / n as f32);
+        if n > 1 {
+            ctx.progress(lo, &format!("Variation {}/{n}", i + 1));
+        }
+        let resp = backend.run(&req, &JobProgress::span(ctx, lo, hi)).map_err(gen_err)?;
+        ctx.check()?;
+        let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
+        let out = if (out.width, out.height) == (w, h) { out } else { resize_rgba8(&out, w, h)? };
+        // The result becomes a layer in the document's own format, masked to the coverage.
+        let layer_name = if n > 1 { format!("{name} ({}/{n})", i + 1) } else { name.clone() };
+        let mut layer = Layer::raster(layer_name, doc.pixel_format());
+        write_rgba8(&mut layer, &out, rect)?;
+        let mut mask_surface = Surface::with_default(PixelFormat::GRAY8, &[0.0]);
+        mask_surface.write_region(rect, &layer_coverage);
+        layer.mask = Some(LayerMask { surface: mask_surface, enabled: true, linked: true, density: 1.0, feather: 0.0 });
+        layer.visible = i == 0;
+        let nid = doc.insert_above(*active, layer);
+        *active = Some(nid);
+        made.push((nid, resp.seed, resp.run_id, resp.elapsed_ms, resp.timings));
+    }
+    ctx.progress(0.96, "Placing");
+    // The visible result is the active layer.
+    *active = made.first().map(|m| m.0);
+    Ok((made, w, h, (rw, rh), template_id))
+}
+
+/// The JSON a fill or expand job answers with.
+fn made_json(made: &Made, w: u32, h: u32, (rw, rh): (u32, u32), template_id: &str) -> Value {
+    let first = made.first();
+    json!({
+        "layer": first.map(|m| m.0.0), "seed": first.map(|m| m.1), "runId": first.map(|m| m.2.clone()), "template": template_id,
+        "layers": made.iter().map(|m| m.0.0).collect::<Vec<_>>(), "seeds": made.iter().map(|m| m.1).collect::<Vec<_>>(),
+        "width": w, "height": h, "requestWidth": rw, "requestHeight": rh,
+        "ms": made.iter().map(|m| m.3).sum::<u64>(),
+        "timings": made.iter().map(|m| serde_json::to_value(m.4).unwrap_or(Value::Null)).collect::<Vec<_>>(),
+    })
+}
+
+/// What empty canvas is painted with before it goes to the model: mid-grey, the outpainting
+/// convention. Replicating the picture's edge pixels was tried first and the edit model copied
+/// the resulting streaks as content to preserve; a flat grey reads as "nothing here yet".
+const PREFILL: [u8; 4] = [128, 128, 128, 255];
+
+/// Fill the pixels outside `inner` (in image coordinates) with [`PREFILL`].
+fn prefill_outside(img: &mut Rgba8, inner: Rect) {
+    let (w, h) = (img.width as i32, img.height as i32);
+    let inner = inner.intersect(&Rect::new(0, 0, w, h));
+    if inner.x0 == 0 && inner.y0 == 0 && inner.x1 == w && inner.y1 == h {
+        return;
+    }
+    let stride = img.width as usize * 4;
+    for y in 0..h {
+        for x in 0..w {
+            if x >= inner.x0 && x < inner.x1 && y >= inner.y0 && y < inner.y1 {
+                continue;
+            }
+            let dst = y as usize * stride + x as usize * 4;
+            if let Some(d) = img.data.get_mut(dst..dst + 4) {
+                d.copy_from_slice(&PREFILL);
+            }
+        }
+    }
+}
+
 fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_fill(s, p)?;
     let backend = backend(s)?;
     let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto } = plan;
     let label = name.clone();
-    let template_id = template.meta.id.clone();
+    let job = FillJob {
+        backend,
+        template_id: template.meta.id.clone(),
+        auto,
+        auto_order: AUTO_FILL_ORDER,
+        prompt,
+        negative,
+        seed,
+        steps,
+        guidance,
+        name,
+        models,
+        variations,
+    };
     crate::jobs::edit_job(
         s,
         &label,
         move |doc, active, ctx| {
-            ctx.progress(0.0, "Rendering");
-            let (w, h) = (rect.width(), rect.height());
-            let composite = photocraft_compose::render(doc, rect).to_rgba8();
-            let image = Rgba8::new(composite.width, composite.height, composite.pixels).map_err(gen_err)?;
             let sel = doc.selection.as_ref().ok_or_else(|| EngineError::Other("the selection is gone".into()))?;
             let k = sel.channels().max(1);
             let coverage: Vec<f32> = sel.read_region(rect).chunks_exact(k).map(|c| c.first().copied().unwrap_or(0.0).clamp(0.0, 1.0)).collect();
-            let mask = Gray8::new(w, h, coverage.iter().map(|c| (c * 255.0 + 0.5) as u8).collect()).map_err(gen_err)?;
-            // The model gets a softened mask so it blends the edge; the layer mask below stays
-            // the selection itself.
-            let mask = feather_outward(&mask, feather_radius(w, h))?;
-            ctx.check()?;
-            // Large areas go out at the models' working size and come back resampled; the layer
-            // mask below keeps the selection's full-resolution edge either way.
-            let (rw, rh) = request_size(w, h);
-            let (image, mask) = if (rw, rh) == (w, h) { (image, mask) } else { (resize_rgba8(&image, rw, rh)?, resize_gray8(&mask, rw, rh)?) };
-            let template_id = if auto { resolve_auto(backend.as_ref(), AUTO_FILL_ORDER, &template_id) } else { template_id };
-            let mut req = Request {
-                template: template_id.clone(),
-                prompt,
-                negative,
-                seed,
-                steps,
-                guidance,
-                image: Some(image),
-                mask: Some(mask),
-                models,
-                size: None,
-                params: BTreeMap::new(),
-            };
-            // One backend run per variation, consecutive seeds, each its own masked layer; the
-            // first is visible, the alternates sit hidden above it (`generate.variation` switches).
-            let n = variations.max(1);
-            let mut made: Vec<(LayerId, u64, String, u64, photocraft_genai::Timings)> = Vec::with_capacity(n as usize);
-            for i in 0..n {
-                req.seed = seed.wrapping_add(u64::from(i)) % MAX_SEED;
-                let (lo, hi) = (0.05 + 0.9 * i as f32 / n as f32, 0.05 + 0.9 * (i + 1) as f32 / n as f32);
-                if n > 1 {
-                    ctx.progress(lo, &format!("Variation {}/{n}", i + 1));
-                }
-                let resp = backend.run(&req, &JobProgress::span(ctx, lo, hi)).map_err(gen_err)?;
-                ctx.check()?;
-                let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
-                let out = if (out.width, out.height) == (w, h) { out } else { resize_rgba8(&out, w, h)? };
-                // The result becomes a layer in the document's own format, masked to the selection.
-                let layer_name = if n > 1 { format!("{name} ({}/{n})", i + 1) } else { name.clone() };
-                let mut layer = Layer::raster(layer_name, doc.pixel_format());
-                write_rgba8(&mut layer, &out, rect)?;
-                let mut mask_surface = Surface::with_default(PixelFormat::GRAY8, &[0.0]);
-                mask_surface.write_region(rect, &coverage);
-                layer.mask = Some(LayerMask { surface: mask_surface, enabled: true, linked: true, density: 1.0, feather: 0.0 });
-                layer.visible = i == 0;
-                let nid = doc.insert_above(*active, layer);
-                *active = Some(nid);
-                made.push((nid, resp.seed, resp.run_id, resp.elapsed_ms, resp.timings));
-            }
-            ctx.progress(0.96, "Placing");
-            // The visible result is the active layer.
-            *active = made.first().map(|m| m.0);
-            Ok((made, w, h, (rw, rh), template_id))
+            fill_region(doc, active, ctx, job, rect, coverage, None)
         },
-        move |(made, w, h, (rw, rh), template_id)| {
-            let first = made.first();
-            json!({
-                "layer": first.map(|m| m.0.0), "seed": first.map(|m| m.1), "runId": first.map(|m| m.2.clone()), "template": template_id,
-                "layers": made.iter().map(|m| m.0.0).collect::<Vec<_>>(), "seeds": made.iter().map(|m| m.1).collect::<Vec<_>>(),
-                "width": w, "height": h, "requestWidth": rw, "requestHeight": rh,
-                "ms": made.iter().map(|m| m.3).sum::<u64>(),
-                "timings": made.iter().map(|m| serde_json::to_value(m.4).unwrap_or(Value::Null)).collect::<Vec<_>>(),
-            })
+        move |(made, w, h, request, template_id)| made_json(&made, w, h, request, &template_id),
+    )
+}
+
+/// What `generate.expand` asks for: how much canvas to add on each side.
+struct Pads {
+    left: u32,
+    top: u32,
+    right: u32,
+    bottom: u32,
+}
+
+/// The prompt an expand uses when none is given (an instruction, so it takes the imperative
+/// wrapper of the template).
+const EXPAND_DEFAULT_PROMPT: &str = "extend the scene beyond its original edges, continuing it naturally";
+const MAX_EXPAND_SIDE: u32 = 16_384;
+
+fn plan_expand(s: &Session, p: &Value) -> Result<(FillPlan, Pads, (u32, u32))> {
+    let d = s.active().ok_or(EngineError::NoDocument)?;
+    let (ow, oh) = (d.doc.size.width, d.doc.size.height);
+    let side = |key: &str| -> Result<u32> {
+        match opt_num(EXPAND, p, key, 0.0, f64::from(MAX_EXPAND_SIDE))? {
+            None => Ok(0),
+            Some(x) if x.fract() == 0.0 => Ok(x as u32),
+            Some(_) => Err(bad(EXPAND, format!("`{key}` must be a whole number of pixels"))),
+        }
+    };
+    let (width, height) = (side("width")?, side("height")?);
+    let pads = if width > 0 || height > 0 {
+        // A target size, the old picture placed by `anchor` (Canvas Size's names).
+        let (nw, nh) = (if width > 0 { width } else { ow }, if height > 0 { height } else { oh });
+        if nw < ow || nh < oh {
+            return Err(bad(
+                EXPAND,
+                format!("`width`/`height` ({nw}×{nh}) must not be smaller than the canvas ({ow}×{oh}); Generative Expand only adds canvas"),
+            ));
+        }
+        let anchor = opt_str(EXPAND, p, "anchor", 20)?.unwrap_or("center");
+        let (ax, ay) = match anchor {
+            "topLeft" => (0.0, 0.0),
+            "top" => (0.5, 0.0),
+            "topRight" => (1.0, 0.0),
+            "left" => (0.0, 0.5),
+            "center" => (0.5, 0.5),
+            "right" => (1.0, 0.5),
+            "bottomLeft" => (0.0, 1.0),
+            "bottom" => (0.5, 1.0),
+            "bottomRight" => (1.0, 1.0),
+            other => {
+                return Err(bad(
+                    EXPAND,
+                    format!("`anchor` must be one of topLeft, top, topRight, left, center, right, bottomLeft, bottom, bottomRight (got `{other}`)"),
+                ));
+            }
+        };
+        let (dw, dh) = (nw - ow, nh - oh);
+        let left = (f64::from(dw) * ax).round() as u32;
+        let top = (f64::from(dh) * ay).round() as u32;
+        Pads { left, top, right: dw - left, bottom: dh - top }
+    } else {
+        Pads { left: side("left")?, top: side("top")?, right: side("right")?, bottom: side("bottom")? }
+    };
+    if pads.left + pads.right == 0 && pads.top + pads.bottom == 0 {
+        return Err(bad(EXPAND, "nothing to add: give `left`/`top`/`right`/`bottom` in pixels, or a larger `width`/`height` with an `anchor`"));
+    }
+    let (nw, nh) = (ow.saturating_add(pads.left).saturating_add(pads.right), oh.saturating_add(pads.top).saturating_add(pads.bottom));
+    if nw > MAX_EXPAND_SIDE || nh > MAX_EXPAND_SIDE {
+        return Err(bad(EXPAND, format!("the expanded canvas would be {nw}×{nh}; at most {MAX_EXPAND_SIDE} px on a side")));
+    }
+    // The prompt is optional here: without one the model continues the scene.
+    let mut q = p.clone();
+    if let Some(o) = q.as_object_mut() {
+        let blank = o.get("prompt").and_then(Value::as_str).is_none_or(|t| t.trim().is_empty());
+        if blank {
+            o.insert("prompt".into(), Value::String(EXPAND_DEFAULT_PROMPT.into()));
+        }
+        if o.get("name").is_none() {
+            let shown = p.get("prompt").and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty());
+            o.insert("name".into(), Value::String(shown.map_or("Generative Expand".to_string(), |t| format!("Generative Expand: {}", short(t)))));
+        }
+    }
+    // Expand has its own templates (task `expand`); the fill preference does not apply, so
+    // without a `template` param it is `auto`.
+    let default_model = s.prefs().integrations.default_edit_model.clone();
+    let requested = opt_str(EXPAND, &q, "template", 200)?.map(str::to_string).unwrap_or_else(|| AUTO_TEMPLATE.to_string());
+    let auto = requested == AUTO_TEMPLATE;
+    if auto && let Some(o) = q.as_object_mut() {
+        o.remove("template");
+    }
+    let Common { template, prompt, negative, seed, steps, guidance, models, name } =
+        plan_common(s, EXPAND, &q, if auto { DEFAULT_EXPAND_TEMPLATE } else { &requested }, Task::Expand, &default_model)?;
+    let variations = match opt_num(EXPAND, p, "variations", 1.0, f64::from(MAX_VARIATIONS))? {
+        None => 1,
+        Some(x) if x.fract() == 0.0 => x as u32,
+        Some(_) => return Err(bad(EXPAND, format!("`variations` must be a whole number from 1 to {MAX_VARIATIONS}"))),
+    };
+    let margin = opt_num(EXPAND, p, "margin", 0.0, 1.0)?.unwrap_or(0.25);
+    // The request: the bounding box of the added canvas (an L or a frame when more than one
+    // side grows) plus `margin` of the picture next to it, on the new canvas.
+    let canvas = Rect::new(0, 0, nw as i32, nh as i32);
+    let old = Rect::new(pads.left as i32, pads.top as i32, (pads.left + ow) as i32, (pads.top + oh) as i32);
+    let longer = i64::from(nw.max(nh));
+    let m = (margin * longer as f64).round().clamp(0.0, 65_536.0) as i32;
+    let (l, t, r, b) = (pads.left > 0, pads.top > 0, pads.right > 0, pads.bottom > 0);
+    let added = Rect::new(
+        if l || t || b { 0 } else { old.x1.saturating_sub(m) },
+        if t || l || r { 0 } else { old.y1.saturating_sub(m) },
+        if r || t || b { canvas.x1 } else { old.x0.saturating_add(m) },
+        if b || l || r { canvas.y1 } else { old.y0.saturating_add(m) },
+    );
+    let rect = align_to_grid(added.intersect(&canvas), canvas);
+    let pixels = u64::from(rect.width()) * u64::from(rect.height());
+    if pixels > MAX_REQUEST_PIXELS {
+        return Err(EngineError::Other(format!(
+            "the expanded area with its margin is {}×{} pixels; Generative Expand handles up to 16 megapixels at a time: add less canvas or lower `margin`",
+            rect.width(),
+            rect.height()
+        )));
+    }
+    let name = name.unwrap_or_else(|| "Generative Expand".to_string());
+    Ok((FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto }, pads, (nw, nh)))
+}
+
+fn expand_enabled(s: &Session) -> std::result::Result<(), String> {
+    web_unavailable()?;
+    s.active().map(|_| ()).ok_or_else(|| "no document open".into())
+}
+
+/// `generate.expand`: grow the canvas and have the model paint the new area, as one undo step.
+fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
+    let (plan, pads, (nw, nh)) = plan_expand(s, p)?;
+    let backend = backend(s)?;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto } = plan;
+    let label = name.clone();
+    let job = FillJob {
+        backend,
+        template_id: template.meta.id.clone(),
+        auto,
+        auto_order: AUTO_EXPAND_ORDER,
+        prompt,
+        negative,
+        seed,
+        steps,
+        guidance,
+        name,
+        models,
+        variations,
+    };
+    crate::jobs::edit_job(
+        s,
+        &label,
+        move |doc, active, ctx| {
+            // Canvas Size with a transparent extension: the picture moves by the left/top pads.
+            let (ow, oh) = (doc.size.width, doc.size.height);
+            crate::image_cmds::translate_doc(doc, EXPAND, pads.left as i32, pads.top as i32)?;
+            doc.size = Size::new(nw, nh);
+            crate::canvas_geom::refresh(doc, crate::canvas_geom::Refresh::Shapes);
+            let old = Rect::new(pads.left as i32, pads.top as i32, (pads.left + ow) as i32, (pads.top + oh) as i32);
+            // Everything in the request that is not the old picture is to be painted.
+            let (w, h) = (rect.width() as usize, rect.height() as usize);
+            let mut coverage = vec![1.0f32; w * h];
+            for y in 0..h {
+                for x in 0..w {
+                    let (cx, cy) = (rect.x0 + x as i32, rect.y0 + y as i32);
+                    if cx >= old.x0
+                        && cx < old.x1
+                        && cy >= old.y0
+                        && cy < old.y1
+                        && let Some(c) = coverage.get_mut(y * w + x)
+                    {
+                        *c = 0.0;
+                    }
+                }
+            }
+            let (made, rw, rh, request, template_id) = fill_region(doc, active, ctx, job, rect, coverage, Some(Outpaint { picture: old.intersect(&rect) }))?;
+            Ok((made, rw, rh, request, template_id, old))
+        },
+        move |(made, w, h, request, template_id, old)| {
+            let mut v = made_json(&made, w, h, request, &template_id);
+            if let Some(o) = v.as_object_mut() {
+                o.insert("canvas".into(), json!([nw, nh]));
+                o.insert("offset".into(), json!([old.x0, old.y0]));
+            }
+            v
         },
     )
 }
@@ -837,7 +1137,8 @@ fn run_models(s: &mut Session, p: &Value) -> Result<Value> {
     }
     // What `auto` would pick right now (needs the server's model lists).
     let auto_fill = backend.as_ref().filter(|_| online).map(|b| resolve_auto(b.as_ref(), AUTO_FILL_ORDER, DEFAULT_FILL_TEMPLATE));
-    Ok(json!({"server": health, "templates": templates, "autoFill": auto_fill}))
+    let auto_expand = backend.as_ref().filter(|_| online).map(|b| resolve_auto(b.as_ref(), AUTO_EXPAND_ORDER, DEFAULT_EXPAND_TEMPLATE));
+    Ok(json!({"server": health, "templates": templates, "autoFill": auto_fill, "autoExpand": auto_expand}))
 }
 
 fn always(_: &Session) -> std::result::Result<(), String> {
@@ -864,6 +1165,17 @@ pub fn specs() -> Vec<CommandSpec> {
             params: r#"{"prompt":text,"negative":text,"target":"auto|layer|document","width":int=0,"height":int=0,"steps":0..250=0,"guidance":0..30=0,"seed":{u64?=random},"template":{id?=Preferences › Default Image Template},"model":{file?=Preferences},"name":{str?}} → {"layer"|"document","seed","template","runId","width","height","ms"} (target auto = a layer over the whole canvas when a document is open, else a new document; width/height 0 = the document's size or 1024, otherwise 64..4096 rounded down to multiples of 16; steps and guidance 0 = the template's defaults; a background job; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: image_enabled,
             run: run_image,
+            journal: true,
+        },
+        CommandSpec {
+            id: EXPAND,
+            label: "Generative Expand…",
+            // Placed by the menu catalogue under Edit.
+            menu: &[],
+            shortcut: None,
+            params: r#"{"prompt":text,"left":int=0,"top":int=0,"right":int=0,"bottom":int=0,"width":int=0,"height":int=0,"negative":text,"steps":0..250=0,"guidance":0..30=0,"variations":int=1,"margin":{0..1=0.25},"anchor":{str?=center},"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template},"model":{file?=Preferences},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","canvas":[w,h],"offset":[x,y],"width","height","requestWidth","requestHeight","ms","timings"} (adds canvas (left/top/right/bottom in pixels, or a larger width/height placed by anchor: topLeft, top, topRight, left, center, right, bottomLeft, bottom, bottomRight) and has the model paint it, as one undo step: the picture moves by the left/top pads, the result is a new layer masked to the added area; an empty prompt continues the scene; otherwise as generate.fill; needs a ComfyUI server)"#,
+            enabled: expand_enabled,
+            run: run_expand,
             journal: true,
         },
         CommandSpec {

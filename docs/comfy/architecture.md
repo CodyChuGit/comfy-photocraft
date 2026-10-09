@@ -166,10 +166,13 @@ own.
   `photocraft_compose::render(doc, rect)` (the CPU reference, already used by exports and tests),
   converted to RGBA8 sRGB through `photocraft-cms` when the document is 16/32-bit or not sRGB
   (rule 2 in `AGENTS.md`: never assume 8-bit sRGB inside the engine; the conversion happens at the
-  backend boundary and is reversed on the way back). Since 2026-10-09 a request larger than one
-  megapixel is sent downscaled (Lanczos-3 for pixels, a tent filter for the mask; the editing
-  models work at about 1 MP, as Photoshop's Generative Fill does) and the result is resampled back
-  under the selection's full-resolution layer mask; segmentation requests are capped at 2 MP.
+  backend boundary and is reversed on the way back). Since 2026-10-09 the request rectangle is
+  grown to the 16-px grid, a request over 0.75 megapixels is sent downscaled (Lanczos-3 for
+  pixels, a tent filter for the mask; the editing models work at about that size and the 32 GB
+  card keeps the model resident at it) and one under 512 px on its longer side is sent upscaled;
+  the result is resampled back under the selection's full-resolution layer mask. Segmentation
+  requests are capped at 2 MP. Generative Expand shows the model only the picture as its
+  reference (an `ImageCrop` in its templates) while the padded canvas is the sampling latent.
   Upload names are content hashes, so ComfyUI's node cache (loader, text encoder, VAE encode) is
   reused across variations and re-rolls of the same selection.
 - **Mask.** The selection surface (`doc.selection: Option<Surface>`, used by filters at

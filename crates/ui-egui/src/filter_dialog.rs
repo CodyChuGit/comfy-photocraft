@@ -186,6 +186,7 @@ pub fn has_dialog(command: &str) -> bool {
                 // Generative commands: prompt, options, no preview (they run as background jobs).
                 | "generate.fill"
                 | "generate.image"
+                | "generate.expand"
                 | "select.byText"
         ))
         && photocraft_engine::commands::find(command).is_some_and(|c| !parse_spec(c.params).is_empty())

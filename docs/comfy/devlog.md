@@ -4,6 +4,42 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-09 (night, Phase 3): Generative Expand
+
+**Landed**
+
+- `generate.expand` (Edit › Generative Expand…, translated ×13, generated dialog): adds canvas
+  (`left/top/right/bottom` px, or a larger `width/height` with Canvas Size's `anchor`) and has
+  the model paint it, as **one undo step**: `translate_doc` + the new size inside the job, the
+  picture moves by the left/top pads, the selection and vector geometry move along. The request
+  is the bounding box of the added area (an L or a frame when several sides grow) plus the fill
+  margin of the picture. An empty prompt becomes "extend the scene beyond its original edges,
+  continuing it naturally". Result adds `canvas` and `offset`.
+- Its own templates, `qwen-edit-2511/expand-lightning-8` and `expand` (task `expand`,
+  `AUTO_EXPAND_ORDER`, `generate.models` reports `autoExpand`): the fill graph plus an
+  `ImageCrop` so the text encoder's reference is **the picture alone** while the padded canvas is
+  the sampling latent under the noise mask. Found the hard way: shown the padded canvas as its
+  reference, the edit model reproduced the padding as content (replicated edge pixels came back
+  as streaks; mid-grey came back as a grey frame at one seed). The empty canvas is still painted
+  mid-grey before upload (`prefill_outside`), and the result layer's mask is the soft request
+  mask with an 8 % feather into the picture (`outpaint_feather_radius`), so the re-rendered band
+  carries the new area's tone across the old edge instead of meeting it at a line.
+- The fill job body is now `fill_region` (shared by fill and expand): Lightning tiers, `auto`,
+  grid alignment, the request cap and 512 px floor, the feathered request mask, variations. The
+  cap went from 1 MP to **0.75 MP**: with 2511 fp8 and its 7.9 GB text encoder resident on the
+  32 GB card, a 1 MP latent plus the 1 MP reference pushed ComfyUI into offloading part of the
+  model (a 45 s run instead of 18 s).
+- Tests: two engine tests (one-step L-shaped expand with pixel/mask/undo checks, the grey
+  pre-fill and the crop rectangle; target size + anchor, selection follows, validation, disabled
+  without a document).
+
+**Live** (the 1024² lighthouse, Lightning 8, `bench/expand-*.png`): widened to the right by
+384 px with "more open sea and evening sky" in 20.2 s (a 736×1024 request), and framed by 192 px
+on three sides with the default prompt in 14.8 s (a 1408×1216 canvas sent at 944×816). Both
+continue rocks, sea and the pink evening sky coherently; the old edges are faint at most. The
+earlier variants (padded reference: streaks, a grey frame, a blue sky) are kept next to them with
+suffixes for comparison.
+
 ## 2026-10-09 (performance pass): Lightning tiers, `auto`, request sizing, server flags
 
 **Landed**

@@ -87,8 +87,8 @@ every seed tried; it is the research-licensed option.
 The official 2511 graph encodes the `FluxKontextImageScale` output, so every request is sampled
 at ~1 MP whatever its size. The shipped templates now VAE-encode the uploaded image itself: the
 text encoder still sees the 1 MP reference, the sampling latent has the request's own size
-(the engine grows the request rectangle to the 16-px grid, caps it at 1 MP and floors it at
-512 px on the longer side). Same three cases, Lightning 8, same seeds:
+(the engine grows the request rectangle to the 16-px grid, caps it at 0.75 MP, see §5, and
+floors it at 512 px on the longer side). Same three cases, Lightning 8, same seeds:
 
 | Case | 1 MP latent | native latent | result |
 |---|---|---|---|
@@ -108,8 +108,11 @@ tiers, Qwen-Image-2.1, the scaled fp8 file), the small-selection fills took 36 a
 2.5 GB of VRAM free: ComfyUI was staging the 19.6 GB model on every run. `POST /free`
 (unload models) brought 30 GB back and the next fills took 16 s (reload included) and 10 s.
 That is **Edit › Purge › Generative Models** (`generate.free`) in PhotoCraft. The steady state
-with 2511 fp8 is ~1.6–2.5 GB free on a 32 GB card (UNET 19.6 GB + text encoder 7.9 GB + VAE),
-which is fine as long as nothing else is resident.
+with 2511 fp8 is ~1.6–2.5 GB free on a 32 GB card (UNET 19.6 GB + text encoder 7.9 GB + VAE).
+In that state a 1 MP latent plus the 1 MP reference did not fit the headroom: Generative
+Expand's frame case took 45 s (the log shows the 19.6 GB model re-staged for the run) against
+18 s a moment earlier. The request cap is therefore 0.75 MP (768×1024), which keeps the model
+resident and costs little: the editing models' own working size is about that.
 
 ## 6. Where the time goes, and what is left
 
