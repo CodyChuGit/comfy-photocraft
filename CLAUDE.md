@@ -1,10 +1,21 @@
-# CLAUDE.md: Comfy PhotoCraft
+# CLAUDE.md: PhotoshopEX (branch `photoshopex` of Comfy PhotoCraft)
 
-This checkout is the **Comfy PhotoCraft** fork of [storytold/photocraft](https://github.com/storytold/photocraft):
+**This checkout (`C:\Users\5090\Documents\PhotoshopEX`) is the owner's own version**, branched on
+2026-10-09 from the Comfy PhotoCraft fork at commit `9cd7165`: "my version of Photoshop that I
+wanted from the start". Branch `photoshopex`; `origin` is the same GitHub fork
+(CodyChuGit/comfy-photocraft), `upstream` is storytold/photocraft. What differs from
+`comfy-photocraft` so far: the app icon (a Photoshop-style navy "Px" tile, `assets/app-icon/`,
+`packaging/icon-px.py`), the session's bench scripts and images under `docs/comfy/bench/`
+(`scripts/` tracked, `images/` ignored). Everything below still applies; the fork's rules and
+docs are the base this version builds on. Before publishing a build, note that "Photoshop" and
+the "Ps" tile are Adobe's trademarks: the icon here uses its own letters, and the product name is
+the owner's call.
+
+The base: the **Comfy PhotoCraft** fork of [storytold/photocraft](https://github.com/storytold/photocraft):
 PhotoCraft (a clean-room, pure-Rust Photoshop reimplementation) plus a fully local, open-source
 generative toolset driven by a ComfyUI server (Krea 2, Qwen-Image-Edit, Qwen-Image-2.1, Z-Image…).
-Integration branch: `comfy-photocraft`. Upstream remains the source of truth for everything that
-is not generative.
+Integration branch: `comfy-photocraft` (in `C:\Users\5090\Projects\comfy-photocraft`). Upstream
+remains the source of truth for everything that is not generative.
 
 ## Read first, in this order
 

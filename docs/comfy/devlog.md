@@ -1,8 +1,30 @@
-# Comfy PhotoCraft dev log
+# PhotoshopEX dev log (continues the Comfy PhotoCraft log)
 
 Newest entry first. Terse: what landed, numbers, what is still open. Upstream keeps its log in
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
+
+## 2026-10-09 (late night): the PhotoshopEX branch
+
+The owner branched the fork into their own version: this checkout,
+`C:\Users\5090\Documents\PhotoshopEX`, branch `photoshopex`, from `comfy-photocraft` at `9cd7165`
+(the enhancer, the NVFP4 policy and the Object Selection tool's SAM mode included). Landed here:
+
+- **The app icon**: a Photoshop-style tile (navy `#001E36`, the letters "Px" in `#31A8FF`, Segoe
+  UI Bold) replaces the PhotoCraft kitsune everywhere the app and its packaging read an icon
+  (`assets/app-icon/`: the hicolor PNGs 16–512, the 1024 macOS render, the `.ico` packed with
+  `cargo xtask ico`, the `.icns` written by Pillow, the SVG masters). `packaging/icon-px.py`
+  regenerates them (Pillow from the ComfyUI portable Python; the Rust toolchain packs the .ico).
+  Adobe's own "Ps" mark is a trademark and is not copied; the letters are this version's.
+  `app_icon.rs`'s tests (every shell size in the .ico, the window icon decodes) pass.
+- **The session's dev files**: the PowerShell bench and verification scripts in
+  `docs/comfy/bench/scripts/` (with a README), the bench images in `docs/comfy/bench/images/`
+  (git-ignored, 171 MB).
+- `CLAUDE.md` says what this checkout is; `ATTRIBUTION.md` and `brand.rs` name the new icon.
+
+Open here: the product name (the window title and `--help` still say PhotoCraft; "Photoshop" is
+Adobe's trademark, so the published name is the owner's call), and everything in the entries
+below.
 
 ## 2026-10-09 (night): the prompt enhancer
 

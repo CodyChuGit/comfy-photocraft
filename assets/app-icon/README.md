@@ -1,47 +1,47 @@
-# PhotoCraft app icon
+# PhotoshopEX app icon
 
-A **nine-tailed kitsune with a brow diamond**: an engraving portrait, seated, looking back at the
-viewer, in the Crafting Apps' owl-template framing (full-bleed field, head and body filling the
-tile, tails running off the edges).
+A **Photoshop-style tile**: a dark navy rounded square with the letters "Px" in light blue, the
+look of the Adobe application tiles, with PhotoshopEX's own letters (Adobe's "Ps" mark and its
+icon artwork are Adobe's trademarks; nothing of theirs is copied here).
 
 ## Palette
 
-Exactly three colours:
-
 | Colour | Hex | Used for |
 |---|---|---|
-| Ink | `#0b0b0c` | line work and contours |
-| Paper | `#efe9dc` | the figure |
-| PhotoCraft blue (app colour) | `#2f7bf5` | the full-bleed field |
+| Navy | `#001E36` | the tile |
+| Light blue | `#31A8FF` | the letters |
 
 ## Geometry
 
-A 512-unit tile (`viewBox="0 0 512 512"`), rounded square with `rx=112`, no border. The macOS
-renders pad it onto Apple's 824/1024 icon grid; the Windows and Linux renders crop 22 units off
-each side so the figure reads at 16–48 px.
+A 512-unit tile (`viewBox="0 0 512 512"`), rounded square with `rx=112`, no border, the letters
+set in Segoe UI Bold at 56 % of the tile, centred. The macOS renders pad it onto Apple's
+824/1024 icon grid; the Windows and Linux renders crop 22 units off each side, as the previous
+icon did, so the packaging scripts need no change.
 
 ## Provenance
 
-The owner's original drawing, made in ArtCraft (2880 px, engraving style, keyed to the palette),
-vectorised with craftrules `assets/logo-options/_tools/vectorize_tile.py`. The source PNG stays in
-craftrules at `assets/app-icons/photocraft/source.png`. License: see `LICENSE.txt`.
+Made for this branch on 2026-10-09 with `packaging/icon-px.py` (Pillow, Segoe UI Bold), replacing
+the PhotoCraft kitsune (upstream storytold/photocraft, `assets/app-icon/` there). License: see
+`LICENSE.txt`.
 
 ## Files
 
-- `photocraft.svg`: canonical master (traced at 2048 px).
-- `photocraft-small.svg`: lighter trace (traced at 1024 px); also the hicolor scalable icon.
+- `photocraft.svg`, `photocraft-small.svg`: the editable master (a `<text>` element; the PNGs are
+  what ships).
 - `photocraft-1024.png`: 1024 px render on the macOS grid.
 - `photocraft.icns`: macOS bundle icon (`CFBundleIconFile`).
 - `photocraft.ico`: Windows icon, 16–256 px, embedded in the `.exe` by `apps/photocraft/build.rs`.
 - `hicolor/<size>/apps/ai.storyteller.photocraft.png` (16–512) and `hicolor/scalable/...svg`:
   Linux icon theme.
 
-The app also sets the window icon and Wayland app ID at runtime (`apps/photocraft/src/app_icon.rs`,
-`main.rs`). On Windows the taskbar shows the icon of the Start Menu shortcut that launches the
-exe, so the MSI's `<Icon Id>` keeps the `.exe` extension (ICE50); `app_icon.rs` documents the
-details and tests the `.ico` sizes and the WiX icon references.
+The file names stay `photocraft.*` because `build.rs`, `app_icon.rs`, `brand.rs` and the
+packaging scripts read them by name.
 
 ## Regenerate
 
-Replace `photocraft.svg` (and `photocraft-small.svg`), then run `packaging/icons.sh`. It needs
-`resvg`, plus `iconutil` on macOS; the `.ico` is packed by `cargo xtask ico`.
+```powershell
+python -I packaging\icon-px.py .
+cargo run -q -p xtask -- ico assets\app-icon\photocraft.ico target\icon-px\ico-16.png target\icon-px\ico-20.png target\icon-px\ico-24.png target\icon-px\ico-32.png target\icon-px\ico-40.png target\icon-px\ico-48.png target\icon-px\ico-64.png target\icon-px\ico-128.png target\icon-px\ico-256.png
+```
+
+Change `LETTERS`, the colours or the font at the top of `icon-px.py`.
