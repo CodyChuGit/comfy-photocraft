@@ -201,6 +201,12 @@ soft-matte refinement, the MCP acceptance task, box prompts.
   Qwen-Image-2.1 (up to 10).
 - Health panel: server version, free VRAM, loaded models, queue length; one-click `/free`.
 
+**Shape (2026-10-10).** [`artcraft-study.md`](artcraft-study.md) §5 orders this phase after
+ArtCraft's patterns: a catalogue with capability flags the UI reads, a persistent task queue
+with typed failures and a queue popover, a prompt panel with a reference deck and the time (their
+cost) on the Generate button, then providers chosen late behind the user's own keys (Fal, the
+ArtCraft Omni API) with the local server as the default and a fallback order.
+
 ## Phase 5: Quality and depth
 
 - Harmonize, Generative Upscale, Generate Similar.

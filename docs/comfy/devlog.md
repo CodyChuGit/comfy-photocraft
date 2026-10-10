@@ -4,6 +4,26 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-10: the ArtCraft study (write-up only)
+
+The owner asked to look into ArtCraft's paid features and to make the implementation "more
+like how they do things overall", write-up first. [`artcraft-study.md`](artcraft-study.md) is
+that write-up, from getartcraft.com, the team's posts and a local read of the public
+`storytold/artcraft` repository (a shallow clone in the temp directory, not kept in the tree).
+
+Short version: ArtCraft's only paid feature is generation through its own hosted provider,
+priced in credits (1 credit = $0.01; Basic $8 for 1,000, Pro $28 for 3,750, Max $48 for
+6,600; refunded on failure); everything else is free, and users can bypass credits with their
+own Fal/Replicate/Google keys or Midjourney/Grok logins. The patterns worth taking: a model
+catalogue as data with capability flags that drive the UI, one request shape with the provider
+chosen late and a priority/fallback list, a persistent local task queue with typed statuses and
+failure reasons plus a Task Queue popover, a prompt box built from capabilities with a reference
+deck and the cost (for us: the time) on the Generate button, and a history stack of candidates.
+The study ends with an ordered adoption list (catalogue → task queue → prompt panel →
+providers with BYO keys, the ArtCraft Omni API among them → failure labels → a gallery) and
+three questions for the owner (cloud providers at all; queue or providers first; asking the
+ArtCraft team for API access). Nothing in the app changed.
+
 ## 2026-10-09 (late night): the PhotoshopEX branch
 
 The owner branched the fork into their own version: this checkout,
