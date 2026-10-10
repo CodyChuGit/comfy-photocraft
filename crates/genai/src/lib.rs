@@ -136,6 +136,8 @@ pub enum Task {
     Segment,
     /// Decompose a picture into RGBA layers; one result image per layer.
     Layers,
+    /// Text in, text out (a prompt rewritten by a language model); no image results.
+    Text,
 }
 
 /// One generation, backend-agnostic. The engine builds it; a backend runs it.
@@ -185,8 +187,10 @@ impl Request {
 /// What came back.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Response {
-    /// At least one image, in the order the server produced them.
+    /// The result images, in the order the server produced them (empty for a text template).
     pub images: Vec<Rgba8>,
+    /// Text the graph produced (a `PreviewAny` of a `TextGenerate`); empty for image templates.
+    pub texts: Vec<String>,
     pub seed: u64,
     /// The server's id for the run (ComfyUI's `prompt_id`), for logs and reproduction.
     pub run_id: String,
@@ -234,11 +238,70 @@ pub struct Health {
     pub backend: String,
     pub url: String,
     pub version: String,
+    /// The server's first GPU as it names it ("NVIDIA GeForce RTX 5090 : cudaMallocAsync").
+    #[serde(default)]
+    pub device: String,
     pub vram_total: Option<u64>,
     pub vram_free: Option<u64>,
     pub queue_remaining: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+/// Which weights a backend loads for a model slot that has an NVFP4 alternative
+/// ([`template::ModelSlot::nvfp4`]): the preference `integrations.modelPrecision`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Precision {
+    /// The NVFP4 file when the server's GPU is a Blackwell part (the 4-bit tensor cores that
+    /// run it natively) and the file is installed; the default file otherwise.
+    #[default]
+    Auto,
+    /// Always the template's default file.
+    Default,
+    /// The NVFP4 file whenever it is installed, whatever the GPU (slow or failing elsewhere;
+    /// for testing).
+    Nvfp4,
+}
+
+impl Precision {
+    /// The preference's names: `auto`, `default`, `nvfp4`; anything else is `Auto`.
+    pub fn from_name(name: &str) -> Self {
+        match name.trim() {
+            "default" => Self::Default,
+            "nvfp4" => Self::Nvfp4,
+            _ => Self::Auto,
+        }
+    }
+}
+
+/// Is `device` (a server's GPU name) a Blackwell part? The names ComfyUI reports: the GeForce
+/// RTX 50 series, the RTX PRO Blackwell workstation cards, the B100/B200/B300 and GB200/GB300
+/// data-centre parts and the GB10 (DGX Spark). Anything else, including an empty name, is not.
+pub fn is_blackwell(device: &str) -> bool {
+    let d = device.to_ascii_uppercase();
+    let has = |needle: &str| d.contains(needle);
+    // "RTX 5000 Ada Generation" and "RTX 500 Ada" are Ada parts; every Blackwell name lacks
+    // the generation word.
+    if has("ADA") || has("AMPERE") || has("TURING") || has("HOPPER") {
+        return false;
+    }
+    let rtx50 = d.split("RTX 50").nth(1).is_some_and(|rest| {
+        let mut c = rest.chars();
+        c.next().is_some_and(|c| c.is_ascii_digit()) && c.next().is_some_and(|c| c.is_ascii_digit())
+    });
+    rtx50
+        || (has("RTX PRO") && has("BLACKWELL"))
+        || has("RTX PRO 6000")
+        || has("RTX PRO 5000")
+        || has("RTX PRO 4500")
+        || has("RTX PRO 4000")
+        || has("B100")
+        || has("B200")
+        || has("B300")
+        || has("GB200")
+        || has("GB300")
+        || has("GB10")
+        || has("DGX SPARK")
 }
 
 /// A generative engine. ComfyUI is the first implementation; an in-process runtime could be
@@ -250,6 +313,13 @@ pub trait GenerativeBackend: Send + Sync {
     fn run(&self, req: &Request, progress: &dyn Progress) -> Result<Response>;
     /// Model files the server has in `folder` (`diffusion_models`, `text_encoders`, `vae`, …).
     fn model_files(&self, folder: &str) -> Result<Vec<String>>;
+    /// The request as [`GenerativeBackend::run`] will run it: model slots the backend's precision
+    /// policy resolves to another file (NVFP4) are bound in `models`. Callers that reason about
+    /// which files a run loads (the purge on a model-set change) ask this first. Backends
+    /// without a policy return the request as it is.
+    fn prepare(&self, req: &Request) -> Request {
+        req.clone()
+    }
     /// Ask the server to unload its models and free their memory (the next run reloads them).
     /// Backends without resident models do nothing.
     fn free(&self) -> Result<()> {

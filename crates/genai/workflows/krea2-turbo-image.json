@@ -17,7 +17,7 @@
       "unet": "string", "clip": "string", "vae": "string"
     },
     "models": [
-      { "placeholder": "unet", "folder": "diffusion_models", "default": "krea2_turbo_fp8_scaled.safetensors" },
+      { "placeholder": "unet", "folder": "diffusion_models", "default": "krea2_turbo_fp8_scaled.safetensors", "nvfp4": "krea2_turbo_nvfp4.safetensors" },
       { "placeholder": "clip", "folder": "text_encoders", "default": "qwen3vl_4b_fp8_scaled.safetensors" },
       { "placeholder": "vae", "folder": "vae", "default": "qwen_image_vae.safetensors" }
     ],

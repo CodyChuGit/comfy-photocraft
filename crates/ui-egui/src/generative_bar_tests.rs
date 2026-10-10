@@ -116,6 +116,19 @@ fn the_menu_opens_the_bar_and_generate_runs_the_fill_with_variations() {
     drop(st);
     let d = app.session.active().unwrap();
     assert!(d.doc.layers.last().unwrap().name.starts_with("Generative Edit:"));
+    // Enhance rewrites the prompt with the picture in view (inline here) and leaves it for the
+    // user to read and run.
+    let prompts_before = fake.state().prompts.len();
+    enhance(&mut app).unwrap();
+    assert_eq!(app.ui.generative_bar.prompt, "Enhanced: turn this drawing into a realistic portrait");
+    assert!(app.ui.generative_bar.enhance_job.is_none());
+    let st = fake.state();
+    assert_eq!(st.prompts.len(), prompts_before + 1, "the rewriter ran, nothing was generated");
+    let g = &st.prompts.last().unwrap().1;
+    assert!(g.as_object().unwrap().values().any(|n| n["class_type"] == "TextGenerate") && g.get("2").is_some(), "a text graph with the picture: {g}");
+    drop(st);
+    app.ui.generative_bar.prompt.clear();
+    assert!(enhance(&mut app).is_err(), "nothing to enhance");
     // Back to the Fill state the rest of the test expects.
     assert_eq!(
         control(

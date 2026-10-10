@@ -21,6 +21,7 @@ pub const COMMAND: &str = "generate.fill";
 /// The bar's other mode: the whole picture by instruction, masked to the selection.
 pub const EDIT_COMMAND: &str = "generate.edit";
 const VARIATION_COMMAND: &str = "generate.variation";
+const ENHANCE_COMMAND: &str = "generate.enhancePrompt";
 const MODE_FILL: &str = "fill";
 const MODE_EDIT: &str = "edit";
 const AREA_ID: &str = "generative-bar";
@@ -81,6 +82,9 @@ pub struct GenerativeBar {
     /// The background `generate.models` probe filling in [`TemplateChoice::installed`].
     #[serde(skip)]
     probe_job: Option<u64>,
+    /// The `generate.enhancePrompt` job the Enhance button started; its answer replaces the prompt.
+    #[serde(skip)]
+    enhance_job: Option<u64>,
 }
 
 impl Default for GenerativeBar {
@@ -101,13 +105,15 @@ impl Default for GenerativeBar {
             had_selection: false,
             showing_job: None,
             probe_job: None,
+            enhance_job: None,
         }
     }
 }
 
-/// Is the bar drawing job `id`'s progress (so the modal progress dialog is not needed)?
+/// Is the bar drawing job `id`'s progress (so the modal progress dialog is not needed)? Its
+/// Enhance job too: the bar says "Enhancing…" by the prompt while it runs.
 pub fn shows_job(app: &PhotocraftApp, id: JobId) -> bool {
-    app.ui.generative_bar.showing_job == Some(id.0)
+    app.ui.generative_bar.showing_job == Some(id.0) || app.ui.generative_bar.enhance_job == Some(id.0)
 }
 
 /// Edit › Generative Fill… (and the selection context menu) with no params: open the bar instead
@@ -252,6 +258,47 @@ fn apply_result(app: &mut PhotocraftApp, v: &Value, doc: Option<usize>) {
     bar.results_doc = doc;
 }
 
+/// The Enhance button: `generate.enhancePrompt` rewrites the bar's prompt with the
+/// vision-language model, the picture (and in Fill mode the selection's place) in view, and
+/// the answer replaces the prompt for the user to read and run. A background job in the desktop
+/// app; inline (tests, web) the answer lands at once.
+pub fn enhance(app: &mut PhotocraftApp) -> Result<Value, String> {
+    let prompt = app.ui.generative_bar.prompt.trim().to_string();
+    if prompt.is_empty() {
+        return Err("type a prompt first".into());
+    }
+    if app.ui.generative_bar.enhance_job.is_some() {
+        return Err("a prompt is being enhanced already".into());
+    }
+    let task = if app.ui.generative_bar.mode == MODE_EDIT { "edit" } else { "fill" };
+    match app.run(ENHANCE_COMMAND, json!({"prompt": prompt, "task": task})) {
+        Ok(v) => {
+            if v.get("pending").and_then(Value::as_bool) == Some(true) {
+                app.ui.generative_bar.enhance_job = v.get("job").and_then(Value::as_u64);
+            } else {
+                apply_enhanced(app, &v);
+            }
+            Ok(v)
+        }
+        Err(e) => {
+            crate::notices::error(app, format!("Enhance Prompt: {e}"));
+            Err(e)
+        }
+    }
+}
+
+/// A `generate.enhancePrompt` answer: the rewritten prompt replaces the bar's, or the status
+/// bar says the model had nothing better.
+fn apply_enhanced(app: &mut PhotocraftApp, v: &Value) {
+    match (v["enhanced"].as_bool(), v["prompt"].as_str()) {
+        (Some(true), Some(p)) if !p.trim().is_empty() => app.ui.generative_bar.prompt = p.to_string(),
+        _ => {
+            app.ui.status = tl!("The model could not improve this prompt").to_string();
+            app.ui.status_error = false;
+        }
+    }
+}
+
 /// A background job ended: a fill records its result layers in the bar, whether the bar started
 /// it or a script / the dialog did (while the bar has no job of its own).
 pub fn on_event(app: &mut PhotocraftApp, e: &JobEvent) {
@@ -259,6 +306,15 @@ pub fn on_event(app: &mut PhotocraftApp, e: &JobEvent) {
         app.ui.generative_bar.probe_job = None;
         if let JobOutcome::Done(v) = &e.outcome {
             apply_installed(app, v);
+        }
+        return;
+    }
+    if app.ui.generative_bar.enhance_job == Some(e.id.0) {
+        app.ui.generative_bar.enhance_job = None;
+        match &e.outcome {
+            JobOutcome::Done(v) => apply_enhanced(app, v),
+            JobOutcome::Failed(msg) => crate::notices::error(app, format!("Enhance Prompt: {msg}")),
+            JobOutcome::Cancelled => {}
         }
         return;
     }
@@ -422,6 +478,9 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
         Some(Action::Generate) => {
             let _ = generate(app);
         }
+        Some(Action::Enhance) => {
+            let _ = enhance(app);
+        }
         Some(Action::Cancel(j)) => crate::jobs_ui::cancel(app, j),
         Some(Action::Variation(i)) => {
             if let Err(e) = show_variation(app, i) {
@@ -435,6 +494,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
 
 enum Action {
     Generate,
+    Enhance,
     Cancel(JobId),
     Variation(usize),
     Close,
@@ -485,7 +545,21 @@ fn idle(ui: &mut egui::Ui, app: &mut PhotocraftApp, results: &[u64], default_tem
         bar.focus = false;
     }
     let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-    if mode == MODE_FILL && looks_like_an_edit(&bar.prompt) {
+    // Enhance: the vision-language model rewrites the prompt with the picture in view (names
+    // what is there instead of "this", adds the detail the image model wants).
+    let enhancing = bar.enhance_job.is_some();
+    let can_enhance = !enhancing && !bar.prompt.trim().is_empty();
+    let (er, eresp) = ui.allocate_exact_size(vec2(20.0, 20.0), if can_enhance { Sense::click() } else { Sense::hover() });
+    if can_enhance && eresp.hovered() {
+        ui.painter().rect_filled(er, t.radius_sm, t.hover);
+    }
+    crate::icons::paint(ui, er, "wand-sparkles", 13.0, if enhancing { t.accent } else if can_enhance { t.text } else { t.text_faint });
+    if eresp.on_hover_text(tl!("Enhance prompt")).clicked() && can_enhance {
+        *action = Some(Action::Enhance);
+    }
+    if enhancing {
+        ui.label(RichText::new(tl!("Enhancing…")).color(t.text_dim).size(11.5));
+    } else if mode == MODE_FILL && looks_like_an_edit(&bar.prompt) {
         ui.label(RichText::new(tl!("Changing what is there? Switch to Edit")).color(t.text_dim).size(11.5));
     }
     // Template picker: Auto (the fastest permissive tier the server has), then every template

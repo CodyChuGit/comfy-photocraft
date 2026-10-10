@@ -2445,3 +2445,9 @@ cameraRaw	Roughness	Неровность
 	Split into Layers (Generative)…	Разделить на слои (генеративно)…
 	Changing what is there? Switch to Edit	Меняете то, что уже есть? Переключитесь на Редактирование
 	Describe the change…	Опишите изменение…
+	Enhance prompts	Улучшать запросы
+	Enhance prompt	Улучшить запрос
+	Enhancing…	Улучшение…
+	The model could not improve this prompt	Модель не смогла улучшить этот запрос
+	Model precision	Точность моделей
+	NVFP4 (Blackwell GPUs)	NVFP4 (GPU Blackwell)

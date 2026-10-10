@@ -18,7 +18,7 @@
     },
     "models": [
       { "placeholder": "unet", "folder": "diffusion_models", "default": "qwen_image_edit_2511_fp8mixed.safetensors" },
-      { "placeholder": "clip", "folder": "text_encoders", "default": "qwen_2.5_vl_7b_fp8_scaled.safetensors" },
+      { "placeholder": "clip", "folder": "text_encoders", "default": "qwen_2.5_vl_7b_fp8_scaled.safetensors", "nvfp4": "qwen_2.5_vl_7b_nvfp4.safetensors" },
       { "placeholder": "vae", "folder": "vae", "default": "qwen_image_vae.safetensors" },
       { "placeholder": "lora", "folder": "loras", "default": "Qwen-Image-Edit-2511-Lightning-8steps-V1.0-bf16.safetensors" }
     ],

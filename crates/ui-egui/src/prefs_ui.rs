@@ -802,6 +802,7 @@ fn choice_label(v: &str) -> String {
         "metal" => "Metal".into(),
         "gl" => "OpenGL".into(),
         "cpu" => "CPU (no GPU acceleration)".into(),
+        "nvfp4" => "NVFP4 (Blackwell GPUs)".into(),
         v => humanize(v),
     }
 }

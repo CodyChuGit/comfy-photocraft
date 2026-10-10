@@ -235,6 +235,110 @@ the base. The same return to Lightning without a purge took 121 s earlier in the
 engine purges only when the model files change and never on a server's first run; separate
 CLI invocations are separate processes, so the CLI only exercises it within one `--cmd` chain.
 
+## 5e. Prompting: what the guides say, and the enhancer
+
+The first user session (dev log, 2026-10-09 evening) turned a line drawing of a face into a plate
+of food twice: "make this hyper realistic" gives Qwen-Image-Edit nothing to hold on to when the
+picture is a doodle. What the model authors and ComfyUI recommend, checked 2026-10-09:
+
+| Source | What it says | What we do |
+|---|---|---|
+| Qwen-Image-Edit model card and the `Qwen-Image` repo's `polish_edit_prompt` (Alibaba, 2025–2026) | run the instruction through a VLM that sees the picture and rewrites it: name the objects, one change per instruction, state what stays, quote literal text verbatim | `generate.enhancePrompt`: the same rewrite, on the Krea 2 text encoder (Qwen3-VL 4B) already on the server |
+| ComfyUI's shipped Qwen-Image-2.1 "prompt enhancer" subgraph (`comfyui-workflow-templates` 0.11.76) | a 10 KB system prompt for an 8B VLM (`TextGenerate`, temperature 0.3, no thinking) | too long for the 4B model (it echoes or rambles); a 12-line prompt with the same rules works |
+| ComfyUI's Krea 2 template | `TextGenerate` on the Krea 2 encoder expands a short idea into a paragraph before `CLIPTextEncode` | `enhance/image`: the same node, our short instruction, 60–120 words |
+| Krea 2 prompting guide | detailed natural-language paragraphs, subject first, then materials, lighting, setting, style | the image system prompt orders the paragraph that way and keeps every subject, colour and medium the user gave |
+| Qwen-Image-Edit-2511 settings in ComfyUI's templates | 40 steps / CFG 4 base, Lightning LoRA 4 steps / CFG 1 (shift 3), `ModelSamplingAuraFlow 3.1`, `CFGNorm`, `index_timestep_zero` | already what the templates ship (§2, §5c); the 8-step Lightning tier is the default |
+
+**Settings check.** Our 2511 graphs match the official templates node for node (sampler euler /
+simple, shift 3.1, CFG norm, the reference-latent method); the Lightning tier is the official
+Lightning recipe with 8 steps instead of 4 (visibly cleaner edges at +4 s). Krea 2 Turbo: 8 steps,
+CFG 1, `ConditioningZeroOut` negative, CLIPLoader type `krea2`, as shipped. Nothing was left on
+the table there; the prompt was the lever.
+
+**The enhancer, live** (`enhance-live.ps1`, the CLI against the server, 5090, ComfyUI 0.39):
+
+| Case | time | the rewriter's sentence |
+|---|---|---|
+| the doodle, edit, "make this hyper realistic" | 0.9–1.3 s | Turn the doodle of a smiling face into a photograph of a real human face with the same expression and pose, replacing the black outline strokes with real skin, hair, and facial features; keep the white background unchanged. |
+| the doodle, edit, "turn this drawing into a hyper realistic portrait that looks similar" | 0.9 s | Make the hand-drawn smiley face look like a hyper realistic portrait of a human face with the same expression and pose, replacing the black outline strokes with real skin, hair, and facial features, keeping the white background unchanged. |
+| the doodle, edit, "make it a watercolor painting" | 1.1 s | Turn the hand-drawn smiley face into a watercolor painting of a smiling human face, replacing the black outline strokes with soft watercolor washes and brushstrokes, keeping the simple white background unchanged. |
+| the lighthouse, edit, "make the sky stormy" | 1.0 s | Make the sky stormy with dark, swirling clouds and flashes of lightning, keeping the white lighthouse, red boat, and rocky shore unchanged. |
+| the lighthouse, edit, "turn it blue" | 0.8 s | Turn the sky and sea blue, keeping the white lighthouse and red boat unchanged. |
+| the lighthouse, edit, `put a sign on the lighthouse that says "OPEN"` | 1.1 s | Add a sign reading "OPEN" to the lighthouse's front door, keeping the white lighthouse, red boat, and rocky shoreline unchanged. |
+| the lighthouse, fill with the upper part selected, "a hot air balloon" | 1.0 s | Add a hot air balloon floating above the lighthouse, blending with the soft pink sky, while keeping the white lighthouse, red boat, and rocky shoreline unchanged. |
+| the same fill, "remove this" | 0.9 s | Remove the white lighthouse from the upper part of the image, keeping the pink sky and rocky shoreline intact. (the limit of the place hint: "this" was read as the lighthouse, not as the selected sky) |
+| image idea, "a fox in snow" | 1.9 s | a 110-word paragraph: the fox alert in deep snow, fur, paws, soft diffused daylight, an open field, a photorealistic cool palette |
+| image idea, already detailed (a fisherman mending a net, golden hour, 85mm) | 1.8 s | polished, keeping "85mm lens", "golden hour" and the shallow depth of field |
+
+Same seed, same sentence every time (temperature 0.3); the seed changes little. The edit sentences
+are what the Qwen guides ask for: the verb first, the subject named from the picture, what stays.
+
+**The chat template.** The first live run answered nothing half the time: of 29 rewrites, 15 came
+back empty and 9 began with a stray "assistant". ComfyUI's `TextGenerate` with `thinking: false`
+appends an empty `<think>` block after the assistant turn (the Qwen3 convention), which the
+non-thinking Qwen3-VL-4B-Instruct answers with an immediate end-of-turn or by restarting the
+turn. `probe-enhance5.ps1`, 12 runs per variant: thinking=false 0 clean (7 empty, 5 echoes);
+**thinking=true 12 of 12 clean**, with the rules in the user turn or as a real system turn
+(`system_prompt`). The templates use thinking=true and the system turn.
+
+**The doodle, through Generative Edit with `enhance: true`** (`bench/enhance-doodle-*.png`,
+`doodle-sentence-*.png`): the first wording of the rules ("ends with what must stay unchanged")
+made the rewriter write "keeping its simple outline and dot eyes unchanged", and 2511 drew a
+loaf of bread with a smiley (as it had from the raw prompt). The sentence for "turn this drawing
+into a … portrait" gave a human face with the doodle's lines still drawn over it. Three
+hand-written sentences then showed what the model needs: "a photograph of a real human face …
+replacing the black outline strokes with real skin, hair and facial features" (A) and "a hyper
+realistic portrait photo of a real person … with no drawn lines left" (C) both gave a clean
+photographic face in 19–20 s; "look like a hyper-realistic photograph of a real human face"
+without the replacement clause (B) gave a face with the lines kept. The rules now say so for a
+change of medium, and the rewriter's sentence for "make this hyper realistic" is the A form.
+
+**Cost.** A rewrite is 0.8–1.3 s for a sentence, 1.8–2 s for a paragraph, after a 3 s first load
+of the 4B encoder (5 GB staged). An enhanced Krea 2 image took 11.1 s against 6.2 s as typed
+(the rewrite, a longer encode and the switch back from 2511). The encoder stays resident: with
+2511 (19.6 GB), its own encoder (7.9 GB) and the 4B (5.0 GB) all loaded the card had 1.9 GB free
+and 2511 edits ran at 19–25 s instead of 16 s (Krea 2 was resident too); with the enhancer and
+2511 alone the steady state is 13.5–14.6 s (§5f).
+
+Through the CLI, end to end (`enhance-doodle-final.ps1`, `bench/enhance-doodle-*-final.png`):
+"make this hyper realistic" on the doodle now gives a photographic human face in 18.8 s (the
+rewrite included), "turn this drawing into a hyper realistic portrait that looks similar" one in
+17.2 s; both layers remember the typed prompt and the sentence the model got.
+
+## 5f. NVFP4 against fp8 on the 5090
+
+Comfy-Org publishes NVFP4 repacks of the 2511 text encoder (`qwen_2.5_vl_7b_nvfp4`, 5.7 GB
+against 8.7 GB) and of Krea 2 Turbo (`krea2_turbo_nvfp4`, 7.2 GB against 12.2 GB); Blackwell
+GPUs run the 4-bit weights through their own tensor cores (comfy-kitchen 0.2.37's
+`scaled_mm_nvfp4`). Measured with the engine's own graphs posted to the server
+(`nvfp4-bench.ps1`: a purge, then a cold run and two warm runs with their own seeds; ComfyUI
+caches a repeated graph, which made a first attempt report 290 ms "runs"):
+
+| Case (1024², 8 steps) | fp8 | NVFP4 |
+|---|---|---|
+| 2511 Lightning edit, the encoder swapped | cold 19.6 s, warm 14.1 / 14.0 s | cold 19.8 s, warm 14.1 / 14.2 s |
+| Krea 2 Turbo image, the model swapped | cold 11.1 s, warm 7.1 / 7.0 s, 13.4 GB free afterwards | cold 9.2 s, **warm 5.7 / 6.0 s, 18.5 GB free** |
+| 2511 edit with the enhancer's 4B encoder resident | 22.9 s with the load, then 13.5 / 13.6 s | 21.1 s, then 14.3 / 14.6 s |
+
+The encoder runs once per prompt, so its precision does not move an edit's time; it saves
+3 GB of weights (staged, in RAM and on disk). Krea 2 in NVFP4 is 18 % faster per image and
+leaves 5 GB more free. Output: the lighthouse storm is the same picture with either encoder
+(`bench/nvfp4-2511-te-*.png`), the fox equivalent (`bench/nvfp4-krea2-*.png`).
+
+**Shipped as a policy, not a switch per file.** Template slots carry an `nvfp4` alternative
+(the 2511 templates' encoder, Krea 2's model); Preferences › AI Integrations › **Model
+precision** `auto` (the default) loads it when the server's GPU is a Blackwell part
+(`is_blackwell` on `/system_stats`'s device name: GeForce RTX 50, RTX PRO Blackwell, B100–B300,
+GB200/GB300, GB10) and the server lists the file; `default` never; `nvfp4` always (for
+testing). The purge sees the switch (the model set is computed from the prepared request),
+`generate.models` reports `device`, `blackwell` and each slot's `nvfp4` / `nvfp4Installed`, and
+a caller's own `model` binding is never replaced. On Ampere and Ada there are no NVFP4 kernels
+(ComfyUI would dequantize or fail), so `auto` leaves them on the default files. No official
+NVFP4 repack of the 2511 diffusion model exists (a community one does); Qwen-Image-2.1 ships
+int8 and w4a8 encoders instead, so neither has an alternative yet. Live through the CLI
+(`nvfp4-live.ps1`): the server loaded `qwen_2.5_vl_7b_nvfp4` for an edit and
+`krea2_turbo_nvfp4` for an image with nothing but the default preference.
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP

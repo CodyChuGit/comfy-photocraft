@@ -333,6 +333,23 @@ fn output_images(entry: &Value, save_node: &str) -> Vec<(String, String, String)
     out
 }
 
+/// The text outputs of a history entry (`PreviewAny` reports `{"text": [..]}`), the save node's
+/// first.
+fn output_texts(entry: &Value, save_node: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some(outputs) = entry["outputs"].as_object() else { return out };
+    let mut nodes: Vec<(&String, &Value)> = outputs.iter().collect();
+    nodes.sort_by_key(|(id, _)| if *id == save_node { 0 } else { 1 });
+    for (_, node) in nodes {
+        for t in node["text"].as_array().into_iter().flatten() {
+            if let Some(s) = t.as_str() {
+                out.push(s.to_string());
+            }
+        }
+    }
+    out
+}
+
 /// A failure recorded in a history entry's `status.messages` (`execution_error`), if any.
 fn history_error(entry: &Value) -> Option<String> {
     let status = &entry["status"];
@@ -361,17 +378,45 @@ pub struct ComfyBackend {
     client: ComfyClient,
     /// Bound on a whole generation, from queueing to the last download.
     deadline: Duration,
+    /// Which weights to load for slots with an NVFP4 alternative (see [`prepare`]).
+    precision: crate::Precision,
 }
+
+/// Whether each server's GPU is a Blackwell part, by base URL: asked once per process (one
+/// `/system_stats` call) the first time a request could take an NVFP4 file.
+static BLACKWELL: std::sync::Mutex<BTreeMap<String, bool>> = std::sync::Mutex::new(BTreeMap::new());
 
 impl ComfyBackend {
     /// `url` of the server; `deadline` bounds a whole run (preference `generativeTimeoutSecs`).
     pub fn new(url: &str, deadline: Duration) -> Result<Self> {
         let per_request = deadline.min(Duration::from_secs(120)).max(Duration::from_secs(2));
-        Ok(Self { client: ComfyClient::new(url, per_request)?, deadline })
+        Ok(Self { client: ComfyClient::new(url, per_request)?, deadline, precision: crate::Precision::Auto })
+    }
+
+    /// The precision policy (preference `integrations.modelPrecision`; `Auto` by default).
+    pub fn with_precision(mut self, precision: crate::Precision) -> Self {
+        self.precision = precision;
+        self
     }
 
     pub fn client(&self) -> &ComfyClient {
         &self.client
+    }
+
+    /// Is the server's GPU a Blackwell part? Cached per server once the server answered; a
+    /// server that is down is asked again next time (and gets the default files meanwhile).
+    fn blackwell(&self) -> bool {
+        let key = self.client.base.clone();
+        if let Some(b) = BLACKWELL.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&key) {
+            return *b;
+        }
+        let h = self.health();
+        if !h.ok {
+            return false;
+        }
+        let b = crate::is_blackwell(&h.device);
+        BLACKWELL.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(key, b);
+        b
     }
 
     fn cancel(&self, prompt_id: &str) {
@@ -473,6 +518,7 @@ impl GenerativeBackend for ComfyBackend {
                 h.ok = true;
                 h.version = ComfyClient::version(&stats);
                 if let Some(dev) = stats["devices"].as_array().and_then(|d| d.first()) {
+                    h.device = dev["name"].as_str().unwrap_or_default().to_string();
                     h.vram_total = dev["vram_total"].as_u64();
                     h.vram_free = dev["vram_free"].as_u64();
                 }
@@ -483,8 +529,32 @@ impl GenerativeBackend for ComfyBackend {
         h
     }
 
+    /// Slots with an NVFP4 alternative the caller left unbound get it when the policy says so
+    /// (`Auto`: a Blackwell GPU; `Nvfp4`: always) and the server lists the file.
+    fn prepare(&self, req: &Request) -> Request {
+        let mut out = req.clone();
+        if self.precision == crate::Precision::Default {
+            return out;
+        }
+        let Ok(tpl) = template::find(&req.template) else { return out };
+        let open: Vec<&template::ModelSlot> =
+            tpl.meta.models.iter().filter(|s| s.nvfp4.is_some() && !req.models.iter().any(|(k, _)| k == &s.placeholder)).collect();
+        if open.is_empty() || (self.precision == crate::Precision::Auto && !self.blackwell()) {
+            return out;
+        }
+        for slot in open {
+            let Some(file) = &slot.nvfp4 else { continue };
+            if self.client.models(&slot.folder).map(|files| files.iter().any(|f| f == file)).unwrap_or(false) {
+                out.models.push((slot.placeholder.clone(), file.clone()));
+            }
+        }
+        out
+    }
+
     fn run(&self, req: &Request, progress: &dyn Progress) -> Result<Response> {
         let started = Instant::now();
+        let prepared = self.prepare(req);
+        let req = &prepared;
         let tpl: Template = template::find(&req.template)?;
         if tpl.meta.needs_image && req.image.is_none() {
             return Err(Error::Request(format!("template `{}` needs an image", tpl.meta.id)));
@@ -578,11 +648,12 @@ impl GenerativeBackend for ComfyBackend {
             images.push(png::decode_rgba8(&bytes)?);
         }
         timings.download_ms = t.elapsed().as_millis() as u64;
-        if images.is_empty() {
+        let texts = output_texts(&entry, &tpl.meta.save_node);
+        if images.is_empty() && texts.is_empty() {
             return Err(Error::NoOutput(format!("prompt {prompt_id} finished without an image")));
         }
         progress.report(1.0, "Done");
-        Ok(Response { images, seed: req.seed, run_id: prompt_id, elapsed_ms: started.elapsed().as_millis() as u64, timings })
+        Ok(Response { images, texts, seed: req.seed, run_id: prompt_id, elapsed_ms: started.elapsed().as_millis() as u64, timings })
     }
 
     fn model_files(&self, folder: &str) -> Result<Vec<String>> {

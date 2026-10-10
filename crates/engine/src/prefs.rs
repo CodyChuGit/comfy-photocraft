@@ -732,6 +732,15 @@ pub struct Integrations {
     pub allow_research_models: bool,
     /// Show the generative task bar under a selection (Generative Fill's prompt and variations).
     pub show_generative_bar: bool,
+    /// Rewrite every prompt with the vision-language model before a run (`generate.*`'s
+    /// `enhance`): names what the picture shows instead of "this", adds the detail the image
+    /// models want. The bar's Enhance button does it on demand when this is off.
+    pub enhance_prompts: bool,
+    /// Which weights to load for model slots that have an NVFP4 alternative: `auto` = the NVFP4
+    /// file on a Blackwell GPU when it is installed (smaller, a little faster, the output
+    /// alike), `default` = the templates' default files, `nvfp4` = the NVFP4 file whenever it
+    /// is installed (for testing; slow or failing on other GPUs).
+    pub model_precision: String,
 }
 
 impl Default for Integrations {
@@ -747,6 +756,8 @@ impl Default for Integrations {
             generative_timeout_secs: 600,
             allow_research_models: false,
             show_generative_bar: true,
+            enhance_prompts: false,
+            model_precision: "auto".into(),
         }
     }
 }
@@ -904,6 +915,9 @@ pub const HIDDEN_UNTIL_IMPLEMENTED: &[&str] = &[
     "integrations.controlPort",
 ];
 
+/// `integrations.modelPrecision`: see [`Integrations::model_precision`].
+pub const MODEL_PRECISIONS: &[&str] = &["auto", "default", "nvfp4"];
+
 /// Is the preference at `path` (`"section.key"`) hidden from the Preferences dialog?
 pub fn is_hidden(path: &str) -> bool {
     HIDDEN_UNTIL_IMPLEMENTED.contains(&path)
@@ -941,6 +955,7 @@ pub fn choices(path: &str) -> Option<&'static [&'static str]> {
         "rawDefaults.sharpenFor" => RawSharpen::NAMES,
         "performance.gpuBackend" => GpuBackend::NAMES,
         "performance.renderingMode" => RenderingMode::NAMES,
+        "integrations.modelPrecision" => MODEL_PRECISIONS,
         _ => return None,
     })
 }

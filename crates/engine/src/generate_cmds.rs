@@ -8,7 +8,9 @@
 //! `generate.health` and `generate.models` are queries for the UI, the CLI and agents.
 //!
 //! Preferences read here: `integrations.comfyServer`, `integrations.defaultEditModel`,
-//! `integrations.generativeTimeoutSecs`, `integrations.allowResearchModels`.
+//! `integrations.generativeTimeoutSecs`, `integrations.allowResearchModels`,
+//! `integrations.enhancePrompts` (the default of the fill, edit and image commands' `enhance`),
+//! `integrations.modelPrecision` (the backend's NVFP4 policy, see `backend`).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -79,6 +81,138 @@ const MAX_MATTE_REQUEST_PIXELS: u64 = 1024 * 1024;
 
 pub(crate) const INFO: &str = "generate.info";
 pub(crate) const SIMILAR: &str = "generate.similar";
+pub(crate) const ENHANCE: &str = "generate.enhancePrompt";
+const ENHANCE_EDIT_TEMPLATE: &str = "enhance/edit";
+const ENHANCE_IMAGE_TEMPLATE: &str = "enhance/image";
+
+/// The system turn before an edit or fill instruction. Short on purpose: the 4B model echoes
+/// or rambles under a long system prompt. The rules are the ones that recur in the
+/// Qwen-Image-Edit guides: lead with the verb, name things instead of "this"/"it", say what the
+/// result looks like, say what stays; plus the case the first user session hit, a change of
+/// medium on a doodle, where "keep the lines" would defeat the instruction.
+const ENHANCE_EDIT_SYSTEM: &str = "You rewrite instructions for an image-editing AI. You can see the image.\n\
+Rewrite the user's instruction as one clear sentence of at most 60 words that:\n\
+- starts with the action verb (Change, Replace, Add, Remove, Turn, Make, Give),\n\
+- names things by what they are in the image instead of \"this\", \"it\" or \"here\" (for example \"the hand-drawn smiley face\", \"the white lighthouse\", \"the woman in the red coat\"),\n\
+- says concretely what the result should look like,\n\
+- ends with what must stay unchanged, if anything should.\n\
+When the instruction changes the style, medium or realism of the picture (\"make this realistic\", \"turn it into a painting\"), name the real-world subject the result shows and say that the drawing's strokes are replaced by it (a doodle of a face made realistic becomes \"a photograph of a real human face with the same expression and pose, replacing the black outline strokes with real skin, hair and facial features\"); never ask to keep the drawing's lines.\n\
+Keep the user's intent. Add nothing they did not ask for. Keep any quoted text exactly.\n\
+Reply with the sentence only: no explanation, no quotes, no markdown.";
+
+/// Added to the system turn for a fill: where the selection is and what the instruction means
+/// there.
+const ENHANCE_FILL_NOTE: &str = "The user selected the {place} of the image; the instruction says what should be generated inside that selection so that it blends with its surroundings. Describe what appears there.";
+
+/// The system turn before a text-to-image idea (the shape of the official Krea 2 template's
+/// expander and of Qwen's rewriter, in a few lines).
+const ENHANCE_IMAGE_SYSTEM: &str = "You are an expert prompt writer for a text-to-image model. Expand the user's idea into one paragraph of 60 to 120 words the model can follow: the subject and what it does first, then its materials, surfaces or clothing, pose and framing, lighting, the setting, and finally the style, palette and mood.\n\
+Keep every subject, action, colour and spatial relation the user gave. Add no new objects, characters or animals. Keep any medium the user named (photo, painting, sketch, 3D render). Put any words to be rendered in the image in double quotes. If the idea is already detailed, polish it lightly and keep its wording.\n\
+Reply with the paragraph only: no title, no bullets, no quotes around it, no markdown.";
+
+/// Which rewriter an `enhance` runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EnhanceKind {
+    /// A fill: the picture, the selection's place, and what to generate there.
+    Fill,
+    /// An edit: the picture and an instruction about it.
+    Edit,
+    /// Text to image: no picture.
+    Image,
+}
+
+/// Where a region sits on a canvas, in words ("upper-left part", "centre", "right part").
+pub(crate) fn place_in_words(region: Rect, canvas: Rect) -> String {
+    let (cw, ch) = (f64::from(canvas.width().max(1)), f64::from(canvas.height().max(1)));
+    let cx = (f64::from(region.x0 + region.x1) / 2.0 - f64::from(canvas.x0)) / cw;
+    let cy = (f64::from(region.y0 + region.y1) / 2.0 - f64::from(canvas.y0)) / ch;
+    let big = !canvas.is_empty() && f64::from(region.width()) * f64::from(region.height()) > 0.6 * cw * ch;
+    if big {
+        return "whole".to_string();
+    }
+    let v = if cy < 1.0 / 3.0 { "upper" } else if cy > 2.0 / 3.0 { "lower" } else { "" };
+    let h = if cx < 1.0 / 3.0 { "left" } else if cx > 2.0 / 3.0 { "right" } else { "" };
+    match (v, h) {
+        ("", "") => "centre".to_string(),
+        ("", h) => format!("{h} part"),
+        (v, "") => format!("{v} part"),
+        (v, h) => format!("{v}-{h} part"),
+    }
+}
+
+/// The rewriter's answer, cleaned: the first non-empty text without the chat template's
+/// leading "assistant" echo, surrounding quotes or markdown emphasis; `None` when the model
+/// said nothing usable.
+pub(crate) fn clean_enhanced(texts: &[String]) -> Option<String> {
+    for t in texts {
+        let mut s = t.trim();
+        for prefix in ["assistant:", "Assistant:", "assistant", "Assistant", "**Final Prompt:**", "Final Prompt:", "Rewritten:", "Instruction:"] {
+            if let Some(rest) = s.strip_prefix(prefix) {
+                s = rest.trim();
+            }
+        }
+        let s = s.trim_matches(|c: char| c == '"' || c == '*' || c == '`' || c == '\u{201c}' || c == '\u{201d}').trim();
+        if s.split_whitespace().count() >= 3 {
+            return Some(s.to_string());
+        }
+    }
+    None
+}
+
+/// Rewrite `prompt` with the vision-language model: `Ok(Some)` the rewritten prompt, `Ok(None)`
+/// when the model said nothing usable in two tries (consecutive seeds), `Err` when the server
+/// could not run it (no encoder file, down). An edit or fill is rewritten with the picture in
+/// view when one is given, blind otherwise. The rewriter goes straight to the backend: its
+/// small encoder is not a model switch worth a purge, and it is the file Krea 2 loads anyway.
+pub(crate) fn enhance_prompt(
+    backend: &dyn GenerativeBackend,
+    kind: EnhanceKind,
+    prompt: &str,
+    image: Option<&Rgba8>,
+    place: Option<&str>,
+    seed: u64,
+    progress: &JobProgress,
+) -> std::result::Result<Option<String>, photocraft_genai::Error> {
+    let prompt = prompt.trim();
+    if prompt.is_empty() {
+        return Ok(None);
+    }
+    let image = match kind {
+        EnhanceKind::Image => None,
+        _ => image.cloned(),
+    };
+    // The engine's instructions are the chat's system turn, the user's prompt its user turn.
+    let edit_system = if image.is_some() { ENHANCE_EDIT_SYSTEM.to_string() } else { ENHANCE_EDIT_SYSTEM.replace(" You can see the image.", "") };
+    let template = if image.is_some() { ENHANCE_EDIT_TEMPLATE } else { ENHANCE_IMAGE_TEMPLATE };
+    let system = match kind {
+        EnhanceKind::Image => ENHANCE_IMAGE_SYSTEM.to_string(),
+        EnhanceKind::Edit => edit_system,
+        EnhanceKind::Fill => format!("{edit_system}\n{}", ENHANCE_FILL_NOTE.replace("{place}", place.unwrap_or("selected part"))),
+    };
+    let mut params = BTreeMap::new();
+    params.insert("system".to_string(), Value::String(system));
+    for attempt in 0..2u64 {
+        let req = Request {
+            template: template.to_string(),
+            prompt: prompt.to_string(),
+            negative: String::new(),
+            seed: seed.wrapping_add(attempt) % MAX_SEED,
+            steps: 0,
+            guidance: 0.0,
+            image: image.clone(),
+            mask: None,
+            models: Vec::new(),
+            size: None,
+            params: params.clone(),
+        };
+        let resp = backend.run(&req, progress)?;
+        if let Some(s) = clean_enhanced(&resp.texts) {
+            return Ok(Some(s));
+        }
+    }
+    Ok(None)
+}
+
 pub(crate) const SPLIT: &str = "generate.splitLayers";
 pub(crate) const DEFAULT_LAYERS_TEMPLATE: &str = "qwen-layered/split";
 const MAX_SPLIT_LAYERS: u32 = 8;
@@ -115,6 +249,9 @@ pub struct GenerativeInfo {
     pub width: u32,
     pub height: u32,
     pub transparent: bool,
+    /// The prompt the model actually got when the vision-language model rewrote it (`enhance`);
+    /// empty when it ran as typed.
+    pub enhanced: String,
 }
 
 /// Remember `info` on `layer` (replacing an earlier one).
@@ -210,6 +347,9 @@ pub(crate) fn run_switching(
     req: &Request,
     progress: &JobProgress,
 ) -> photocraft_genai::Result<photocraft_genai::Response> {
+    // The files the backend will load (its precision policy may swap in NVFP4 ones).
+    let prepared = backend.prepare(req);
+    let req = &prepared;
     let set = model_set(req);
     let switch = !set.is_empty()
         && match last_models(server) {
@@ -254,14 +394,15 @@ pub(crate) fn backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> {
         return Err(EngineError::Other("no generative server is configured (Preferences › AI Integrations › ComfyUI Server)".into()));
     }
     let timeout = Duration::from_secs(u64::from(integrations.generative_timeout_secs.max(5)));
+    let precision = photocraft_genai::Precision::from_name(&integrations.model_precision);
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let b = photocraft_genai::comfy::ComfyBackend::new(url, timeout).map_err(gen_err)?;
+        let b = photocraft_genai::comfy::ComfyBackend::new(url, timeout).map_err(gen_err)?.with_precision(precision);
         Ok(Arc::new(b))
     }
     #[cfg(target_arch = "wasm32")]
     {
-        let _ = timeout;
+        let _ = (timeout, precision);
         Err(EngineError::Other("generative features are not available in the web build yet".into()))
     }
 }
@@ -324,6 +465,9 @@ struct FillPlan {
     auto: bool,
     /// How the result's layer mask meets the surroundings.
     edge: Edge,
+    /// Rewrite the prompt with the vision-language model first (`enhance`, default from the
+    /// `enhancePrompts` preference).
+    enhance: bool,
 }
 
 /// How a generated layer's mask ends: softly, across the band the model re-rendered around the
@@ -464,7 +608,8 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
         )));
     }
     let name = name.unwrap_or_else(|| format!("Generative Fill: {}", short(&prompt)));
-    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge })
+    let enhance = opt_bool(FILL, p, "enhance", s.prefs().integrations.enhance_prompts)?;
+    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance })
 }
 
 /// The first of `candidates` whose model files the server lists (one `/models/<folder>` call per
@@ -738,6 +883,11 @@ struct ImagePlan {
     /// The prompt as typed, remembered on the layer.
     typed: String,
     transparent: bool,
+    /// The template's wording around a transparent request (`{prompt}` inside), empty otherwise;
+    /// a rewritten prompt is wrapped in it the same way.
+    wrap: String,
+    /// Rewrite the prompt with the vision-language model first (`enhance`).
+    enhance: bool,
     negative: String,
     seed: u64,
     steps: u32,
@@ -850,16 +1000,36 @@ fn plan_image(s: &Session, p: &Value) -> Result<ImagePlan> {
     // decodes RGBA); the layer keeps the alpha the PNG comes back with.
     let transparent = opt_bool(IMAGE, p, "transparent", false)?;
     let typed = prompt.clone();
+    let mut wrap = String::new();
     let prompt = if transparent {
         let format = template.meta.prompt_format_transparent.trim();
         if format.is_empty() {
             return Err(bad(IMAGE, format!("template `{}` cannot output transparency; `qwen-2.1/image` can", template.meta.id)));
         }
+        wrap = format.to_string();
         format.replace("{prompt}", &prompt)
     } else {
         prompt
     };
-    Ok(ImagePlan { template, prompt, typed, transparent, negative, seed, steps, guidance, name, models, width, height, to_document })
+    let enhance = opt_bool(IMAGE, p, "enhance", s.prefs().integrations.enhance_prompts)?;
+    Ok(ImagePlan { template, prompt, typed, transparent, wrap, enhance, negative, seed, steps, guidance, name, models, width, height, to_document })
+}
+
+/// The prompt a `generate.image` job sends, and what the layer remembers as `enhanced`: the
+/// typed idea expanded by the vision-language model when asked (then wrapped for transparency
+/// as the typed one was), else the plan's prompt and an empty string.
+fn image_prompt(backend: &dyn GenerativeBackend, ctx: &JobCtx, enhance: bool, typed: &str, planned: String, wrap: &str, seed: u64) -> (String, String) {
+    if !enhance {
+        return (planned, String::new());
+    }
+    ctx.progress(0.02, "Improving the prompt");
+    match enhance_prompt(backend, EnhanceKind::Image, typed, None, None, seed, &JobProgress::span(ctx, 0.02, 0.05)) {
+        Ok(Some(e)) => {
+            let p = if wrap.is_empty() { e.clone() } else { wrap.replace("{prompt}", &e) };
+            (p, e)
+        }
+        Ok(None) | Err(_) => (planned, String::new()),
+    }
 }
 
 fn image_enabled(_: &Session) -> std::result::Result<(), String> {
@@ -871,13 +1041,13 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
     let backend = backend(s)?;
     let server = server_key(s);
     let server_doc = server.clone();
-    let ImagePlan { template, prompt, typed, transparent, negative, seed, steps, guidance, name, models, width, height, to_document } = plan;
+    let ImagePlan { template, prompt, typed, transparent, wrap, enhance, negative, seed, steps, guidance, name, models, width, height, to_document } = plan;
     let label = name.clone();
     let tid = template.meta.id.clone();
     // What the result layer remembers (`generate.similar` re-runs it).
     let info = GenerativeInfo {
         command: IMAGE.to_string(),
-        prompt: typed,
+        prompt: typed.clone(),
         negative: negative.clone(),
         template: tid.clone(),
         seed,
@@ -889,7 +1059,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
         transparent,
         ..GenerativeInfo::default()
     };
-    let req = Request {
+    let mut req = Request {
         template: template.meta.id.clone(),
         prompt,
         negative,
@@ -909,16 +1079,19 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
             &label,
             false,
             move |ctx| {
+                let (prompt, enhanced) = image_prompt(backend.as_ref(), ctx, enhance, &typed, req.prompt, &wrap, seed);
+                req.prompt = prompt;
+                ctx.check()?;
                 let resp = run_switching(backend.as_ref(), &server_doc, &req, &JobProgress::new(ctx)).map_err(gen_err)?;
                 ctx.check()?;
-                Ok(resp)
+                Ok((resp, enhanced))
             },
-            move |s, resp| {
+            move |s, (resp, enhanced)| {
                 let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
                 let mut doc = Document::new(doc_name, Size::new(out.width, out.height), ColorMode::Rgb, SampleType::U8);
                 let mut layer = Layer::raster("Generated", doc.pixel_format());
                 write_rgba8(&mut layer, &out, doc.bounds())?;
-                set_generative_info(&mut layer, &GenerativeInfo { seed: resp.seed, rect: [0, 0, out.width as i32, out.height as i32], ..info });
+                set_generative_info(&mut layer, &GenerativeInfo { seed: resp.seed, rect: [0, 0, out.width as i32, out.height as i32], enhanced, ..info });
                 doc.layers.push(layer);
                 let index = s.add_document(doc, None);
                 Ok(
@@ -931,6 +1104,9 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
         s,
         &label,
         move |doc, active, ctx| {
+            let (prompt, enhanced) = image_prompt(backend.as_ref(), ctx, enhance, &typed, req.prompt, &wrap, seed);
+            req.prompt = prompt;
+            ctx.check()?;
             let resp = run_switching(backend.as_ref(), &server, &req, &JobProgress::new(ctx)).map_err(gen_err)?;
             ctx.check()?;
             let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
@@ -940,7 +1116,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
             ctx.progress(0.96, "Placing");
             let mut layer = Layer::raster(name, doc.pixel_format());
             write_rgba8(&mut layer, &out, canvas)?;
-            set_generative_info(&mut layer, &GenerativeInfo { seed: resp.seed, rect: [canvas.x0, canvas.y0, w as i32, h as i32], ..info });
+            set_generative_info(&mut layer, &GenerativeInfo { seed: resp.seed, rect: [canvas.x0, canvas.y0, w as i32, h as i32], enhanced, ..info });
             let nid = doc.insert_above(*active, layer);
             *active = Some(nid);
             Ok((nid, resp.seed, resp.run_id, resp.elapsed_ms, w, h))
@@ -969,6 +1145,8 @@ struct FillJob {
     models: Vec<(String, String)>,
     variations: u32,
     edge: Edge,
+    /// Rewrite the prompt with the vision-language model first (`enhance`).
+    enhance: bool,
 }
 
 /// The layers a job made: (id, seed, run id, ms, timings), the primary one first.
@@ -1006,13 +1184,19 @@ fn fill_region(
         let p = o.picture;
         prefill_outside(&mut image, Rect::new(p.x0 - rect.x0, p.y0 - rect.y0, p.x1 - rect.x0, p.y1 - rect.y0));
     }
-    let FillJob { backend, server, command, template_id, auto, auto_order, prompt, negative, seed, steps, guidance, name, models, variations, edge } = job;
+    let FillJob { backend, server, command, template_id, auto, auto_order, prompt, negative, seed, steps, guidance, name, models, variations, edge, enhance } = job;
     let mask = Gray8::new(w, h, coverage.iter().map(|c| (c * 255.0 + 0.5) as u8).collect()).map_err(gen_err)?;
     // The model gets a softened mask so it re-renders a band around the area and blends it (much
     // wider for an expand, whose seam runs along a whole picture edge and whose sky or water tone
     // has to carry across it).
     let radius = if outpaint.is_some() { outpaint_feather_radius(w, h) } else { feather_radius(w, h) };
     let mask = feather_outward(&mask, radius)?;
+    // Where the selection sits, in words, for the rewriter (a fill's instruction is about that
+    // place).
+    let place = (enhance && command != EDIT && outpaint.is_none()).then(|| {
+        let (b, _) = crate::select_ml_cmds::coverage_bounds(&coverage, rect);
+        place_in_words(b, rect)
+    });
     // The layer mask: that same band, dithered, so the result fades into its surroundings with
     // no line; or exactly the selection when the caller asked for a hard edge.
     let layer_coverage: Vec<f32> = match edge {
@@ -1025,6 +1209,23 @@ fn fill_region(
     let (rw, rh) = request_size(w, h);
     let (image, mask) = if (rw, rh) == (w, h) { (image, mask) } else { (resize_rgba8(&image, rw, rh)?, resize_gray8(&mask, rw, rh)?) };
     let template_id = if auto { resolve_auto(backend.as_ref(), auto_order, &template_id) } else { template_id };
+    // The prompt the model gets: as typed, or rewritten by the vision-language model with the
+    // picture in view (an expand keeps its own wording).
+    let typed = prompt.clone();
+    let prompt = if enhance && outpaint.is_none() {
+        ctx.progress(0.02, "Improving the prompt");
+        let kind = if command == EDIT { EnhanceKind::Edit } else { EnhanceKind::Fill };
+        // A rewriter that fails (no encoder on the server, nothing usable said) leaves the
+        // prompt as typed; the run itself reports a server that is down.
+        match enhance_prompt(backend.as_ref(), kind, &prompt, Some(&image), place.as_deref(), seed, &JobProgress::span(ctx, 0.02, 0.05)) {
+            Ok(Some(p)) => p,
+            Ok(None) | Err(_) => prompt,
+        }
+    } else {
+        prompt
+    };
+    let enhanced = if prompt == typed { String::new() } else { prompt.clone() };
+    ctx.check()?;
     // An expand template crops the model's reference to the picture: its rectangle inside the
     // request, in the request's (possibly resampled) pixels.
     let mut params = BTreeMap::new();
@@ -1081,7 +1282,7 @@ fn fill_region(
             &mut layer,
             &GenerativeInfo {
                 command: command.to_string(),
-                prompt: req.prompt.clone(),
+                prompt: typed.clone(),
                 negative: req.negative.clone(),
                 template: template_id.clone(),
                 seed: req.seed,
@@ -1093,6 +1294,7 @@ fn fill_region(
                 },
                 rect: [rect.x0, rect.y0, rect.width() as i32, rect.height() as i32],
                 name: name.clone(),
+                enhanced: enhanced.clone(),
                 ..GenerativeInfo::default()
             },
         );
@@ -1160,7 +1362,7 @@ fn prefill_outside(img: &mut Rgba8, inner: Rect) {
 fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_fill(s, p)?;
     let backend = backend(s)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance } = plan;
     let label = name.clone();
     let job = FillJob {
         backend,
@@ -1178,6 +1380,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
         models,
         variations,
         edge,
+        enhance,
     };
     crate::jobs::edit_job(
         s,
@@ -1309,7 +1512,9 @@ fn plan_expand(s: &Session, p: &Value) -> Result<(FillPlan, Pads, (u32, u32))> {
         )));
     }
     let name = name.unwrap_or_else(|| "Generative Expand".to_string());
-    Ok((FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge }, pads, (nw, nh)))
+    // An expand keeps its wording: its prompt continues the scene, the rewriter's rules
+    // (name the subject, say what stays) are about a picture's content.
+    Ok((FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance: false }, pads, (nw, nh)))
 }
 
 fn expand_enabled(s: &Session) -> std::result::Result<(), String> {
@@ -1321,7 +1526,7 @@ fn expand_enabled(s: &Session) -> std::result::Result<(), String> {
 fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
     let (plan, pads, (nw, nh)) = plan_expand(s, p)?;
     let backend = backend(s)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance } = plan;
     let label = name.clone();
     let job = FillJob {
         backend,
@@ -1339,6 +1544,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
         models,
         variations,
         edge,
+        enhance,
     };
     crate::jobs::edit_job(
         s,
@@ -1454,13 +1660,14 @@ fn plan_edit(s: &Session, p: &Value) -> Result<FillPlan> {
         )));
     }
     let name = name.unwrap_or_else(|| format!("Generative Edit: {}", short(&prompt)));
-    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge })
+    let enhance = opt_bool(EDIT, p, "enhance", s.prefs().integrations.enhance_prompts)?;
+    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance })
 }
 
 fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_edit(s, p)?;
     let backend = backend(s)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance } = plan;
     let label = name.clone();
     let job = FillJob {
         backend,
@@ -1478,6 +1685,7 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
         models,
         variations,
         edge,
+        enhance,
     };
     crate::jobs::edit_job(
         s,
@@ -1923,7 +2131,14 @@ fn models_json(backend: Option<&dyn GenerativeBackend>, allow_research: bool) ->
                 None
             };
             let installed = files.as_ref().map(|f| f.iter().any(|x| x == &slot.default));
-            slots.push(json!({"placeholder": slot.placeholder, "folder": slot.folder, "file": slot.default, "installed": installed}));
+            let mut v = json!({"placeholder": slot.placeholder, "folder": slot.folder, "file": slot.default, "installed": installed});
+            // The NVFP4 alternative, and whether the server has it (the policy picks it on a
+            // Blackwell GPU, see `generate.models`'s `blackwell`).
+            if let (Some(alt), Some(o)) = (&slot.nvfp4, v.as_object_mut()) {
+                o.insert("nvfp4".into(), json!(alt));
+                o.insert("nvfp4Installed".into(), json!(files.as_ref().map(|f| f.iter().any(|x| x == alt))));
+            }
+            slots.push(v);
         }
         templates.push(json!({
             "id": m.id, "name": m.name, "family": m.family, "task": m.task, "license": m.license, "licenseNote": m.license_note,
@@ -1942,8 +2157,11 @@ fn models_json(backend: Option<&dyn GenerativeBackend>, allow_research: bool) ->
             crate::select_ml_cmds::DEFAULT_SEGMENT_TEMPLATE.to_string()
         }
     });
+    // The GPU, and whether the NVFP4 policy's `auto` applies to it.
+    let device = health.as_ref().map(|h| h.device.clone()).unwrap_or_default();
     json!({
         "server": health, "templates": templates,
+        "device": device, "blackwell": photocraft_genai::is_blackwell(&device),
         "autoFill": auto(AUTO_FILL_ORDER, DEFAULT_FILL_TEMPLATE),
         "autoExpand": auto(AUTO_EXPAND_ORDER, DEFAULT_EXPAND_TEMPLATE),
         "autoEdit": auto(AUTO_EDIT_ORDER, DEFAULT_EDIT_TEMPLATE),
@@ -2031,6 +2249,8 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
         models: Vec::new(),
         variations,
         edge: if info.edge == "hard" { Edge::Hard } else { Edge::Soft },
+        // A layer whose prompt was rewritten is made again from the typed one, rewritten anew.
+        enhance: !info.enhanced.is_empty(),
     };
     let label = format!("Generate Similar: {}", short(&info.prompt));
     crate::jobs::edit_job(
@@ -2057,6 +2277,62 @@ fn always(_: &Session) -> std::result::Result<(), String> {
     Ok(())
 }
 
+/// `generate.enhancePrompt`: the prompt rewritten by the vision-language model, as a background
+/// job (a second or two on the 5090 once the 4B encoder is loaded), for the task bar's Enhance
+/// button, the dialogs and scripts. The picture the rewriter looks at is the composite at the
+/// models' working size; for a fill, the selection's place is said in words.
+fn run_enhance(s: &mut Session, p: &Value) -> Result<Value> {
+    let prompt = opt_str(ENHANCE, p, "prompt", MAX_PROMPT_CHARS)?
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| bad(ENHANCE, "`prompt` is required: the prompt to rewrite"))?
+        .to_string();
+    let kind = match opt_str(ENHANCE, p, "task", 20)? {
+        None | Some("fill") => EnhanceKind::Fill,
+        Some("edit") => EnhanceKind::Edit,
+        Some("image") => EnhanceKind::Image,
+        Some(other) => return Err(bad(ENHANCE, format!("`task` must be \"fill\", \"edit\" or \"image\" (got `{other}`)"))),
+    };
+    let use_image = opt_bool(ENHANCE, p, "useImage", true)?;
+    let seed = parse_seed(ENHANCE, p)?;
+    let backend = backend(s)?;
+    let (image, place) = match (kind, use_image, s.active()) {
+        (EnhanceKind::Image, _, _) | (_, false, _) | (_, _, None) => (None, None),
+        (_, true, Some(d)) => {
+            let canvas = d.doc.bounds();
+            if canvas.is_empty() || u64::from(canvas.width()) * u64::from(canvas.height()) > MAX_REQUEST_PIXELS {
+                (None, None)
+            } else {
+                let composite = photocraft_compose::render(&d.doc, canvas).to_rgba8();
+                let img = Rgba8::new(composite.width, composite.height, composite.pixels).map_err(gen_err)?;
+                let (rw, rh) = request_size(canvas.width(), canvas.height());
+                let img = if (rw, rh) == (canvas.width(), canvas.height()) { img } else { resize_rgba8(&img, rw, rh)? };
+                let place = match (kind, d.doc.selection.as_ref()) {
+                    (EnhanceKind::Fill, Some(sel)) => Some(place_in_words(sel.content_bounds().intersect(&canvas), canvas)),
+                    _ => None,
+                };
+                (Some(img), place)
+            }
+        }
+    };
+    let typed = prompt.clone();
+    crate::jobs::run(
+        s,
+        "Enhance Prompt",
+        false,
+        move |ctx| {
+            ctx.progress(0.05, "Improving the prompt");
+            let out = enhance_prompt(backend.as_ref(), kind, &prompt, image.as_ref(), place.as_deref(), seed, &JobProgress::span(ctx, 0.05, 0.95)).map_err(gen_err)?;
+            ctx.check()?;
+            Ok(out)
+        },
+        move |_, out| {
+            let enhanced = out.is_some();
+            Ok(json!({"prompt": out.unwrap_or(typed), "enhanced": enhanced}))
+        },
+    )
+}
+
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec {
@@ -2064,7 +2340,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Fill…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; margin = context around the selection as a fraction of its larger side; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; areas over 0.75 megapixels are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; areas over 0.75 megapixels are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: fill_enabled,
             run: run_fill,
             journal: true,
@@ -2074,7 +2350,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generate Image…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"target":"auto|layer|document","width":int=0,"height":int=0,"transparent":bool=false,"steps":0..250=0,"guidance":0..30=0,"seed":{u64?=random},"template":{id?=Preferences › Default Image Template},"model":{file?=Preferences},"name":{str?}} → {"layer"|"document","seed","template","runId","width","height","ms"} (target auto = a layer over the whole canvas when a document is open, else a new document; width/height 0 = the document's size or 1024, otherwise 64..4096 rounded down to multiples of 16; transparent = ask for the subject alone on a transparent background and keep the alpha the model returns (templates whose model can, such as qwen-2.1/image; others refuse); steps and guidance 0 = the template's defaults; a background job; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"target":"auto|layer|document","width":int=0,"height":int=0,"transparent":bool=false,"steps":0..250=0,"guidance":0..30=0,"seed":{u64?=random},"template":{id?=Preferences › Default Image Template},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"name":{str?}} → {"layer"|"document","seed","template","runId","width","height","ms"} (target auto = a layer over the whole canvas when a document is open, else a new document; enhance = expand the idea into a detailed paragraph first with the vision-language model (generate.enhancePrompt); width/height 0 = the document's size or 1024, otherwise 64..4096 rounded down to multiples of 16; transparent = ask for the subject alone on a transparent background and keep the alpha the model returns (templates whose model can, such as qwen-2.1/image; others refuse); steps and guidance 0 = the template's defaults; a background job; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: image_enabled,
             run: run_image,
             journal: true,
@@ -2096,7 +2372,7 @@ pub fn specs() -> Vec<CommandSpec> {
             // Placed by the menu catalogue under Edit, with the other generative items.
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?="auto": the Lightning edit tier when its LoRA is installed, else the 40-step one},"model":{file?=Preferences},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings"} (edits the whole picture by instruction: "make the sky stormy", "turn the boat blue", "remove the person"; a description such as "a stormy sky" is wrapped as "change this image so that it shows …"; the composite goes to the model and the result is a new layer above the active one; with a selection the layer is masked to it (edge soft = a dithered fade around it, hard = exactly) so only that part of the edit shows; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; pictures over 0.75 megapixels are sent downscaled and come back resampled; a background job; needs a ComfyUI server)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?="auto": the Lightning edit tier when its LoRA is installed, else the 40-step one},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings"} (edits the whole picture by instruction; enhance = rewrite the instruction first with the vision-language model, the picture in view, so it names what is there instead of "this" (generate.enhancePrompt): "make the sky stormy", "turn the boat blue", "remove the person"; a description such as "a stormy sky" is wrapped as "change this image so that it shows …"; the composite goes to the model and the result is a new layer above the active one; with a selection the layer is masked to it (edge soft = a dithered fade around it, hard = exactly) so only that part of the edit shows; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; pictures over 0.75 megapixels are sent downscaled and come back resampled; a background job; needs a ComfyUI server)"#,
             enabled: edit_enabled,
             run: run_edit,
             journal: true,
@@ -2139,9 +2415,19 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Layer Info",
             menu: &[],
             shortcut: None,
-            params: r#"{"layer":{id?=active}} → {"layer","generative":{"command","prompt","negative","template","seed","steps","guidance","edge","rect":[x,y,w,h],"name","width","height","transparent"}|null} (what a layer remembers about the generative run that made it; kept with the layer through PSD round trips)"#,
+            params: r#"{"layer":{id?=active}} → {"layer","generative":{"command","prompt","negative","template","seed","steps","guidance","edge","rect":[x,y,w,h],"name","width","height","transparent","enhanced"}|null} (what a layer remembers about the generative run that made it; prompt = as typed, enhanced = the rewritten prompt the model got when `enhance` was on, else empty; kept with the layer through PSD round trips)"#,
             enabled: doc_enabled,
             run: run_info,
+            journal: false,
+        },
+        CommandSpec {
+            id: ENHANCE,
+            label: "Enhance Prompt",
+            menu: &[],
+            shortcut: None,
+            params: r#"{"prompt":text,"task":"fill|edit|image","useImage":bool=true,"seed":{u64?=random}} → {"prompt","enhanced"} (rewrites a prompt the way the image models want it, with the Qwen3-VL 4B encoder the Krea 2 templates install run as a vision-language model (ComfyUI's TextGenerate): a fill or edit instruction becomes one sentence that leads with the verb, names what the picture shows instead of "this" or "it", says what the result looks like and what stays unchanged; an image idea becomes a paragraph of 60–120 words (subject, materials, pose, lighting, setting, style) keeping every subject, colour and medium given; useImage = the rewriter sees the composite (a fill is also told where the selection sits); enhanced false = the model said nothing usable and the prompt comes back as typed; a background job; the fill, edit and image commands take "enhance":true to do this on the way, and Preferences › AI Integrations › Enhance prompts makes it their default; needs a ComfyUI server with the Krea 2 text encoder)"#,
+            enabled: |_| web_unavailable(),
+            run: run_enhance,
             journal: false,
         },
         CommandSpec {
@@ -2180,7 +2466,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "List Generative Models",
             menu: &[],
             shortcut: None,
-            params: r#"{"probe":bool=true} → {"server","templates":[{"id","name","family","task","license","allowed","defaults","models":[{"placeholder","folder","file","installed"}]}]} (probe false = list the templates without contacting the server: no server status, installed unknown)"#,
+            params: r#"{"probe":bool=true} → {"server","device","blackwell","templates":[{"id","name","family","task","license","allowed","defaults","models":[{"placeholder","folder","file","installed","nvfp4"?,"nvfp4Installed"?}]}],"autoFill","autoExpand","autoEdit","autoMatte"} (probe false = list the templates without contacting the server: no server status, installed unknown; nvfp4 = the slot's NVFP4 alternative, which Preferences › AI Integrations › Model precision "auto" loads instead of file on a Blackwell GPU (blackwell true) when the server has it)"#,
             enabled: always,
             run: run_models,
             journal: false,
@@ -2215,3 +2501,11 @@ mod similar_tests;
 #[cfg(test)]
 #[path = "generate_split_tests.rs"]
 mod split_tests;
+
+#[cfg(test)]
+#[path = "generate_enhance_tests.rs"]
+mod enhance_tests;
+
+#[cfg(test)]
+#[path = "generate_precision_tests.rs"]
+mod precision_tests;

@@ -73,6 +73,12 @@ pub struct ModelSlot {
     /// The `ComfyUI/models/<folder>` the file lives in (also the `/models/<folder>` route).
     pub folder: String,
     pub default: String,
+    /// The same weights in NVFP4 (Comfy-Org's official repack), which Blackwell GPUs run through
+    /// their 4-bit tensor cores: smaller and a little faster, the output alike. A backend whose
+    /// precision policy allows it takes this file instead of `default` when the server has it
+    /// and the caller bound nothing for the slot.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nvfp4: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -162,6 +168,8 @@ const BUILTIN: &[&str] = &[
     include_str!("../workflows/sam3.1-segment.json"),
     include_str!("../workflows/sam3.1-segment-point.json"),
     include_str!("../workflows/qwen-layered-split.json"),
+    include_str!("../workflows/enhance-edit.json"),
+    include_str!("../workflows/enhance-image.json"),
 ];
 
 /// Verbs a prompt can open with when it is already an edit instruction ("remove the car",

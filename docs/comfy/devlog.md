@@ -4,6 +4,65 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-09 (night): the prompt enhancer
+
+The user asked for "some kind of prompt optimization" after the doodle-to-food session, and
+whether the settings are the best ones. Research first (`benchmarks.md` §5e): the 2511 and
+Krea 2 graphs already match ComfyUI's shipped templates node for node; what the Qwen authors
+recommend is a VLM rewrite of the instruction with the picture in view (their
+`polish_edit_prompt`), which ComfyUI's own Qwen-Image-2.1 template does with `TextGenerate`.
+
+**Landed**
+
+- `generate.enhancePrompt {prompt, task: fill|edit|image, useImage, seed}` → `{prompt, enhanced}`:
+  the Krea 2 text encoder (Qwen3-VL 4B, Apache-2.0, already installed for Krea 2) run as a
+  vision-language model through `TextGenerate` (templates `enhance/edit` with the picture,
+  `enhance/image` without; `Task::Text`, `Response.texts`, `PreviewAny` text outputs in
+  `comfy.rs`). The engine's rules are the chat's system turn, the user's words the user turn;
+  a fill is told where its selection sits ("the upper-left part"). Two tries with consecutive
+  seeds; the answer is cleaned of a stray "assistant", quotes and markdown; nothing usable
+  leaves the prompt as typed. `enhance: true` on `generate.fill`, `edit` and `image` does it
+  on the way (an expand keeps its wording); Preferences › AI Integrations › **Enhance prompts**
+  makes it the default; the layer remembers both prompts (`GenerativeInfo.enhanced`,
+  `generate.info`), and Generate Similar rewrites anew. The task bar has a wand button by the
+  prompt that replaces the text with the rewrite (job, "Enhancing…", the modal dialog stays
+  away). Translated ×13 (4 strings). Tests: 6 engine (`generate_enhance_tests.rs`, the fake
+  answers `Enhanced: ` + the user turn or `Options.enhanced_text`), the bar test.
+- **The chat template.** Half the first live rewrites came back empty: `TextGenerate`'s
+  `thinking: false` appends an empty `<think>` block that the non-thinking 4B Instruct model
+  answers with an immediate end of turn (or a restarted "assistant" turn). With `thinking:
+  true` the template ends at the plain assistant turn: 26 of 26 clean. Kept in the template
+  notes so nobody "fixes" it back.
+- **The doodle.** With the rules' first wording the rewriter asked to keep the doodle's outline
+  and 2511 drew bread again; three hand-written sentences showed the model needs "a photograph
+  of a real human face … replacing the black outline strokes with real skin, hair and facial
+  features", which now is the rule for a change of medium, and the rewriter writes exactly that
+  (`bench/doodle-sentence-A*.png`: a clean photographic face).
+
+**Numbers.** A rewrite is 0.8–1.3 s (sentence) / 1.8–2 s (paragraph) after a 3 s first load.
+End to end through the CLI, both of the user's doodle prompts give a photographic human face
+(18.8 s and 17.2 s with the rewrite, `bench/enhance-doodle-*-final.png`). The 4B encoder stays
+resident (5 GB); with 2511 alone the steady state is 13.5–14.6 s an edit. Answer to the
+user's VRAM question in `models.md` §4: Qwen-Image-2.1 int8 + its 8B encoder + SAM 3.1 ≈ 18
+GB, they fit together.
+
+**NVFP4 (same session).** Comfy-Org's official repacks of the 2511 encoder (5.7 GB) and Krea 2
+Turbo (7.2 GB) measured against fp8 (`benchmarks.md` §5f): the encoder's precision does not
+change an edit's time (14.1 s either way) but saves 3 GB; Krea 2 is 18 % faster (5.7–6.0 s
+against 7.0–7.1 s a 1024² image) and leaves 5 GB more free; the pictures are alike. Shipped
+as a policy: template slots carry an `nvfp4` alternative, Preferences › AI Integrations ›
+**Model precision** (`auto` | `default` | `nvfp4`, `auto` by default) loads it on a Blackwell
+GPU (`is_blackwell` on the device name) when the server has it; `run_switching` computes the
+model set from the prepared request so the purge sees a precision change; `generate.models`
+reports `device`, `blackwell`, `nvfp4`, `nvfp4Installed`; tests in
+`generate_precision_tests.rs` (the fake takes `Options.device`). Live: the server loaded both
+NVFP4 files with nothing but the defaults. Lesson from the first benchmark attempt: ComfyUI
+caches a repeated graph; vary the seed or the "warm" run takes 290 ms.
+
+**Open.** The SAM 3.1 UI (Object Selection click → `select.byPoint`, a text field); the GUI is
+the 8:56 PM build until the user closes it (the enhancer, the NVFP4 policy and the temp-file
+model memory are in the CLI build only).
+
 ## 2026-10-09 (evening): first user session, two fixes
 
 The user tried the app on a line drawing of a face: Generative Fill over a rectangle with

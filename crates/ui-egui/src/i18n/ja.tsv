@@ -2154,3 +2154,9 @@ cameraRaw	Color	カラー
 	Split into Layers (Generative)…	レイヤーに分割（生成）…
 	Changing what is there? Switch to Edit	今あるものを変える場合は「編集」に切り替えてください
 	Describe the change…	変更内容を入力…
+	Enhance prompts	プロンプトを自動的に強化
+	Enhance prompt	プロンプトを強化
+	Enhancing…	強化中…
+	The model could not improve this prompt	モデルはこのプロンプトを改善できませんでした
+	Model precision	モデルの精度
+	NVFP4 (Blackwell GPUs)	NVFP4（Blackwell GPU）

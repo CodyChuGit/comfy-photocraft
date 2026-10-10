@@ -2755,3 +2755,9 @@ cameraRaw	Color	색상
 	Split into Layers (Generative)…	레이어로 분할(생성형)…
 	Changing what is there? Switch to Edit	있는 것을 바꾸려면 편집으로 전환하세요
 	Describe the change…	변경 내용을 설명하세요…
+	Enhance prompts	프롬프트 자동 개선
+	Enhance prompt	프롬프트 개선
+	Enhancing…	개선 중…
+	The model could not improve this prompt	모델이 이 프롬프트를 개선하지 못했습니다
+	Model precision	모델 정밀도
+	NVFP4 (Blackwell GPUs)	NVFP4(Blackwell GPU)

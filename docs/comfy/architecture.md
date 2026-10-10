@@ -196,7 +196,8 @@ own.
   untouched. For RGBA outputs (`alpha_is_matte`) the alpha becomes the mask instead of being baked
   into the pixels, so Remove Background never destroys data.
 - **Memory.** Every layer a generative command makes carries a `GenerativeInfo` (the command,
-  the prompt as typed, the resolved template, seed, steps, guidance, edge, the request rect and
+  the prompt as typed and, when `enhance` rewrote it, the prompt the model actually got
+  (`enhanced`), the resolved template, seed, steps, guidance, edge, the request rect and
   the name; images add their size and transparent flag) as JSON in a PSD additional-layer-info
   block keyed `cpGn`: no change to upstream's `Layer`, and it survives PSD round trips and
   `Layer::duplicate`. `generate.info` reads it; `generate.similar` re-runs it.
@@ -220,7 +221,8 @@ to shared files).
 | `select.byPoint` | — (a future tool click) | `{"x","y","mode","threshold","sampleAllLayers","template":id?=sam3.1/segment-point}` → the object under the point, as `select.byText` | document, backend |
 | `generate.splitLayers` | Edit › Split into Layers (Generative)… | `{"layers":int=3,"prompt"?,"negative"?,"sampleAllLayers":bool=true,"steps"?,"guidance"?,"seed"?,"template":id?=qwen-layered/split,"model"?,"name"?}` → N RGBA layers (background first) above the active one | document, backend |
 | `generate.similar` | Edit › Generate Similar | `{"layer":id?=active,"seed"?,"variations":1..4}` → runs what made the layer again with a new seed in the same place (its mask is the area), a new layer above it | a generative layer, backend |
-| `generate.info` | — | `{"layer":id?=active}` → `{"generative":{command,prompt,template,seed,…}|null}` | document (query) |
+| `generate.info` | — | `{"layer":id?=active}` → `{"generative":{command,prompt,enhanced,template,seed,…}|null}` | document (query) |
+| `generate.enhancePrompt` | — (the task bar's wand button) | `{"prompt","task":"fill|edit|image","useImage":bool=true,"seed"?}` → `{"prompt","enhanced"}`: the prompt rewritten by the Qwen3-VL 4B encoder run as a vision-language model (ComfyUI's `TextGenerate`), the composite (and a fill's selection place) in view; `enhance: true` on fill/edit/image does it on the way, Preferences › Enhance prompts makes it the default | backend |
 | `generate.upscale` | Image › Generative Upscale… | `{"model","factor":2|4}` | pixel layer, backend |
 | `generate.models` | — | `{}` → `{models:[…], server}` | always (query, `journal: false`) |
 | `generate.health` | — | `{}` → `{ok, version, vramFree, queue}` | always (query) |

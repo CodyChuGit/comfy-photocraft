@@ -12,7 +12,7 @@ code map is in [`codebase-orientation.md`](codebase-orientation.md).
 | 0 Foundation | ✅ 2026-10-08 | This documentation, the Windows toolchain, a green release build, the `comfy-photocraft` branch |
 | 1 Backend + headless Generative Fill | ✅ 2026-10-09: live against ComfyUI 0.39.0 with Qwen-Image-2.1, Krea 2 Turbo and Qwen-Image-Edit-2511 (numbers in the dev log) | `photocraft-genai` crate, ComfyUI client, `generate.fill` / `generate.image` (pulled forward from Phase 3) / `generate.health` / `generate.models` from the CLI and MCP |
 | 2 Generative Fill in the app | 🟢 2026-10-09: menu rows, the task bar under the selection (prompt, template picker with installed badges, variations, progress, switcher), the Preferences page, generative layer metadata with Generate Similar, and the control-protocol test (`generative_bar_tests`) | Prompt bar, progress, variations, generative layers with masks, model picker, preferences |
-| 3 The Firefly core set | 🟢 2026-10-09: Generate Image (with a transparent option), Generative Expand (also from the Crop tool), Generative Edit (`generate.edit`, the whole picture by instruction, masked to the selection) and Remove Background (`generate.removeBackground`: SAM 3.1 by default, Qwen-Image-2.1's soft RGBA matte with the research opt-in) live | Expand, Generate Image, instruction Edit, Remove Background |
+| 3 The Firefly core set | 🟢 2026-10-09: Generate Image (with a transparent option), Generative Expand (also from the Crop tool), Generative Edit (`generate.edit`, the whole picture by instruction, masked to the selection) and Remove Background (`generate.removeBackground`: SAM 3.1 by default, Qwen-Image-2.1's soft RGBA matte with the research opt-in) live; the prompt enhancer (`generate.enhancePrompt`, `enhance`) rewrites prompts with the picture in view | Expand, Generate Image, instruction Edit, Remove Background |
 | 3.5 Select by text (SAM 3.1) | 🟢 2026-10-09: `select.byText`, `select.subjectML` and `select.byPoint` live; SAM is Remove Background's permissive route; box prompts and soft-matte refinement would be refinements | `select.byText`, ML Select Subject, point/box object selection, SAM-backed mattes for Remove Background |
 | 4 Models and workflows as data | ⬜ | Model catalogue, workflow template import, references, LoRAs, downloads with checksums |
 | 4.5 Assistant | ⬜ | In-app assistant panel over a local LLM/VLM, driving the command registry; prompt enhancement, auto-naming |
@@ -161,8 +161,14 @@ permissive route landed last: `template: auto` takes SAM 3.1 (the prompt or "the
 subject", a hard-edged mask) unless the research opt-in and the 2.1 files make the soft matte
 possible; the detector route softens its mask with the classical edge refinement. **Split
 into Layers** (`generate.splitLayers`, Qwen-Image-Layered, Apache-2.0) decomposes the picture
-into RGBA layers, background first, each a new layer. Open: a prompt study for Expand, the
-layered model above its 640 px working size, transparent fills.
+into RGBA layers, background first, each a new layer. The **prompt enhancer**
+(`generate.enhancePrompt`, the task bar's wand button, `enhance` on fill/edit/image, Preferences ›
+Enhance prompts) answers the first user session's finding that prompts saying "this" give the
+model nothing to hold on to: the Krea 2 text encoder (Qwen3-VL 4B) rewrites the prompt with the
+picture in view, naming what is there; the layer remembers both prompts. The **NVFP4 policy**
+(Preferences › Model precision, template slots' `nvfp4` alternatives) loads Comfy-Org's 4-bit
+repacks on Blackwell GPUs: the same pictures, less memory, Krea 2 18 % faster. Open: a prompt
+study for Expand, the layered model above its 640 px working size, transparent fills.
 
 ## Phase 3.5: Select by text (SAM 3.1)
 

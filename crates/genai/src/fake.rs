@@ -45,6 +45,11 @@ pub struct Options {
     /// `[x0, y0, x1, y1]` rectangle, transparent outside, half on its one-pixel border (a model
     /// that outputs RGBA, such as Qwen-Image-2.1's matte). None = opaque everywhere.
     pub matte: Option<[f32; 4]>,
+    /// What a `TextGenerate` graph answers; None = `Enhanced: ` + the instruction after the last
+    /// `Instruction: ` / `Idea: ` marker of its prompt (so tests can tell a rewritten prompt).
+    pub enhanced_text: Option<String>,
+    /// The GPU name `/system_stats` reports (a Blackwell name turns the NVFP4 policy on).
+    pub device: String,
     /// What `/system_stats` reports as free VRAM (of 32 GB); a low value makes a first run
     /// purge the server before loading (see the engine's `run_switching`).
     pub vram_free: u64,
@@ -64,6 +69,8 @@ impl Default for Options {
             segments: vec![[0.25, 0.25, 0.75, 0.75]],
             missing_files: Vec::new(),
             matte: None,
+            enhanced_text: None,
+            device: "Fake GPU".into(),
             vram_free: 30_000_000_000,
         }
     }
@@ -74,6 +81,8 @@ impl Default for Options {
 pub struct State {
     /// `(file name, PNG bytes)` in upload order.
     pub uploads: Vec<(String, Vec<u8>)>,
+    /// Text a `TextGenerate` graph "produced", by prompt id: `Enhanced: ` + the instruction.
+    pub texts: std::collections::HashMap<String, Vec<String>>,
     /// `(prompt_id, graph, client_id)` in queue order.
     pub prompts: Vec<(String, Value, String)>,
     /// `METHOD /path` of every request.
@@ -278,7 +287,7 @@ fn route(method: &str, path: &str, body: &[u8], ctype: &str, opts: &Options, sta
         ("GET", "/system_stats") => json(
             200,
             json!({"system": {"os": "fake", "python_version": "3.12.0", "comfyui_version": opts.version, "ram_total": 64_000_000_000u64, "ram_free": 32_000_000_000u64},
-                   "devices": [{"name": "Fake GPU", "type": "cuda", "index": 0, "vram_total": 32_000_000_000u64, "vram_free": opts.vram_free}]}),
+                   "devices": [{"name": opts.device, "type": "cuda", "index": 0, "vram_total": 32_000_000_000u64, "vram_free": opts.vram_free}]}),
         ),
         ("GET", "/prompt") => json(200, json!({"exec_info": {"queue_remaining": 0}})),
         ("GET", "/object_info") => {
@@ -296,7 +305,7 @@ fn route(method: &str, path: &str, body: &[u8], ctype: &str, opts: &Options, sta
             let folder = &p["/models/".len()..];
             let mut files: Vec<String> = template::builtin()
                 .iter()
-                .flat_map(|t| t.meta.models.iter().filter(|s| s.folder == folder).map(|s| s.default.clone()).collect::<Vec<_>>())
+                .flat_map(|t| t.meta.models.iter().filter(|s| s.folder == folder).flat_map(|s| std::iter::once(s.default.clone()).chain(s.nvfp4.clone())).collect::<Vec<_>>())
                 .filter(|f| !opts.missing_files.contains(f))
                 .collect();
             files.sort();
@@ -345,7 +354,21 @@ fn route(method: &str, path: &str, body: &[u8], ctype: &str, opts: &Options, sta
                 .and_then(|nodes| nodes.values().find(|n| n["class_type"] == "EmptyQwenImageLayeredLatentImage"))
                 .and_then(|n| n["inputs"]["layers"].as_u64())
                 .filter(|n| (1..=64).contains(n));
-            let files: Vec<(String, Vec<u8>)> = if let Some(count) = layer_count {
+            // A text graph (`TextGenerate`): no images; the "rewritten" prompt is the node's user
+            // turn (or what follows a last `Instruction:` / `Idea:` marker in it), prefixed, so
+            // tests can tell.
+            let text_prompt = graph
+                .as_object()
+                .and_then(|nodes| nodes.values().find(|n| n["class_type"] == "TextGenerate"))
+                .and_then(|n| n["inputs"]["prompt"].as_str().map(str::to_string));
+            if let Some(p) = text_prompt {
+                let instruction = ["Instruction: ", "Idea: "].iter().filter_map(|m| p.rsplit_once(m).map(|(_, i)| i)).next().unwrap_or(&p).trim().to_string();
+                let answer = opts.enhanced_text.clone().unwrap_or_else(|| format!("Enhanced: {instruction}"));
+                st.texts.insert(id.clone(), vec![answer]);
+            }
+            let files: Vec<(String, Vec<u8>)> = if st.texts.contains_key(&id) {
+                Vec::new()
+            } else if let Some(count) = layer_count {
                 let (w, h) = size;
                 (0..count)
                     .map(|i| {
@@ -429,7 +452,11 @@ fn route(method: &str, path: &str, body: &[u8], ctype: &str, opts: &Options, sta
                 None => {
                     let images: Vec<Value> =
                         st.output_files.get(id).into_iter().flatten().map(|n| json!({"filename": n, "subfolder": "photocraft", "type": "output"})).collect();
-                    json!({"prompt": [], "outputs": {"16": {"images": images}}, "status": {"status_str": "success", "completed": true, "messages": []}})
+                    let mut outputs = json!({"16": {"images": images}});
+                    if let Some(texts) = st.texts.get(id) {
+                        outputs["4"] = json!({"text": texts});
+                    }
+                    json!({"prompt": [], "outputs": outputs, "status": {"status_str": "success", "completed": true, "messages": []}})
                 }
             };
             json(200, json!({id: entry}))

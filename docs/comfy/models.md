@@ -157,6 +157,7 @@ Sources: [FLUX.2 / Z-Image on AWS (hands-on)](https://builder.aws.com/content/36
 | Remove Background (`generate.removeBackground`) | **SAM 3.1** (`sam3.1/segment`, SAM License, no opt-in): the prompt or "the main subject" → a hard-edged mask | **Qwen-Image-2.1's RGBA output** (`qwen-2.1/matte`, research licence, opt-in): a soft matte; `auto` takes it when allowed and installed | layer (or composite) → the model's alpha channel (2.1) or the union of the detector's instance masks (SAM), resampled → layer mask or selection (never destroys pixels); the classical Quick Action `layer.removeBackground` needs no server |
 | Transparent Generate Image (`generate.image` + `transparent`) | — (Krea 2 and Z-Image cannot) | Qwen-Image-2.1 RGBA (`promptFormatTransparent`) | prompt + "isolated on a transparent background, output a PNG image" → a layer whose pixels carry the model's alpha |
 | Split into Layers (`generate.splitLayers`) | Qwen-Image-Layered (`qwen-layered/split`, Apache-2.0) | — | the composite at ≤ 640 px → N RGBA layers, background first, each a new layer above the active one, resampled to the canvas |
+| Prompt enhancer (`generate.enhancePrompt`; `enhance` on fill, edit, image) | **shipped 2026-10-09**: Qwen3-VL-4B (`qwen3vl_4b_fp8_scaled`, the Krea 2 text encoder, Apache-2.0) run as a vision-language model through ComfyUI's `TextGenerate` (`enhance/edit`, `enhance/image`) | the 8B Qwen3-VL would read pictures better; the 2511 encoder (Qwen2.5-VL) cannot generate in ComfyUI 0.39 | the composite (+ a fill's selection place) and the typed prompt → one sentence that leads with the verb, names what is in the picture, says what the result looks like and what stays; an image idea → a 60–120-word paragraph; 1–2 s on the 5090 |
 | Harmonize (`generate.edit` preset) | Qwen-Image-Edit-2511 | Qwen-Image-2.1 | pasted layer + composite context + "match lighting and colour" → new layer |
 | Generative Upscale (`generate.upscale`) | ESRGAN-class (licence-checked) | SeedVR2 | layer → upscale-model node → new layer / Image Size |
 | Generate Similar | same model as the source layer | — | stored prompt + new seed |
@@ -174,6 +175,33 @@ Sources: [FLUX.2 / Z-Image on AWS (hands-on)](https://builder.aws.com/content/36
 These are community figures (see sources above), not measurements on this machine. Phase 1 of the
 roadmap includes measuring them with `GET /system_stats` before and after a run and recording the
 numbers in [`devlog.md`](devlog.md).
+
+Measured on this machine (ComfyUI 0.39's "staged" sizes from its log, `/system_stats` free VRAM,
+2026-10-09; the card reports 31.8 GB):
+
+| Set, as resident on the server | Staged | Fits? |
+|---|---|---|
+| Qwen-Image-Edit-2511 fp8mixed + its Qwen2.5-VL-7B fp8 encoder + VAE | 19.6 + 7.9 + 0.2 GB | yes: 16 s Lightning edits, steady |
+| … plus the prompt enhancer's Qwen3-VL-4B fp8 (the Krea 2 encoder) | + 5.0 GB ≈ 32.7 GB | not quite: 1.9 GB free, 2511 edits at 19–25 s while everything stays resident; the NVFP4 2511 encoder (5.7 GB file) brings the set back under the card |
+| Qwen-Image-2.1 int8 + Qwen3-VL-8B int8 + its VAE + SAM 3.1 fp16 | 6.8 + 8.7 + 0.6 + 1.6 GB file sizes ≈ 18 GB | yes, all together, with room for the enhancer: 2.1 and SAM can run turn by turn without a purge |
+| Krea 2 Turbo fp8 + Qwen3-VL-4B fp8 + VAE | 12.2 + 5.0 + 0.2 GB | yes; the enhancer shares this encoder, so it costs nothing extra |
+| Krea 2 Turbo **NVFP4** + Qwen3-VL-4B fp8 + VAE | 7.2 + 5.0 + 0.2 GB | yes: 18.5 GB free after a run against 13.4 GB with fp8, and 18 % faster (`benchmarks.md` §5f) |
+
+### NVFP4 (Blackwell) alternatives
+
+Comfy-Org's official NVFP4 repacks, checked 2026-10-09 (the app ships none of them; a user
+downloads them into the same folders as the defaults):
+
+| File | Folder | Size | Stands in for | Source |
+|---|---|---|---|---|
+| `qwen_2.5_vl_7b_nvfp4.safetensors` | `text_encoders` | 5.7 GB | `qwen_2.5_vl_7b_fp8_scaled` (8.7 GB) in every 2511 template | Comfy-Org `Qwen-Image_ComfyUI` (Hugging Face), `split_files/text_encoders` |
+| `krea2_turbo_nvfp4.safetensors` | `diffusion_models` | 7.2 GB | `krea2_turbo_fp8_scaled` (12.2 GB) in `krea2-turbo/image` | Comfy-Org `Krea-2` (Hugging Face), `split_files/diffusion_models` |
+
+Not available officially: an NVFP4 2511 diffusion model (a community repack exists; not wired)
+and NVFP4 for Qwen-Image-2.1 (its official encoders are int8 and w4a8). The templates name the
+alternative in the slot's `nvfp4` field; Preferences › AI Integrations › Model precision decides
+(`auto` = Blackwell GPUs only, by the device name ComfyUI reports). Same output, less memory;
+only Krea 2 gets faster.
 
 ## 5. What the picker must show
 
