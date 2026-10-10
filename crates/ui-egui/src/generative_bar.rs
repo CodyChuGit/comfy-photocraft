@@ -18,7 +18,11 @@ use crate::PhotocraftApp;
 use crate::theme::Tokens;
 
 pub const COMMAND: &str = "generate.fill";
+/// The bar's other mode: the whole picture by instruction, masked to the selection.
+pub const EDIT_COMMAND: &str = "generate.edit";
 const VARIATION_COMMAND: &str = "generate.variation";
+const MODE_FILL: &str = "fill";
+const MODE_EDIT: &str = "edit";
 const AREA_ID: &str = "generative-bar";
 /// Gap between the selection and the bar, and the bar's distance from the canvas edges.
 const GAP: f32 = 12.0;
@@ -35,6 +39,9 @@ pub struct TemplateChoice {
     /// probe answers, or when no server answers); the picker marks the missing ones.
     #[serde(default)]
     pub installed: Option<bool>,
+    /// `fill` or `edit`: which mode of the bar lists it.
+    #[serde(default)]
+    pub task: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -42,6 +49,9 @@ pub struct TemplateChoice {
 pub struct GenerativeBar {
     /// Shown under the selection (× hides it until the next selection is made).
     pub open: bool,
+    /// `fill` (regenerate the selection from the prompt) or `edit` (change the whole picture
+    /// by instruction, shown inside the selection).
+    pub mode: String,
     pub prompt: String,
     /// Template id; empty = Preferences › Default Fill Template.
     pub template: String,
@@ -77,6 +87,7 @@ impl Default for GenerativeBar {
     fn default() -> Self {
         Self {
             open: false,
+            mode: MODE_FILL.to_string(),
             prompt: String::new(),
             template: String::new(),
             variations: 1,
@@ -129,13 +140,14 @@ fn load_templates(app: &mut PhotocraftApp) {
         .as_array()
         .map(|a| {
             a.iter()
-                .filter(|t| t["task"] == "fill")
+                .filter(|t| t["task"] == MODE_FILL || t["task"] == MODE_EDIT)
                 .filter_map(|t| {
                     Some(TemplateChoice {
                         id: t["id"].as_str()?.to_string(),
                         name: t["name"].as_str().unwrap_or_default().to_string(),
                         allowed: t["allowed"].as_bool().unwrap_or(false),
                         installed: None,
+                        task: t["task"].as_str().unwrap_or_default().to_string(),
                     })
                 })
                 .collect()
@@ -171,16 +183,38 @@ fn apply_installed(app: &mut PhotocraftApp, v: &Value) {
 /// The template id the next run uses: the bar's choice or the preference's default (`auto` =
 /// the engine picks the fastest permissive tier the server has).
 fn current_template(app: &PhotocraftApp) -> String {
-    let chosen = app.ui.generative_bar.template.trim();
-    if !chosen.is_empty() {
+    let bar = &app.ui.generative_bar;
+    let chosen = bar.template.trim();
+    // A chosen template counts only for the mode it belongs to.
+    if !chosen.is_empty() && bar.templates.iter().any(|c| c.id == chosen && c.task == bar.mode) {
         return chosen.to_string();
+    }
+    if bar.mode == MODE_EDIT {
+        return photocraft_engine::generate_cmds::AUTO_TEMPLATE.to_string();
     }
     let pref = app.session.prefs().integrations.default_fill_template.trim();
     if pref.is_empty() { photocraft_engine::generate_cmds::AUTO_TEMPLATE.to_string() } else { pref.to_string() }
 }
 
-/// Run `generate.fill` with the bar's prompt, template and variations. In the desktop app it
-/// starts a background job the bar then follows; inline (tests, web) the results land at once.
+/// The command the bar's mode runs.
+fn mode_command(app: &PhotocraftApp) -> &'static str {
+    if app.ui.generative_bar.mode == MODE_EDIT { EDIT_COMMAND } else { COMMAND }
+}
+
+/// Does a Fill prompt read like an instruction to change what is already there ("make this
+/// hyper realistic", "turn it into a painting")? Fill regenerates the selection from scratch,
+/// so such prompts belong to Edit; the bar says so.
+pub fn looks_like_an_edit(prompt: &str) -> bool {
+    let lower = prompt.trim().to_ascii_lowercase();
+    let mut words = lower.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty());
+    let Some(first) = words.next() else { return false };
+    let verbs = ["make", "turn", "convert", "transform", "change", "redraw", "repaint", "restyle", "stylize", "stylise", "render"];
+    verbs.contains(&first) && words.any(|w| w == "this" || w == "it" || w == "these" || w == "them")
+}
+
+/// Run the bar's command (`generate.fill`, or `generate.edit` in Edit mode) with its prompt,
+/// template and variations. In the desktop app it starts a background job the bar then
+/// follows; inline (tests, web) the results land at once.
 pub fn generate(app: &mut PhotocraftApp) -> Result<Value, String> {
     let prompt = app.ui.generative_bar.prompt.trim().to_string();
     if prompt.is_empty() {
@@ -188,9 +222,10 @@ pub fn generate(app: &mut PhotocraftApp) -> Result<Value, String> {
     }
     let variations = app.ui.generative_bar.variations.clamp(1, 4);
     let template = current_template(app);
+    let command = mode_command(app);
     let params = json!({"prompt": prompt, "variations": variations, "template": template});
     let doc = app.session.active_index();
-    match app.run(COMMAND, params) {
+    match app.run(command, params) {
         Ok(v) => {
             if v.get("pending").and_then(Value::as_bool) == Some(true) {
                 let bar = &mut app.ui.generative_bar;
@@ -204,7 +239,7 @@ pub fn generate(app: &mut PhotocraftApp) -> Result<Value, String> {
             Ok(v)
         }
         Err(e) => {
-            crate::notices::error(app, format!("Generative Fill: {e}"));
+            crate::notices::error(app, format!("{}: {e}", if command == EDIT_COMMAND { "Generative Edit" } else { "Generative Fill" }));
             Err(e)
         }
     }
@@ -230,7 +265,7 @@ pub fn on_event(app: &mut PhotocraftApp, e: &JobEvent) {
     let active = app.session.active_index();
     let bar = &mut app.ui.generative_bar;
     let own = bar.job == Some(e.id.0);
-    if !own && (e.command != COMMAND || bar.job.is_some()) {
+    if !own && ((e.command != COMMAND && e.command != EDIT_COMMAND) || bar.job.is_some()) {
         return;
     }
     let doc = if own { bar.job_doc.take() } else { active };
@@ -262,9 +297,15 @@ pub fn show_variation(app: &mut PhotocraftApp, index: usize) -> Result<Value, St
     Ok(r)
 }
 
-/// `ui.set` fields: `generativeBar` (open), `generativePrompt`, `generativeTemplate`,
-/// `generativeVariations` (1..=4).
+/// `ui.set` fields: `generativeBar` (open), `generativeMode` (`fill` | `edit`),
+/// `generativePrompt`, `generativeTemplate`, `generativeVariations` (1..=4).
 pub fn set(app: &mut PhotocraftApp, p: &Value) -> Result<(), String> {
+    if let Some(v) = p.get("generativeMode") {
+        match v.as_str() {
+            Some(m) if m == MODE_FILL || m == MODE_EDIT => app.ui.generative_bar.mode = m.to_string(),
+            _ => return Err("generativeMode must be \"fill\" or \"edit\"".into()),
+        }
+    }
     if let Some(v) = p.get("generativeVariations") {
         match v.as_u64() {
             Some(n) if (1..=4).contains(&n) => app.ui.generative_bar.variations = n as u8,
@@ -339,7 +380,13 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let t = Tokens::get(ctx);
     let mut action: Option<Action> = None;
     // The bar's own job, or any fill running on this document (started by a script or the dialog).
-    let job = app.ui.generative_bar.job.map(JobId).and_then(|j| app.session.job(j)).or_else(|| app.session.active_job().filter(|j| j.command == COMMAND));
+    let job = app
+        .ui
+        .generative_bar
+        .job
+        .map(JobId)
+        .and_then(|j| app.session.job(j))
+        .or_else(|| app.session.active_job().filter(|j| j.command == COMMAND || j.command == EDIT_COMMAND));
     app.ui.generative_bar.showing_job = job.as_ref().map(|j| j.id.0);
     let results = valid_results(app);
     let default_template = current_template(app);
@@ -423,23 +470,33 @@ fn running(ui: &mut egui::Ui, j: &photocraft_engine::jobs::JobInfo, t: &Tokens, 
 
 fn idle(ui: &mut egui::Ui, app: &mut PhotocraftApp, results: &[u64], default_template: &str, research: bool, t: &Tokens, action: &mut Option<Action>) {
     let bar = &mut app.ui.generative_bar;
+    // Fill (regenerate the selection) or Edit (change the picture by instruction, shown
+    // inside the selection).
+    let mut mode = if bar.mode == MODE_EDIT { MODE_EDIT.to_string() } else { MODE_FILL.to_string() };
+    if crate::widgets::dropdown(ui, "generative-mode", &mut mode, &[(MODE_FILL.to_string(), "Fill"), (MODE_EDIT.to_string(), "Edit")], 64.0) {
+        bar.mode = mode.clone();
+    }
     // The prompt; Enter generates.
-    let field = egui::TextEdit::singleline(&mut bar.prompt).hint_text(tl!("Describe what to generate…")).desired_width(240.0).id_salt("generative-prompt");
+    let hint = if mode == MODE_EDIT { tl!("Describe the change…") } else { tl!("Describe what to generate…") };
+    let field = egui::TextEdit::singleline(&mut bar.prompt).hint_text(hint).desired_width(240.0).id_salt("generative-prompt");
     let resp = ui.add(field);
     if bar.focus {
         resp.request_focus();
         bar.focus = false;
     }
     let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-    // Template picker: Auto (the fastest permissive tier the server has), then every fill
-    // template, research ones only when the preference allows.
+    if mode == MODE_FILL && looks_like_an_edit(&bar.prompt) {
+        ui.label(RichText::new(tl!("Changing what is there? Switch to Edit")).color(t.text_dim).size(11.5));
+    }
+    // Template picker: Auto (the fastest permissive tier the server has), then every template
+    // of the mode, research ones only when the preference allows.
     let mut current = default_template.to_string();
     // Templates the server lacks files for stay listed (the engine says what is missing) but
     // say so.
     let labels: Vec<(String, String)> = bar
         .templates
         .iter()
-        .filter(|c| c.allowed || research || c.id == current)
+        .filter(|c| c.task == mode && (c.allowed || research || c.id == current))
         .map(|c| (c.id.clone(), if c.installed == Some(false) { format!("{} ({})", c.name, tl!("not installed")) } else { c.name.clone() }))
         .collect();
     let mut options: Vec<(String, &str)> = vec![(photocraft_engine::generate_cmds::AUTO_TEMPLATE.to_string(), "Auto")];

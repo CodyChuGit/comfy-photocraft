@@ -45,6 +45,9 @@ pub struct Options {
     /// `[x0, y0, x1, y1]` rectangle, transparent outside, half on its one-pixel border (a model
     /// that outputs RGBA, such as Qwen-Image-2.1's matte). None = opaque everywhere.
     pub matte: Option<[f32; 4]>,
+    /// What `/system_stats` reports as free VRAM (of 32 GB); a low value makes a first run
+    /// purge the server before loading (see the engine's `run_switching`).
+    pub vram_free: u64,
 }
 
 impl Default for Options {
@@ -61,6 +64,7 @@ impl Default for Options {
             segments: vec![[0.25, 0.25, 0.75, 0.75]],
             missing_files: Vec::new(),
             matte: None,
+            vram_free: 30_000_000_000,
         }
     }
 }
@@ -274,7 +278,7 @@ fn route(method: &str, path: &str, body: &[u8], ctype: &str, opts: &Options, sta
         ("GET", "/system_stats") => json(
             200,
             json!({"system": {"os": "fake", "python_version": "3.12.0", "comfyui_version": opts.version, "ram_total": 64_000_000_000u64, "ram_free": 32_000_000_000u64},
-                   "devices": [{"name": "Fake GPU", "type": "cuda", "index": 0, "vram_total": 32_000_000_000u64, "vram_free": 30_000_000_000u64}]}),
+                   "devices": [{"name": "Fake GPU", "type": "cuda", "index": 0, "vram_total": 32_000_000_000u64, "vram_free": opts.vram_free}]}),
         ),
         ("GET", "/prompt") => json(200, json!({"exec_info": {"queue_remaining": 0}})),
         ("GET", "/object_info") => {

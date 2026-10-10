@@ -157,4 +157,16 @@ fn the_server_is_purged_before_a_run_whose_model_files_differ_from_the_last() {
     // Back to the Lightning tier: another switch.
     s.execute(FILL, json!({"prompt": "z", "seed": 3})).unwrap();
     assert_eq!(frees(&fake), 2);
+    // A server another process left nearly full (2 GB of 32 free): the first run of this
+    // process purges before loading, once.
+    let full = FakeComfy::start_with(Options { vram_free: 2_000_000_000, ..Options::default() }).unwrap();
+    let mut s = session(&full.url);
+    s.execute(FILL, json!({"prompt": "x", "seed": 1})).unwrap();
+    assert_eq!(frees(&full), 1);
+    let reqs = full.state().requests.clone();
+    let free_at = reqs.iter().position(|r| r == "POST /free").unwrap();
+    let prompt_at = reqs.iter().position(|r| r == "POST /prompt").unwrap();
+    assert!(free_at < prompt_at, "{reqs:?}");
+    s.execute(FILL, json!({"prompt": "y", "seed": 2})).unwrap();
+    assert_eq!(frees(&full), 1, "known state afterwards: no more purges");
 }

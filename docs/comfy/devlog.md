@@ -4,6 +4,31 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-09 (evening): first user session, two fixes
+
+The user tried the app on a line drawing of a face: Generative Fill over a rectangle with
+"make this hyper realistic", then "turn this drawing into a hyper realistic portrait that looks
+similar". Both results were a plate of food; the second run took 229 s.
+
+**What happened** (from the server's history, `/history`, and the uploads): the fills were
+correct inpaints (the output outside the mask matched the input to within 1/765), but Fill
+regenerates the selection from scratch with the picture as a reference, and "make this hyper
+realistic" over a white rectangle with a doodle gave the model nothing to hold on to: it drew
+a dish. The instruction was an *edit* of what is there, which is Generative Edit's job (the
+whole picture by instruction, no noise mask). The 229 s: the server still held the 19 GB
+layered model from the Split tests in another process, so the app's first run (which never
+purged: the model-set memory is per process) loaded 2511 partially and streamed weights.
+
+**Landed**
+
+- `run_switching` purges on a process's first run too when the server reports less than a
+  quarter of its VRAM free (one `/system_stats` call); the fake takes `Options.vram_free` and
+  a test checks the purge precedes the first prompt and happens once.
+- The task bar has a **Fill | Edit** mode (`generativeMode` over `ui.set`): Edit runs
+  `generate.edit` with the same prompt, template picker (edit templates) and variations, the
+  selection masking the result; and a Fill prompt that reads like an instruction to change
+  what is there ("make this…", "turn it into…") shows "Changing what is there? Switch to Edit".
+
 ## 2026-10-09 (late): Split into Layers (Qwen-Image-Layered), and a softer detector matte
 
 **Landed**

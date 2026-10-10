@@ -70,7 +70,7 @@ pub enum Outcome {
 
 /// The fields `ui.set` reads. Anything else is rejected before a field is applied, so a typo or
 /// a field the method doesn't have can't reply with success while nothing changes (#412).
-pub const UI_SET_FIELDS: [&str; 23] = [
+pub const UI_SET_FIELDS: [&str; 24] = [
     "tool",
     "panels",
     "dock",
@@ -92,6 +92,7 @@ pub const UI_SET_FIELDS: [&str; 23] = [
     "gradientClassic",
     // The generative task bar (`generative_bar::set`).
     "generativeBar",
+    "generativeMode",
     "generativePrompt",
     "generativeTemplate",
     "generativeVariations",

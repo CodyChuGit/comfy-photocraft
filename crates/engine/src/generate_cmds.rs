@@ -164,7 +164,18 @@ pub(crate) fn run_switching(
     progress: &JobProgress,
 ) -> photocraft_genai::Result<photocraft_genai::Response> {
     let set = model_set(req);
-    let switch = !set.is_empty() && LAST_MODELS.lock().unwrap_or_else(PoisonError::into_inner).get(server).is_some_and(|last| *last != set);
+    let last = LAST_MODELS.lock().unwrap_or_else(PoisonError::into_inner).get(server).cloned();
+    let switch = !set.is_empty()
+        && match last {
+            Some(prev) => prev != set,
+            // The first run of this process: another process (the CLI, a browser tab) may have
+            // left the server full of other models, and a card with less than a quarter of its
+            // memory free would load the new set partially and stream the rest every step.
+            None => {
+                let h = backend.health();
+                matches!((h.vram_total, h.vram_free), (Some(total), Some(free)) if total > 0 && free.saturating_mul(4) < total)
+            }
+        };
     if switch {
         photocraft_genai::Progress::report(progress, 0.0, "Unloading the previous models");
         // A server that cannot purge just runs as before.

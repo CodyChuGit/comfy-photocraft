@@ -91,6 +91,42 @@ fn the_menu_opens_the_bar_and_generate_runs_the_fill_with_variations() {
     assert_eq!(control(&mut app, &ctx, "ui.set", json!({"generativeBar": true}))["ok"], true);
     assert!(app.ui.generative_bar.open);
 
+    // Edit mode: the same bar runs generate.edit (no noise mask, the selection masks the
+    // layer); the picker lists edit templates; a prompt that changes what is there is spotted.
+    assert_eq!(control(&mut app, &ctx, "ui.set", json!({"generativeMode": "paint"}))["ok"], false);
+    assert_eq!(
+        control(
+            &mut app,
+            &ctx,
+            "ui.set",
+            json!({"generativeMode": "edit", "generativePrompt": "turn this drawing into a realistic portrait", "generativeVariations": 1, "generativeTemplate": ""})
+        )["ok"],
+        true
+    );
+    assert!(app.ui.generative_bar.templates.iter().any(|t| t.task == "edit" && t.id == "qwen-edit-2511/edit"));
+    assert!(looks_like_an_edit("make this hyper realistic") && looks_like_an_edit("Turn it into a painting"));
+    assert!(!looks_like_an_edit("a red boat") && !looks_like_an_edit("make a red boat"));
+    let prompts_before = fake.state().prompts.len();
+    generate(&mut app).unwrap();
+    let st = fake.state();
+    assert_eq!(st.prompts.len(), prompts_before + 1);
+    let g = &st.prompts.last().unwrap().1;
+    assert!(g.get("13").is_none(), "an edit graph: no noise mask");
+    assert_eq!(g["6"]["inputs"]["prompt"], "turn this drawing into a realistic portrait. Keep everything else exactly as it is.");
+    drop(st);
+    let d = app.session.active().unwrap();
+    assert!(d.doc.layers.last().unwrap().name.starts_with("Generative Edit:"));
+    // Back to the Fill state the rest of the test expects.
+    assert_eq!(
+        control(
+            &mut app,
+            &ctx,
+            "ui.set",
+            json!({"generativeMode": "fill", "generativePrompt": "a boat", "generativeVariations": 3, "generativeTemplate": "qwen-2.1/fill"})
+        )["ok"],
+        true
+    );
+
     // A research template is refused by the engine until the preference allows it.
     assert!(generate(&mut app).is_err());
     app.session.edit_prefs(|p| p.integrations.allow_research_models = true);
