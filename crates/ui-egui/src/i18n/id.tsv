@@ -2595,3 +2595,7 @@ cameraRaw	Blending	Pembauran
 	The model could not improve this prompt	Model tidak dapat menyempurnakan prompt ini
 	Model precision	Presisi model
 	NVFP4 (Blackwell GPUs)	NVFP4 (GPU Blackwell)
+	Select by text…	Pilih berdasarkan teks…
+	Click an object, or drag a rectangle around it	Klik objek, atau seret persegi panjang di sekitarnya
+	Select by Point	Pilih berdasarkan titik
+	Select by Text	Pilih berdasarkan teks

@@ -2216,3 +2216,7 @@
 	The model could not improve this prompt	Das Modell konnte diesen Prompt nicht verbessern
 	Model precision	Modellpräzision
 	NVFP4 (Blackwell GPUs)	NVFP4 (Blackwell-GPUs)
+	Select by text…	Per Text auswählen…
+	Click an object, or drag a rectangle around it	Auf ein Objekt klicken oder ein Rechteck darum ziehen
+	Select by Point	Per Punkt auswählen
+	Select by Text	Per Text auswählen

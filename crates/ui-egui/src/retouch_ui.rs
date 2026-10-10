@@ -151,24 +151,74 @@ pub fn finish_content_aware_move(app: &mut PhotocraftApp, start: [f64; 2], end: 
     }
 }
 
-/// Object Selection: the dragged rectangle.
+/// Object Selection: the dragged rectangle (the classical object finder), or, for a click with
+/// a generative server configured, the object under the point through SAM 3.1's point prompt
+/// (`select.byPoint`, a background job). ⇧ adds, ⌥ subtracts, either way.
 pub fn finish_object_selection(app: &mut PhotocraftApp, start: [f64; 2], end: [f64; 2], mods: egui::Modifiers) {
     let (x, y) = (start[0].min(end[0]), start[1].min(end[1]));
     let (w, h) = ((end[0] - start[0]).abs(), (end[1] - start[1]).abs());
+    let mode = object_mode(mods);
+    let sample_all = app.ui.tool_options.sample_all_layers;
     if w < 2.0 || h < 2.0 {
+        // A click has no classical meaning here; with the server up it is a point prompt, and
+        // without one it stays what it was: nothing.
+        if server_online(app) {
+            let r = app.run("select.byPoint", json!({"x": start[0].round(), "y": start[1].round(), "mode": mode, "sampleAllLayers": sample_all}));
+            if let Err(e) = r {
+                crate::notices::error(app, e);
+            }
+        }
         return;
     }
-    let mode = if mods.alt {
+    let _ = app.run("select.object", json!({"rect": [x.round(), y.round(), w.round(), h.round()], "mode": mode, "sampleAllLayers": sample_all}));
+}
+
+/// Object Selection's modifiers: ⌥ subtracts, ⇧ adds (see `tool_feedback::selection_mode`).
+fn object_mode(mods: egui::Modifiers) -> &'static str {
+    if mods.alt {
         "subtract"
     } else if mods.shift {
         "add"
     } else {
         "replace"
-    };
-    let _ = app.run(
-        "select.object",
-        json!({"rect": [x.round(), y.round(), w.round(), h.round()], "mode": mode, "sampleAllLayers": app.ui.tool_options.sample_all_layers}),
-    );
+    }
+}
+
+/// Is a generative server configured (Preferences › AI Integrations)? The options bar shows the
+/// SAM 3.1 controls of the selection tools only then (the default preference names the local
+/// server, so this is true out of the box).
+pub fn server_configured(app: &PhotocraftApp) -> bool {
+    !app.session.prefs().integrations.comfy_server.trim().is_empty()
+}
+
+/// Is the configured server answering right now (`generate.health`, one quick request; a closed
+/// local port answers at once)? A click or Select Subject goes to SAM 3.1 only then, so a
+/// machine without ComfyUI keeps the classical behaviour instead of collecting errors.
+pub fn server_online(app: &mut PhotocraftApp) -> bool {
+    server_configured(app) && app.run("generate.health", json!({})).is_ok_and(|h| h["ok"].as_bool() == Some(true))
+}
+
+/// The Object Selection options bar's "Select by text" field: the phrase through SAM 3.1
+/// (`select.byText`, a background job), replacing the selection.
+pub fn select_by_text(app: &mut PhotocraftApp) -> Result<Value, String> {
+    let phrase = app.ui.tool_options.select_text.trim().to_string();
+    if phrase.is_empty() {
+        return Err("type what to select first".into());
+    }
+    let r = app.run("select.byText", json!({"prompt": phrase, "mode": "replace", "sampleAllLayers": app.ui.tool_options.sample_all_layers}));
+    if let Err(e) = &r {
+        crate::notices::error(app, format!("Select by Text: {e}"));
+    }
+    r
+}
+
+/// The selection tools' Select Subject button: SAM 3.1's reading of the main subject when the
+/// server answers (`select.subjectML`), the classical `select.subject` otherwise.
+pub fn select_subject(app: &mut PhotocraftApp) {
+    if server_online(app) && app.run("select.subjectML", json!({})).is_ok() {
+        return;
+    }
+    let _ = app.run("select.subject", json!({}));
 }
 
 /// ⌥-click with Clone Stamp / Healing Brush sets the source.
@@ -221,6 +271,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
     {
         return false;
     }
+    let server = server_configured(app);
     let o = &mut app.ui.tool_options;
     match tool {
         Tool::SpotHealing => {
@@ -306,10 +357,23 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
         }
         Tool::ObjectSelection => {
             crate::widgets::checkbox(ui, &mut o.sample_all_layers, tl!("Sample All Layers"));
-            opt(ui, tl!("Drag a rectangle around the object"));
+            // With a generative server: a click asks SAM 3.1 for the object under the pointer,
+            // and a phrase selects by text (Enter). Without one, the classical rectangle only.
+            let mut by_text = false;
+            if server {
+                let field = egui::TextEdit::singleline(&mut o.select_text).hint_text(tl!("Select by text…")).desired_width(150.0).id_salt("object-select-text");
+                let resp = ui.add(field);
+                by_text = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !o.select_text.trim().is_empty();
+                opt(ui, tl!("Click an object, or drag a rectangle around it"));
+            } else {
+                opt(ui, tl!("Drag a rectangle around the object"));
+            }
             crate::widgets::vline(ui, 22.0);
-            if crate::widgets::secondary_button(ui, tl!("Select Subject"), 0.0).clicked() {
-                let _ = app.run("select.subject", json!({}));
+            let subject = crate::widgets::secondary_button(ui, tl!("Select Subject"), 0.0).clicked();
+            if by_text {
+                let _ = select_by_text(app);
+            } else if subject {
+                select_subject(app);
             }
         }
         _ => {}
@@ -347,6 +411,75 @@ mod tests {
         for x in (0..100).step_by(step) {
             app.run("paint.pencil", json!({"points": [[x, 0], [x, 60]], "size": 2, "color": "#606060", "target": target})).unwrap();
         }
+    }
+
+    /// comfy-photocraft: with a generative server configured the Object Selection tool asks
+    /// SAM 3.1 for the object under a click (`select.byPoint`), its options bar selects by text
+    /// (`select.byText`) and Select Subject goes through the detector; a drag stays the classical
+    /// rectangle and without a server nothing changes.
+    #[test]
+    fn object_selection_click_asks_the_detector_and_the_bar_selects_by_text() {
+        let fake = photocraft_genai::fake::FakeComfy::start().unwrap();
+        let mut app = app();
+        app.ui.tool = Tool::ObjectSelection;
+        let none = egui::Modifiers::NONE;
+        // No server (the default preference names the local one, which may be running on the
+        // machine the tests run on): a click does nothing, quietly.
+        app.session.edit_prefs(|p| p.integrations.comfy_server.clear());
+        tool_event(&mut app, ToolEvent::Down { x: 40.0, y: 30.0, pressure: 1.0 }, none);
+        tool_event(&mut app, ToolEvent::Up { x: 40.0, y: 30.0 }, none);
+        assert!(fake.state().prompts.is_empty());
+        assert!(!app.ui.status_error, "{}", app.ui.status);
+        assert!(app.session.active().unwrap().doc.selection.is_none());
+        // A server: the click goes to the detector's point prompt and its mask becomes the selection.
+        app.session.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
+        tool_event(&mut app, ToolEvent::Down { x: 40.0, y: 30.0, pressure: 1.0 }, none);
+        tool_event(&mut app, ToolEvent::Up { x: 40.0, y: 30.0 }, none);
+        {
+            let st = fake.state();
+            assert_eq!(st.prompts.len(), 1, "{}", app.ui.status);
+            let g = &st.prompts[0].1;
+            assert_eq!(g["4"]["class_type"], "SAM3_Detect");
+            let coords = g["4"]["inputs"]["positive_coords"].as_str().unwrap_or_default();
+            assert!(coords.contains("\"x\":40") && coords.contains("\"y\":30"), "the clicked point as the prompt: {coords}");
+        }
+        assert!(app.session.active().unwrap().doc.selection.is_some());
+        assert_eq!(app.session.journal.last().map(|(id, _)| id.as_str()), Some("select.byPoint"));
+        // ⇧-click adds through the same path.
+        tool_event(&mut app, ToolEvent::Down { x: 70.0, y: 30.0, pressure: 1.0 }, egui::Modifiers::SHIFT);
+        tool_event(&mut app, ToolEvent::Up { x: 70.0, y: 30.0 }, egui::Modifiers::SHIFT);
+        assert_eq!(fake.state().prompts.len(), 2);
+        assert_eq!(app.session.journal.last().map(|(_, p)| p["mode"].as_str()), Some(Some("add")));
+        // A drag is the classical rectangle, no server call.
+        tool_event(&mut app, ToolEvent::Down { x: 10.0, y: 10.0, pressure: 1.0 }, none);
+        tool_event(&mut app, ToolEvent::Move { x: 60.0, y: 50.0, pressure: 1.0 }, none);
+        tool_event(&mut app, ToolEvent::Up { x: 60.0, y: 50.0 }, none);
+        assert_eq!(fake.state().prompts.len(), 2);
+        assert_eq!(app.session.journal.last().map(|(id, _)| id.as_str()), Some("select.object"));
+        // The options bar's phrase.
+        app.ui.tool_options.select_text = "   ".into();
+        assert!(select_by_text(&mut app).is_err());
+        app.ui.tool_options.select_text = "the dog".into();
+        select_by_text(&mut app).unwrap();
+        {
+            let st = fake.state();
+            assert_eq!(st.prompts.len(), 3);
+            assert_eq!(st.prompts[2].1["3"]["inputs"]["text"], "the dog");
+        }
+        // Select Subject: the detector with a server that answers, the classical path otherwise
+        // (none configured, or one that is down).
+        select_subject(&mut app);
+        assert_eq!(fake.state().prompts.len(), 4);
+        assert_eq!(app.session.journal.last().map(|(id, _)| id.as_str()), Some("select.subjectML"));
+        app.session.edit_prefs(|p| p.integrations.comfy_server.clear());
+        select_subject(&mut app);
+        assert_eq!(fake.state().prompts.len(), 4);
+        assert_eq!(app.session.journal.last().map(|(id, _)| id.as_str()), Some("select.subject"));
+        app.session.edit_prefs(|p| p.integrations.comfy_server = "http://127.0.0.1:9".into());
+        tool_event(&mut app, ToolEvent::Down { x: 40.0, y: 30.0, pressure: 1.0 }, none);
+        tool_event(&mut app, ToolEvent::Up { x: 40.0, y: 30.0 }, none);
+        assert_ne!(app.session.journal.last().map(|(id, _)| id.as_str()), Some("select.byPoint"), "a server that is down: no point prompt");
+        assert!(!app.ui.status_error, "{}", app.ui.status);
     }
 
     #[test]

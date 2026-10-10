@@ -2451,3 +2451,7 @@ cameraRaw	Roughness	Неровность
 	The model could not improve this prompt	Модель не смогла улучшить этот запрос
 	Model precision	Точность моделей
 	NVFP4 (Blackwell GPUs)	NVFP4 (GPU Blackwell)
+	Select by text…	Выделить по тексту…
+	Click an object, or drag a rectangle around it	Щёлкните объект или обведите его прямоугольником
+	Select by Point	Выделить по точке
+	Select by Text	Выделить по тексту

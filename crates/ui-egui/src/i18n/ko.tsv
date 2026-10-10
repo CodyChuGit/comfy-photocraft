@@ -2761,3 +2761,7 @@ cameraRaw	Color	색상
 	The model could not improve this prompt	모델이 이 프롬프트를 개선하지 못했습니다
 	Model precision	모델 정밀도
 	NVFP4 (Blackwell GPUs)	NVFP4(Blackwell GPU)
+	Select by text…	텍스트로 선택…
+	Click an object, or drag a rectangle around it	개체를 클릭하거나 주위에 사각형을 드래그하세요
+	Select by Point	점으로 선택
+	Select by Text	텍스트로 선택

@@ -183,8 +183,11 @@ green; the MCP acceptance test gains a select-by-text task.
 
 **Status 2026-10-09.** `select.byText` and `select.subjectML` landed and ran live ("the
 lighthouse" in 4.6 s cold, "sky" in 1.8 s warm; see the dev log). Select › Select by Text… opens
-its dialog in the app since the Phase 2 slice. Open: `select.byPoint`, the BiRefNet soft-matte
-refinement, the MCP acceptance task, and the Object Selection tool's ML mode.
+its dialog in the app since the Phase 2 slice. `select.byPoint` followed, and then the **Object
+Selection tool's ML mode** (night): with a server configured a click asks SAM 3.1 for the object
+under the pointer (⇧ adds, ⌥ subtracts; a drag stays the classical rectangle), the options bar
+has a "Select by text" field, and Select Subject goes through the detector. Open: the BiRefNet
+soft-matte refinement, the MCP acceptance task, box prompts.
 
 ## Phase 4: Models and workflows as data
 

@@ -2608,3 +2608,7 @@ cameraRaw	Blending	Fusion
 	The model could not improve this prompt	Le modèle n'a pas pu améliorer ce prompt
 	Model precision	Précision des modèles
 	NVFP4 (Blackwell GPUs)	NVFP4 (GPU Blackwell)
+	Select by text…	Sélectionner par texte…
+	Click an object, or drag a rectangle around it	Cliquez sur un objet ou tracez un rectangle autour
+	Select by Point	Sélectionner par point
+	Select by Text	Sélectionner par texte

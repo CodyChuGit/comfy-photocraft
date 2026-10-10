@@ -2154,3 +2154,7 @@ cameraRaw	Blending	混合
 	The model could not improve this prompt	模型無法優化此提示詞
 	Model precision	模型精度
 	NVFP4 (Blackwell GPUs)	NVFP4（Blackwell GPU）
+	Select by text…	依文字選取…
+	Click an object, or drag a rectangle around it	點按物件，或在其周圍拖曳矩形
+	Select by Point	依點選取
+	Select by Text	依文字選取

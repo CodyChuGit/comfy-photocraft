@@ -2160,3 +2160,7 @@ cameraRaw	Color	カラー
 	The model could not improve this prompt	モデルはこのプロンプトを改善できませんでした
 	Model precision	モデルの精度
 	NVFP4 (Blackwell GPUs)	NVFP4（Blackwell GPU）
+	Select by text…	テキストで選択…
+	Click an object, or drag a rectangle around it	オブジェクトをクリックするか、周囲を矩形で囲んでください
+	Select by Point	ポイントで選択
+	Select by Text	テキストで選択

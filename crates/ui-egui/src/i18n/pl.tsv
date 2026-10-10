@@ -3218,3 +3218,7 @@ cameraRaw	Roughness	Chropowatość
 	The model could not improve this prompt	Model nie mógł ulepszyć tego promptu
 	Model precision	Precyzja modeli
 	NVFP4 (Blackwell GPUs)	NVFP4 (GPU Blackwell)
+	Select by text…	Zaznacz według tekstu…
+	Click an object, or drag a rectangle around it	Kliknij obiekt lub przeciągnij wokół niego prostokąt
+	Select by Point	Zaznacz punktem
+	Select by Text	Zaznacz według tekstu

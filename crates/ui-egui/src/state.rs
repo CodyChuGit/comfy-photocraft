@@ -443,6 +443,9 @@ pub struct ToolOptions {
     pub finger_painting: bool,
     /// Quick Selection enhance edge.
     pub enhance_edge: bool,
+    /// Object Selection: the phrase of its "Select by text" field (SAM 3.1 through
+    /// `select.byText`; comfy-photocraft).
+    pub select_text: String,
     /// Pen: "path" (work path) or "shape" (shape layer).
     pub vector_mode: String,
     /// Shape tools: fill with the foreground colour, stroke width (0 = none), rectangle corner
@@ -552,6 +555,7 @@ impl Default for ToolOptions {
             protect_detail: true,
             finger_painting: false,
             enhance_edge: false,
+            select_text: String::new(),
             vector_mode: "path".into(),
             shape_fill: true,
             stroke_width: 0.0,

@@ -2177,3 +2177,7 @@ cameraRaw	Color	Barvy
 	The model could not improve this prompt	Model tuto výzvu nedokázal vylepšit
 	Model precision	Přesnost modelů
 	NVFP4 (Blackwell GPUs)	NVFP4 (GPU Blackwell)
+	Select by text…	Vybrat podle textu…
+	Click an object, or drag a rectangle around it	Klikněte na objekt nebo kolem něj natáhněte obdélník
+	Select by Point	Vybrat bodem
+	Select by Text	Vybrat podle textu

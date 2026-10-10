@@ -2250,3 +2250,7 @@ cameraRaw	Amount	Quantità
 	The model could not improve this prompt	Il modello non è riuscito a migliorare questo prompt
 	Model precision	Precisione dei modelli
 	NVFP4 (Blackwell GPUs)	NVFP4 (GPU Blackwell)
+	Select by text…	Seleziona per testo…
+	Click an object, or drag a rectangle around it	Fai clic su un oggetto o traccia un rettangolo attorno
+	Select by Point	Seleziona per punto
+	Select by Text	Seleziona per testo

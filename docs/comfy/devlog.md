@@ -59,9 +59,18 @@ reports `device`, `blackwell`, `nvfp4`, `nvfp4Installed`; tests in
 NVFP4 files with nothing but the defaults. Lesson from the first benchmark attempt: ComfyUI
 caches a repeated graph; vary the seed or the "warm" run takes 290 ms.
 
-**Open.** The SAM 3.1 UI (Object Selection click → `select.byPoint`, a text field); the GUI is
-the 8:56 PM build until the user closes it (the enhancer, the NVFP4 policy and the temp-file
-model memory are in the CLI build only).
+**The SAM 3.1 UI (same session).** The Object Selection tool: with a generative server
+configured, a click (no drag) runs `select.byPoint` on the point under the pointer (⇧ adds, ⌥
+subtracts, as the rectangle does), the options bar has a **Select by text** field (Enter →
+`select.byText`, replacing the selection; `toolOptions.selectText`) and says "Click an object,
+or drag a rectangle around it", and **Select Subject** goes through `select.subjectML`, falling
+back to the classical `select.subject` when no server is configured or the command cannot
+start. A drag stays the classical `select.object`. Test in `retouch_ui.rs` against the fake.
+Translated ×13 (4 strings, the two job labels included).
+
+**Open.** The GUI is the 8:56 PM build until the user closes it (the enhancer, the NVFP4
+policy, the SAM UI and the temp-file model memory are in the CLI build only); SAM box prompts
+(a drag through the detector) and hover highlighting are the next steps of the tool.
 
 ## 2026-10-09 (evening): first user session, two fixes
 
