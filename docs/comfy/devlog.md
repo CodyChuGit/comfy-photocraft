@@ -29,6 +29,26 @@ purged: the model-set memory is per process) loaded 2511 partially and streamed 
   selection masking the result; and a Fill prompt that reads like an instruction to change
   what is there ("make this…", "turn it into…") shows "Changing what is there? Switch to Edit".
 
+**Follow-up, the same evening.** Generative Edit with the user's own prompts still gave food
+("turn this drawing into a hyper realistic portrait…", "make this hyper realistic", on
+Lightning and on the 40-step base): the model does not read the doodle as a face, "this" is a
+plate to it. Prompts that **name what the drawing shows** work: "turn this sketch of a face
+into a realistic photo of a human face" and "redraw this simple line drawing of a smiling face
+as a photorealistic portrait photo of a person with the same round face, two eyes, a nose and
+a smile" both gave a face (`bench/user-drawing-*.png`). Noted for the UI copy: describe the
+subject, not "this".
+
+The slow runs: a fresh load of 2511 at 1088×704 ran three times at 14–17 s under logging
+(ComfyUI 0.39 stages models for dynamic VRAM loading; no partial loads in the log), so the
+209 s and 229 s runs were contention: the Split tests' 19 GB layered model in one case, and
+in the other the server being used from its own web UI at the same time (its log shows Krea 2
+attempts with the text encoder loaded as `qwen_image`, which fails: Krea 2 needs CLIPLoader
+type `krea2`, which PhotoCraft's template uses; our Krea 2 run took 9.5 s). Landed on top:
+the model-set memory behind `run_switching` is mirrored to a file in the temp directory, so
+the app, the CLI and MCP agree on what a server holds across processes and only a real
+change purges; the low-VRAM rule now applies only to a server no PhotoCraft process has
+recorded; `generate.free` forgets the record.
+
 ## 2026-10-09 (late): Split into Layers (Qwen-Image-Layered), and a softer detector matte
 
 **Landed**

@@ -136,7 +136,54 @@ pub(crate) const DEFAULT_EDIT_TEMPLATE: &str = "qwen-edit-2511/edit";
 pub(crate) const AUTO_EDIT_ORDER: &[&str] = &["qwen-edit-2511/edit-lightning-8", DEFAULT_EDIT_TEMPLATE];
 
 /// The model files (`folder/file`) the last run on each server loaded, for [`run_switching`].
+/// Mirrored to a small file in the temp directory so the app, the CLI and MCP agree on what
+/// a server holds across processes (each is otherwise a fresh process).
 static LAST_MODELS: Mutex<BTreeMap<String, BTreeSet<String>>> = Mutex::new(BTreeMap::new());
+
+/// Where [`LAST_MODELS`] is mirrored: `{server: [files]}` JSON.
+fn last_models_path() -> std::path::PathBuf {
+    std::env::temp_dir().join("photocraft-genai-last-models.json")
+}
+
+/// What the last run on `server` loaded, from this process's memory or the mirror file.
+fn last_models(server: &str) -> Option<BTreeSet<String>> {
+    if let Some(set) = LAST_MODELS.lock().unwrap_or_else(PoisonError::into_inner).get(server) {
+        return Some(set.clone());
+    }
+    let text = std::fs::read_to_string(last_models_path()).ok()?;
+    let all: BTreeMap<String, BTreeSet<String>> = serde_json::from_str(&text).ok()?;
+    all.get(server).cloned()
+}
+
+/// Remember what `server` holds now, in memory and in the mirror file (best effort).
+fn remember_models(server: &str, set: BTreeSet<String>) {
+    let mut mem = LAST_MODELS.lock().unwrap_or_else(PoisonError::into_inner);
+    mem.insert(server.to_string(), set);
+    let path = last_models_path();
+    let mut all: BTreeMap<String, BTreeSet<String>> = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    for (k, v) in mem.iter() {
+        all.insert(k.clone(), v.clone());
+    }
+    // Test servers come and go on random ports: keep the file small.
+    if all.len() > 32 {
+        all.retain(|k, _| mem.contains_key(k));
+    }
+    if let Ok(text) = serde_json::to_string(&all) {
+        let _ = std::fs::write(path, text);
+    }
+}
+
+/// After a purge nothing is loaded: forget what `server` held (in memory and in the mirror).
+fn forget_models(server: &str) {
+    LAST_MODELS.lock().unwrap_or_else(PoisonError::into_inner).remove(server);
+    let path = last_models_path();
+    if let Some(mut all) = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<BTreeMap<String, BTreeSet<String>>>(&t).ok())
+        && all.remove(server).is_some()
+        && let Ok(text) = serde_json::to_string(&all)
+    {
+        let _ = std::fs::write(path, text);
+    }
+}
 
 /// The server a session's generative requests go to: the key of [`LAST_MODELS`].
 pub(crate) fn server_key(s: &Session) -> String {
@@ -164,13 +211,13 @@ pub(crate) fn run_switching(
     progress: &JobProgress,
 ) -> photocraft_genai::Result<photocraft_genai::Response> {
     let set = model_set(req);
-    let last = LAST_MODELS.lock().unwrap_or_else(PoisonError::into_inner).get(server).cloned();
     let switch = !set.is_empty()
-        && match last {
+        && match last_models(server) {
             Some(prev) => prev != set,
-            // The first run of this process: another process (the CLI, a browser tab) may have
-            // left the server full of other models, and a card with less than a quarter of its
-            // memory free would load the new set partially and stream the rest every step.
+            // Nothing known about this server (no PhotoCraft process has run on it): something
+            // else may have left it full of other models, and a card with less than a quarter
+            // of its memory free would load the new set partially and stream the rest every
+            // step.
             None => {
                 let h = backend.health();
                 matches!((h.vram_total, h.vram_free), (Some(total), Some(free)) if total > 0 && free.saturating_mul(4) < total)
@@ -183,7 +230,7 @@ pub(crate) fn run_switching(
     }
     let resp = backend.run(req, progress)?;
     if !set.is_empty() {
-        LAST_MODELS.lock().unwrap_or_else(PoisonError::into_inner).insert(server.to_string(), set);
+        remember_models(server, set);
     }
     Ok(resp)
 }
@@ -1820,6 +1867,7 @@ fn run_split(s: &mut Session, p: &Value) -> Result<Value> {
 /// (2 GB of VRAM free, fills three times slower); this resets it, at the price of one reload.
 fn run_free(s: &mut Session, _p: &Value) -> Result<Value> {
     backend(s)?.free().map_err(gen_err)?;
+    forget_models(&server_key(s));
     Ok(json!({"freed": true}))
 }
 
