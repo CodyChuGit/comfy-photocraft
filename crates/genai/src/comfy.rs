@@ -570,6 +570,13 @@ impl GenerativeBackend for ComfyBackend {
         if req.prompt.trim().is_empty() {
             return Err(Error::Request("the prompt is empty".into()));
         }
+        let refs = &tpl.meta.references;
+        if req.references.len() > refs.max as usize {
+            return Err(Error::Request(format!("template `{}` takes at most {} reference image(s), got {}", tpl.meta.id, refs.max, req.references.len())));
+        }
+        if req.references.len() < refs.min as usize {
+            return Err(Error::Request(format!("template `{}` needs at least {} reference image(s)", tpl.meta.id, refs.min)));
+        }
         progress.report(0.0, "Connecting");
         let stats = self.client.system_stats()?;
         let version = ComfyClient::version(&stats);
@@ -612,6 +619,16 @@ impl GenerativeBackend for ComfyBackend {
             let name = self.client.upload_image(&upload_name("mask", &bytes), &bytes)?;
             timings.upload_ms += t.elapsed().as_millis() as u64;
             bindings.insert("mask".into(), Value::String(name));
+        }
+        for (img, placeholder) in req.references.iter().zip(&refs.placeholders) {
+            progress.check_cancel()?;
+            let t = Instant::now();
+            let bytes = png::encode_rgba8(img)?;
+            timings.encode_ms += t.elapsed().as_millis() as u64;
+            let t = Instant::now();
+            let name = self.client.upload_image(&upload_name("ref", &bytes), &bytes)?;
+            timings.upload_ms += t.elapsed().as_millis() as u64;
+            bindings.insert(placeholder.clone(), Value::String(name));
         }
         let wants_size = tpl.placeholders().iter().any(|p| *p == "width" || *p == "height");
         match req.size {

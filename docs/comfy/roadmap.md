@@ -215,7 +215,12 @@ ArtCraft Omni API) with the local server as the default and a fallback order.
   progress, failed, completed; Place, Generate Similar, Save…, Copy prompt; Recreate). Commands
   `generate.jobs`, `.jobs.dismiss/.pin/.clear`, `generate.recreate`, `generate.place`,
   `generate.export`.
-- ⬜ Plan Phase 2: the Generate panel (prompt box, reference deck, capability flags, ETA).
+- ✅ Plan Phase 2: the Generate panel (Window › Generate: mode strip, reference deck, prompt,
+  model / aspect / size / count, the time estimate on the button), template capability flags
+  (`pages`, `references`, `sizes`, `counts`, `estimatedSeconds`), reference images on
+  `generate.edit` / `generate.image` (2511 edits take two; new `qwen-edit-2511/image-ref`,
+  `krea2-turbo/image-style`, research `qwen-2.1/edit`), image variations, the task bar as the
+  panel's compact form (`showGenerativeBar` auto / always / never, `enterToGenerate`).
 - ⬜ Plan Phase 3: the model picker with creator, capabilities and installed state.
 - ⬜ Plan Phase 4: the Variations strip at the canvas edge.
 - ⬜ Plan Phase 5: hub, completion alerts, export naming preference, Angles.

@@ -2200,3 +2200,33 @@ cameraRaw	Color	カラー
 	Server unreachable	サーバーに接続できません
 	Timed out	タイムアウト
 	Unpin	ピン留めを解除
+	Active layer ({name})	アクティブなレイヤー（{name}）
+	Add a reference image	参照画像を追加
+	Clear all	すべて消去
+	Clear the prompt and remove the reference images?	プロンプトを消去して参照画像を削除しますか？
+	Describe what continues the scene…	シーンの続きを説明…
+	Describe what to generate in the selection…	選択範囲に生成する内容を説明…
+	Describe what you want in the image…	画像に描きたい内容を説明…
+	File: {name}	ファイル：{name}
+	File…	ファイル…
+	Fill needs a selection	塗りつぶしには選択範囲が必要です
+	From Generations	生成履歴から
+	Generation: {name}	生成結果：{name}
+	Give the expand at least one side	拡張する辺を少なくとも1つ指定してください
+	Hide negative prompt	ネガティブプロンプトを隠す
+	Layer: {name}	レイヤー：{name}
+	More than this model takes	このモデルが受け付ける数を超えています
+	Move left	左へ移動
+	Move right	右へ移動
+	Negative prompt	ネガティブプロンプト
+	New document	新規ドキュメント
+	Only files with a path can be references here	ここで参照にできるのはパスのあるファイルだけです
+	Open a document first	まずドキュメントを開いてください
+	Open the prompt in a larger editor	プロンプトを大きなエディターで開く
+	Reference images (optional)	参照画像（任意）
+	This model takes at most {n} reference images	このモデルが受け付ける参照画像は最大 {n} 枚です
+	Type a prompt first	まずプロンプトを入力してください
+	Type what to generate first	まず生成する内容を入力してください
+	What to avoid…	避けたい内容…
+	a layer that is gone	存在しないレイヤー
+	Enter to generate	Enter キーで生成

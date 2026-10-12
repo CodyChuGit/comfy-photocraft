@@ -29,6 +29,8 @@ pub enum Group {
     Color,
     /// Properties | Adjustments.
     Properties,
+    /// Generate: the prompt box (PhotoshopEX; see `generate_panel`).
+    Generate,
     /// Generations: every generative job and its results (PhotoshopEX; see `generations_panel`).
     Generations,
     /// Character | Paragraph (not in the default workspace; Window › Character opens it, #150).
@@ -43,12 +45,14 @@ pub enum Group {
 
 impl Group {
     /// Photoshop Essentials order, top to bottom.
-    pub const ALL: [Group; 7] = [Group::Color, Group::Properties, Group::Generations, Group::Character, Group::Navigator, Group::History, Group::Layers];
+    pub const ALL: [Group; 8] =
+        [Group::Color, Group::Properties, Group::Generate, Group::Generations, Group::Character, Group::Navigator, Group::History, Group::Layers];
 
     pub fn key(self) -> &'static str {
         match self {
             Group::Color => "color",
             Group::Properties => "properties",
+            Group::Generate => "generate",
             Group::Generations => "generations",
             Group::Character => "character",
             Group::Navigator => "navigator",
@@ -63,6 +67,7 @@ impl Group {
         match self {
             Group::Color => 190.0,
             Group::Properties => 250.0,
+            Group::Generate => 300.0,
             Group::Generations => 260.0,
             Group::Character => 270.0,
             Group::Navigator => 210.0,
@@ -79,6 +84,8 @@ impl Group {
             Group::Properties => 160.0,
             // Its header and a sliver of the feed: the rail badge says when something lands.
             Group::Generations => 80.0,
+            // One row (mode, prompt, Generate) under the tab strip; the task bar is its other form.
+            Group::Generate => 80.0,
             Group::Character => 160.0,
             Group::Navigator => 140.0,
             Group::History => 130.0,
@@ -92,6 +99,29 @@ impl Group {
         match self {
             Group::Layers => 500.0,
             g => g.min_height(),
+        }
+    }
+
+    /// Groups that fold to their tab strip when the filler would drop below
+    /// [`Group::usable_fill`] (PhotoshopEX's generative groups; the rest only shrink).
+    pub fn yields(self) -> bool {
+        matches!(self, Group::Generate | Group::Generations)
+    }
+
+    /// The filler height under which yielding groups fold: Layers keeps about four rows.
+    pub fn usable_fill(self) -> f32 {
+        match self {
+            Group::Layers => 260.0,
+            g => g.min_height(),
+        }
+    }
+
+    /// [`Group::preferred_fill`] while the generative groups are open beside the filler: Layers
+    /// settles for about six rows so the prompt box and the feed keep room.
+    pub fn preferred_fill_beside_generative(self) -> f32 {
+        match self {
+            Group::Layers => 320.0,
+            g => g.preferred_fill(),
         }
     }
 
@@ -109,6 +139,7 @@ impl Group {
             Group::Color if pro => &["Color", "Swatches", "Gradients", "Patterns"],
             Group::Color => &["Swatches", "Color", "Gradients", "Patterns"],
             Group::Properties => &["Properties", "Adjustments"],
+            Group::Generate => &["Generate"],
             Group::Generations => &["Generations"],
             Group::Character => &["Character", "Paragraph"],
             Group::Navigator => &["Navigator", "Histogram", "Info"],
@@ -119,13 +150,14 @@ impl Group {
 
     /// Tabs that lay out their own scrolling list and footer (they fill the group).
     pub fn scrolls_itself(self, tab: usize) -> bool {
-        matches!((self, tab), (Group::Layers, 0) | (Group::History, 0) | (Group::Generations, 0))
+        matches!((self, tab), (Group::Layers, 0) | (Group::History, 0) | (Group::Generations, 0) | (Group::Generate, 0))
     }
 
     fn tab_mut(self, tabs: &mut DockTabs) -> &mut usize {
         match self {
             Group::Color => &mut tabs.color,
             Group::Properties => &mut tabs.properties,
+            Group::Generate => &mut tabs.generate,
             Group::Generations => &mut tabs.generations,
             Group::Character => &mut tabs.character,
             Group::Navigator => &mut tabs.navigator,
@@ -143,6 +175,7 @@ impl Group {
         match self {
             Group::Color => panels.color,
             Group::Properties => panels.properties,
+            Group::Generate => panels.generate,
             Group::Generations => panels.generations,
             Group::Character => panels.character,
             Group::Navigator => panels.navigator,
@@ -155,6 +188,7 @@ impl Group {
         match self {
             Group::Color => &mut panels.color,
             Group::Properties => &mut panels.properties,
+            Group::Generate => &mut panels.generate,
             Group::Generations => &mut panels.generations,
             Group::Character => &mut panels.character,
             Group::Navigator => &mut panels.navigator,
@@ -261,21 +295,44 @@ impl DockLayout {
         if let Some(f) = filler {
             let gaps = GAP * shown.len().saturating_sub(1) as f32;
             let min_fill = shown.get(f).map_or(0.0, |g| g.min_height());
-            let pref_fill = shown.get(f).map_or(0.0, |g| g.preferred_fill());
+            // With PhotoshopEX's generative groups open the filler asks for less, and the other
+            // groups give way before them (the prompt box keeps its full form on a tall window).
+            let generative = shown.iter().take(f).any(|g| g.yields() && !self.is_collapsed(*g));
+            let pref_fill = shown.get(f).map_or(0.0, |g| if generative { g.preferred_fill_beside_generative() } else { g.preferred_fill() });
             let used: f32 = hs.iter().sum::<f32>() + gaps;
             let mut deficit = (used + pref_fill - avail).max(0.0);
+            for yielding in [false, true] {
+                for i in (0..f).rev() {
+                    if deficit <= 0.0 {
+                        break;
+                    }
+                    let Some(g) = shown.get(i) else { continue };
+                    if g.yields() != yielding || self.is_collapsed(*g) || self.heights.contains_key(g) {
+                        continue;
+                    }
+                    if let Some(h) = hs.get_mut(i) {
+                        let give = (*h - g.compact_height()).max(0.0).min(deficit);
+                        *h -= give;
+                        deficit -= give;
+                    }
+                }
+            }
+            // PhotoshopEX's generative groups fold to their tab strip in this layout (they stay
+            // open: a taller window shows them again) rather than leave the filler without rows.
+            let used: f32 = hs.iter().sum::<f32>() + gaps;
+            let usable = shown.get(f).map_or(0.0, |g| g.usable_fill());
+            let mut deficit = (used + usable - avail).max(0.0);
             for i in (0..f).rev() {
                 if deficit <= 0.0 {
                     break;
                 }
                 let Some(g) = shown.get(i) else { continue };
-                if self.is_collapsed(*g) || self.heights.contains_key(g) {
+                if !g.yields() || self.is_collapsed(*g) || self.heights.contains_key(g) {
                     continue;
                 }
                 if let Some(h) = hs.get_mut(i) {
-                    let give = (*h - g.compact_height()).max(0.0).min(deficit);
-                    *h -= give;
-                    deficit -= give;
+                    deficit -= (*h - strip).max(0.0);
+                    *h = strip;
                 }
             }
             let used: f32 = hs.iter().sum::<f32>() + gaps;

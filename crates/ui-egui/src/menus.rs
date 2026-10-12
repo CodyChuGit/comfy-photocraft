@@ -45,6 +45,7 @@ pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("window.toggle.brushSettings", "Brush Settings", &["Window"], Some("F5")),
     ("window.toggle.navigator", "Navigator", &["Window"], None),
     ("window.toggle.generations", "Generations", &["Window"], None),
+    ("window.toggle.generate", "Generate", &["Window"], None),
     ("window.toggle.toolbar", "Tools", &["Window"], None),
     ("window.toggle.options", "Options", &["Window"], None),
     ("window.theme.toggle", "Next Theme", &["Window"], None),
@@ -75,6 +76,7 @@ pub(crate) fn panel_alias(id: &str) -> Option<&'static str> {
         "options" => "window.toggle.options",
         "brushSettings" | "brushes" => "window.toggle.brushSettings",
         "generations" => "window.toggle.generations",
+        "generate" => "window.toggle.generate",
         _ => return None,
     })
 }
@@ -453,6 +455,7 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
                 "options" => &mut p.options_bar,
                 "brushSettings" => &mut p.brush_settings,
                 "generations" => &mut p.generations,
+                "generate" => &mut p.generate,
                 _ => return Err(format!("unknown panel in {t}")),
             };
             *slot = !*slot;
@@ -625,6 +628,7 @@ fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
         "window.toggle.options" => p.options_bar,
         "window.toggle.brushSettings" => p.brush_settings,
         "window.toggle.generations" => p.generations,
+        "window.toggle.generate" => p.generate,
         _ => return None,
     })
 }

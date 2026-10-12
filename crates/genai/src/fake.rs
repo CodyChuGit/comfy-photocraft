@@ -338,22 +338,31 @@ fn route(method: &str, path: &str, body: &[u8], ctype: &str, opts: &Options, sta
             let mut st = lock(state);
             let n = st.prompts.len() + 1;
             let id = format!("fake-prompt-{n}");
-            // The output: a solid colour the size of the uploaded image the graph loads.
-            let graph_text = graph.to_string();
-            // Text-to-image graphs have no upload: their EmptyLatentImage node gives the size.
+            // The output: a solid colour the size of the empty latent a text-to-image graph
+            // starts from (reference images don't change it), else of the image the graph's
+            // first `LoadImage` (lowest node id: the main image, not a reference) loads.
             let latent_size = graph
                 .as_object()
-                .and_then(|nodes| nodes.values().find(|n| n["class_type"] == "EmptyLatentImage"))
+                .and_then(|nodes| nodes.values().find(|n| n["class_type"] == "EmptyLatentImage" || n["class_type"] == "EmptySD3LatentImage"))
                 .and_then(|n| Some((n["inputs"]["width"].as_u64()? as u32, n["inputs"]["height"].as_u64()? as u32)))
                 .filter(|(w, h)| (1..=8192).contains(w) && (1..=8192).contains(h));
-            let size = st
-                .uploads
+            let mut loads: Vec<(u64, String)> = graph
+                .as_object()
+                .map(|nodes| {
+                    nodes
+                        .iter()
+                        .filter(|(_, n)| n["class_type"] == "LoadImage")
+                        .filter_map(|(id, n)| Some((id.parse::<u64>().unwrap_or(u64::MAX), n["inputs"]["image"].as_str()?.to_string())))
+                        .collect()
+                })
+                .unwrap_or_default();
+            loads.sort();
+            let upload_size = loads
                 .iter()
-                .filter(|(name, _)| graph_text.contains(name.as_str()))
-                .find_map(|(_, bytes)| png::decode_rgba8(bytes).ok())
-                .map(|i| (i.width, i.height))
-                .or(latent_size)
-                .unwrap_or((64, 64));
+                .find_map(|(_, name)| st.uploads.iter().rev().find(|(n, _)| n == name).and_then(|(_, bytes)| png::decode_rgba8(bytes).ok()))
+                .map(|i| (i.width, i.height));
+            let size = latent_size.or(upload_size).unwrap_or((64, 64));
+            let graph_text = graph.to_string();
             // A layered-latent graph: one RGBA image per layer, layer `i` opaque in the `i`-th
             // horizontal band (background first), transparent elsewhere.
             let layer_count = graph

@@ -49,8 +49,8 @@ fn the_menu_opens_the_bar_and_generate_runs_the_fill_with_variations() {
     // An empty prompt does nothing; a prompt generates, inline here (no background jobs).
     assert!(generate(&mut app).is_err());
     assert!(fake.state().prompts.is_empty());
-    app.ui.generative_bar.prompt = "a kite".into();
-    app.ui.generative_bar.variations = 2;
+    app.ui.generate.prompt = "a kite".into();
+    app.ui.generate.count = 2;
     let layers_before = app.session.active().unwrap().doc.layers.len();
     generate(&mut app).unwrap();
     assert_eq!(fake.state().prompts.len(), 2, "one backend run per variation");
@@ -84,8 +84,12 @@ fn the_menu_opens_the_bar_and_generate_runs_the_fill_with_variations() {
     assert_eq!(bad["ok"], false, "{bad}");
     let ok = control(&mut app, &ctx, "ui.set", json!({"generativePrompt": "a boat", "generativeVariations": 3, "generativeTemplate": "qwen-2.1/fill"}));
     assert_eq!(ok["ok"], true, "{ok}");
-    let bar = &app.ui.generative_bar;
-    assert_eq!((bar.prompt.as_str(), bar.variations, bar.template.as_str()), ("a boat", 3, "qwen-2.1/fill"));
+    // The Generate panel's fields: the bar shares them.
+    let g = &app.ui.generate;
+    assert_eq!((g.prompt.as_str(), g.count, g.template.get("fill").map(String::as_str)), ("a boat", 3, Some("qwen-2.1/fill")));
+    let v = control(&mut app, &ctx, "ui.inspect", json!({}));
+    assert_eq!(v["result"]["generatePanel"]["prompt"], "a boat");
+    assert_eq!(v["result"]["generativeBar"]["variations"], 3);
     assert_eq!(control(&mut app, &ctx, "ui.set", json!({"generativeBar": false}))["ok"], true);
     assert!(!app.ui.generative_bar.open);
     assert_eq!(control(&mut app, &ctx, "ui.set", json!({"generativeBar": true}))["ok"], true);
@@ -120,14 +124,14 @@ fn the_menu_opens_the_bar_and_generate_runs_the_fill_with_variations() {
     // user to read and run.
     let prompts_before = fake.state().prompts.len();
     enhance(&mut app).unwrap();
-    assert_eq!(app.ui.generative_bar.prompt, "Enhanced: turn this drawing into a realistic portrait");
+    assert_eq!(app.ui.generate.prompt, "Enhanced: turn this drawing into a realistic portrait");
     assert!(app.ui.generative_bar.enhance_job.is_none());
     let st = fake.state();
     assert_eq!(st.prompts.len(), prompts_before + 1, "the rewriter ran, nothing was generated");
     let g = &st.prompts.last().unwrap().1;
     assert!(g.as_object().unwrap().values().any(|n| n["class_type"] == "TextGenerate") && g.get("2").is_some(), "a text graph with the picture: {g}");
     drop(st);
-    app.ui.generative_bar.prompt.clear();
+    app.ui.generate.prompt.clear();
     assert!(enhance(&mut app).is_err(), "nothing to enhance");
     // Back to the Fill state the rest of the test expects.
     assert_eq!(
@@ -153,7 +157,7 @@ fn the_preference_hides_the_bar_and_the_menu_falls_back_to_the_dialog() {
     let fake = FakeComfy::start().unwrap();
     let mut app = app(&fake.url);
     let ctx = egui::Context::default();
-    app.session.edit_prefs(|p| p.integrations.show_generative_bar = false);
+    app.session.edit_prefs(|p| p.integrations.show_generative_bar = "never".into());
     app.run("select.rect", json!({"x": 10, "y": 8, "width": 20, "height": 16})).unwrap();
     show(&mut app, &ctx);
     assert!(!app.ui.generative_bar.open, "no bar when the preference is off");
@@ -162,7 +166,7 @@ fn the_preference_hides_the_bar_and_the_menu_falls_back_to_the_dialog() {
     assert_eq!(app.ui.dialogs.len(), 1);
     // With params, automation runs the engine directly either way.
     app.ui.close_dialog(r["dialog"].as_u64().unwrap());
-    app.session.edit_prefs(|p| p.integrations.show_generative_bar = true);
+    app.session.edit_prefs(|p| p.integrations.show_generative_bar = "auto".into());
     let r = crate::menus::invoke(&mut app, &ctx, COMMAND, json!({"prompt": "x"})).unwrap();
     assert!(r["layer"].is_u64(), "{r}");
     assert!(!app.ui.generative_bar.open);

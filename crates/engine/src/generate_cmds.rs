@@ -216,6 +216,7 @@ pub(crate) fn enhance_prompt(
             models: Vec::new(),
             size: None,
             params: params.clone(),
+            references: Vec::new(),
         };
         let resp = backend.run(&req, progress)?;
         if let Some(s) = clean_enhanced(&resp.texts) {
@@ -264,6 +265,9 @@ pub struct GenerativeInfo {
     /// The prompt the model actually got when the vision-language model rewrote it (`enhance`);
     /// empty when it ran as typed.
     pub enhanced: String,
+    /// The reference images the run had, as the `references` specs it was given
+    /// (`{"layer"}`, `{"path"}`, `{"job", "index"}`); Generate Similar resolves them again.
+    pub references: Vec<Value>,
 }
 
 /// Remember `info` on `layer` (replacing an earlier one).
@@ -480,6 +484,8 @@ struct FillPlan {
     /// Rewrite the prompt with the vision-language model first (`enhance`, default from the
     /// `enhancePrompts` preference).
     enhance: bool,
+    /// Reference images (`references`, edits only).
+    refs: crate::generate_refs::Refs,
 }
 
 /// How a generated layer's mask ends: softly, across the band the model re-rendered around the
@@ -621,7 +627,9 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
     }
     let name = name.unwrap_or_else(|| format!("Generative Fill: {}", short(&prompt)));
     let enhance = opt_bool(FILL, p, "enhance", s.prefs().integrations.enhance_prompts)?;
-    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance })
+    // A fill's model sees the picture around the selection; it takes no references.
+    let refs = crate::generate_refs::plan(s, FILL, p, &template)?;
+    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs })
 }
 
 /// The first of `candidates` whose model files the server lists (one `/models/<folder>` call per
@@ -911,7 +919,15 @@ struct ImagePlan {
     height: u32,
     /// `true`: a new document of the result's size; `false`: a new layer over the whole canvas.
     to_document: bool,
+    /// How many results (consecutive seeds); only the first is visible.
+    variations: u32,
+    /// Reference images (`references`).
+    refs: crate::generate_refs::Refs,
 }
+
+/// The template `generate.image` switches to when references come with the default template,
+/// which takes none: permissive and runs on the edit model the fill already uses.
+pub const DEFAULT_IMAGE_REF_TEMPLATE: &str = "qwen-edit-2511/image-ref";
 
 /// Shared validation of the prompt, template, licence gate, seed, steps, guidance and model
 /// override for both generative commands.
@@ -991,7 +1007,17 @@ fn plan_image(s: &Session, p: &Value) -> Result<ImagePlan> {
         let integrations = &s.prefs().integrations;
         (template_or(&integrations.default_image_template, DEFAULT_IMAGE_TEMPLATE), integrations.default_generate_model.clone())
     };
+    // References with no template named: the default image template when it takes them, else
+    // the reference template (its own model file, so no `model` override from the preference).
+    let ref_specs = crate::generate_refs::specs(IMAGE, p)?;
+    let named = p.get("template").is_some_and(|v| !v.is_null());
+    let (default_template, default_model) = match template::find(&default_template) {
+        Ok(t) if !named && !ref_specs.is_empty() && t.meta.references.max == 0 => (DEFAULT_IMAGE_REF_TEMPLATE.to_string(), String::new()),
+        _ => (default_template, default_model),
+    };
     let Common { template, prompt, negative, seed, steps, guidance, models, name } = plan_common(s, IMAGE, p, &default_template, Task::Image, &default_model)?;
+    crate::generate_refs::check_count(IMAGE, &template, ref_specs.len())?;
+    let variations = parse_variations(IMAGE, p)?;
     let doc_size = s.active().map(|d| (d.doc.bounds().width(), d.doc.bounds().height()));
     let to_document = match opt_str(IMAGE, p, "target", 20)? {
         None | Some("auto") => doc_size.is_none(),
@@ -1024,7 +1050,26 @@ fn plan_image(s: &Session, p: &Value) -> Result<ImagePlan> {
         prompt
     };
     let enhance = opt_bool(IMAGE, p, "enhance", s.prefs().integrations.enhance_prompts)?;
-    Ok(ImagePlan { template, prompt, typed, transparent, wrap, enhance, negative, seed, steps, guidance, name, models, width, height, to_document })
+    let refs = crate::generate_refs::Refs { images: crate::generate_refs::resolve(s, &ref_specs)?, specs: ref_specs };
+    Ok(ImagePlan {
+        template,
+        prompt,
+        typed,
+        transparent,
+        wrap,
+        enhance,
+        negative,
+        seed,
+        steps,
+        guidance,
+        name,
+        models,
+        width,
+        height,
+        to_document,
+        variations,
+        refs,
+    })
 }
 
 /// The prompt a `generate.image` job sends, and what the layer remembers as `enhanced`: the
@@ -1053,7 +1098,25 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
     let backend = backend(s)?;
     let server = server_key(s);
     let server_doc = server.clone();
-    let ImagePlan { template, prompt, typed, transparent, wrap, enhance, negative, seed, steps, guidance, name, models, width, height, to_document } = plan;
+    let ImagePlan {
+        template,
+        prompt,
+        typed,
+        transparent,
+        wrap,
+        enhance,
+        negative,
+        seed,
+        steps,
+        guidance,
+        name,
+        models,
+        width,
+        height,
+        to_document,
+        variations,
+        refs,
+    } = plan;
     let label = name.clone();
     let tid = template.meta.id.clone();
     // What the result layer remembers (`generate.similar` re-runs it).
@@ -1069,6 +1132,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
         width,
         height,
         transparent,
+        references: refs.specs,
         ..GenerativeInfo::default()
     };
     let mut req = Request {
@@ -1083,7 +1147,11 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
         models,
         size: Some((width, height)),
         params: BTreeMap::new(),
+        references: refs.images,
     };
+    let n = variations.max(1);
+    // A layer name per result: "Generated: …" alone, or with "(2/3)".
+    let numbered = move |base: &str, i: u32| if n > 1 { format!("{base} ({}/{n})", i + 1) } else { base.to_string() };
     if to_document {
         let doc_name = name.clone();
         return crate::jobs::run(
@@ -1094,21 +1162,36 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
                 let (prompt, enhanced) = image_prompt(backend.as_ref(), ctx, enhance, &typed, req.prompt, &wrap, seed);
                 req.prompt = prompt;
                 ctx.check()?;
-                let resp = run_switching(backend.as_ref(), &server_doc, &req, &JobProgress::new(ctx)).map_err(gen_err)?;
-                ctx.check()?;
-                Ok((resp, enhanced))
+                let resps = run_variations(backend.as_ref(), &server_doc, &mut req, n, seed, ctx)?;
+                Ok((resps, enhanced))
             },
-            move |s, (resp, enhanced)| {
-                let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
-                let mut doc = Document::new(doc_name, Size::new(out.width, out.height), ColorMode::Rgb, SampleType::U8);
-                let mut layer = Layer::raster("Generated", doc.pixel_format());
-                write_rgba8(&mut layer, &out, doc.bounds())?;
-                set_generative_info(&mut layer, &GenerativeInfo { seed: resp.seed, rect: [0, 0, out.width as i32, out.height as i32], enhanced, ..info });
-                doc.layers.push(layer);
+            move |s, (resps, enhanced): (Vec<photocraft_genai::Response>, String)| {
+                // One document of the first result's size; every result a layer, the first visible.
+                let first = resps.first().and_then(|r| r.images.first()).ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
+                let (w, h) = (first.width, first.height);
+                let mut doc = Document::new(doc_name, Size::new(w, h), ColorMode::Rgb, SampleType::U8);
+                let mut ids = Vec::new();
+                let mut seeds = Vec::new();
+                for (i, resp) in resps.iter().enumerate() {
+                    let Some(out) = resp.images.first() else { continue };
+                    let out = if (out.width, out.height) == (w, h) { out.clone() } else { resize_rgba8(out, w, h)? };
+                    let mut layer = Layer::raster(numbered("Generated", i as u32), doc.pixel_format());
+                    write_rgba8(&mut layer, &out, doc.bounds())?;
+                    set_generative_info(
+                        &mut layer,
+                        &GenerativeInfo { seed: resp.seed, rect: [0, 0, w as i32, h as i32], enhanced: enhanced.clone(), ..info.clone() },
+                    );
+                    layer.visible = i == 0;
+                    ids.push(layer.id.0);
+                    seeds.push(resp.seed);
+                    doc.layers.push(layer);
+                }
                 let index = s.add_document(doc, None);
-                Ok(
-                    json!({"document": index, "seed": resp.seed, "template": tid, "runId": resp.run_id, "width": out.width, "height": out.height, "ms": resp.elapsed_ms}),
-                )
+                let first = resps.first();
+                Ok(json!({
+                    "document": index, "layers": ids, "seed": first.map(|r| r.seed), "seeds": seeds, "template": tid,
+                    "runId": first.map(|r| r.run_id.clone()), "width": w, "height": h, "ms": resps.iter().map(|r| r.elapsed_ms).sum::<u64>(),
+                }))
             },
         );
     }
@@ -1119,22 +1202,61 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
             let (prompt, enhanced) = image_prompt(backend.as_ref(), ctx, enhance, &typed, req.prompt, &wrap, seed);
             req.prompt = prompt;
             ctx.check()?;
-            let resp = run_switching(backend.as_ref(), &server, &req, &JobProgress::new(ctx)).map_err(gen_err)?;
-            ctx.check()?;
-            let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
+            let resps = run_variations(backend.as_ref(), &server, &mut req, n, seed, ctx)?;
             let canvas = doc.bounds();
             let (w, h) = (canvas.width(), canvas.height());
-            let out = if (out.width, out.height) == (w, h) { out } else { resize_rgba8(&out, w, h)? };
             ctx.progress(0.96, "Placing");
-            let mut layer = Layer::raster(name, doc.pixel_format());
-            write_rgba8(&mut layer, &out, canvas)?;
-            set_generative_info(&mut layer, &GenerativeInfo { seed: resp.seed, rect: [canvas.x0, canvas.y0, w as i32, h as i32], enhanced, ..info });
-            let nid = doc.insert_above(*active, layer);
-            *active = Some(nid);
-            Ok((nid, resp.seed, resp.run_id, resp.elapsed_ms, w, h))
+            let mut made = Vec::new();
+            for (i, resp) in resps.into_iter().enumerate() {
+                let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
+                let out = if (out.width, out.height) == (w, h) { out } else { resize_rgba8(&out, w, h)? };
+                let mut layer = Layer::raster(numbered(&name, i as u32), doc.pixel_format());
+                write_rgba8(&mut layer, &out, canvas)?;
+                set_generative_info(
+                    &mut layer,
+                    &GenerativeInfo { seed: resp.seed, rect: [canvas.x0, canvas.y0, w as i32, h as i32], enhanced: enhanced.clone(), ..info.clone() },
+                );
+                layer.visible = i == 0;
+                let nid = doc.insert_above(*active, layer);
+                *active = Some(nid);
+                made.push((nid.0, resp.seed, resp.run_id, resp.elapsed_ms));
+            }
+            // The visible result is the active layer.
+            *active = made.first().map(|m| LayerId(m.0));
+            Ok((made, w, h))
         },
-        move |(nid, seed, run_id, ms, w, h)| json!({"layer": nid.0, "seed": seed, "template": tid, "runId": run_id, "width": w, "height": h, "ms": ms}),
+        move |(made, w, h)| {
+            let first = made.first();
+            json!({
+                "layer": first.map(|m| m.0), "layers": made.iter().map(|m| m.0).collect::<Vec<_>>(), "seed": first.map(|m| m.1),
+                "seeds": made.iter().map(|m| m.1).collect::<Vec<_>>(), "template": tid, "runId": first.map(|m| m.2.clone()),
+                "width": w, "height": h, "ms": made.iter().map(|m| m.3).sum::<u64>(),
+            })
+        },
     )
+}
+
+/// `n` backend runs of `req` with consecutive seeds from `seed`, each its slice of the job's
+/// progress.
+fn run_variations(
+    backend: &dyn GenerativeBackend,
+    server: &str,
+    req: &mut Request,
+    n: u32,
+    seed: u64,
+    ctx: &JobCtx,
+) -> Result<Vec<photocraft_genai::Response>> {
+    let mut out = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        req.seed = seed.wrapping_add(u64::from(i)) % MAX_SEED;
+        let (lo, hi) = (0.05 + 0.9 * i as f32 / n as f32, 0.05 + 0.9 * (i + 1) as f32 / n as f32);
+        if n > 1 {
+            ctx.progress(lo, &format!("Variation {}/{n}", i + 1));
+        }
+        out.push(run_switching(backend, server, req, &JobProgress::span(ctx, lo, hi)).map_err(gen_err)?);
+        ctx.check()?;
+    }
+    Ok(out)
 }
 
 /// What a fill or expand job needs once its plan is made and the backend is in hand.
@@ -1159,6 +1281,8 @@ struct FillJob {
     edge: Edge,
     /// Rewrite the prompt with the vision-language model first (`enhance`).
     enhance: bool,
+    /// Reference images (edits).
+    refs: crate::generate_refs::Refs,
 }
 
 /// The layers a job made: (id, seed, run id, ms, timings), the primary one first.
@@ -1196,8 +1320,25 @@ fn fill_region(
         let p = o.picture;
         prefill_outside(&mut image, Rect::new(p.x0 - rect.x0, p.y0 - rect.y0, p.x1 - rect.x0, p.y1 - rect.y0));
     }
-    let FillJob { backend, server, command, template_id, auto, auto_order, prompt, negative, seed, steps, guidance, name, models, variations, edge, enhance } =
-        job;
+    let FillJob {
+        backend,
+        server,
+        command,
+        template_id,
+        auto,
+        auto_order,
+        prompt,
+        negative,
+        seed,
+        steps,
+        guidance,
+        name,
+        models,
+        variations,
+        edge,
+        enhance,
+        refs,
+    } = job;
     let mask = Gray8::new(w, h, coverage.iter().map(|c| (c * 255.0 + 0.5) as u8).collect()).map_err(gen_err)?;
     // The model gets a softened mask so it re-renders a band around the area and blends it (much
     // wider for an expand, whose seam runs along a whole picture edge and whose sky or water tone
@@ -1269,6 +1410,7 @@ fn fill_region(
         models,
         size: None,
         params,
+        references: refs.images,
     };
     // One backend run per variation, consecutive seeds, each its own masked layer; the first
     // is visible, the alternates sit hidden above it (`generate.variation` switches).
@@ -1308,6 +1450,7 @@ fn fill_region(
                 rect: [rect.x0, rect.y0, rect.width() as i32, rect.height() as i32],
                 name: name.clone(),
                 enhanced: enhanced.clone(),
+                references: refs.specs.clone(),
                 ..GenerativeInfo::default()
             },
         );
@@ -1375,7 +1518,7 @@ fn prefill_outside(img: &mut Rgba8, inner: Rect) {
 fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_fill(s, p)?;
     let backend = backend(s)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs } = plan;
     let label = name.clone();
     let job = FillJob {
         backend,
@@ -1394,6 +1537,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
         variations,
         edge,
         enhance,
+        refs,
     };
     crate::jobs::edit_job(
         s,
@@ -1527,7 +1671,11 @@ fn plan_expand(s: &Session, p: &Value) -> Result<(FillPlan, Pads, (u32, u32))> {
     let name = name.unwrap_or_else(|| "Generative Expand".to_string());
     // An expand keeps its wording: its prompt continues the scene, the rewriter's rules
     // (name the subject, say what stays) are about a picture's content.
-    Ok((FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance: false }, pads, (nw, nh)))
+    Ok((
+        FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance: false, refs: Default::default() },
+        pads,
+        (nw, nh),
+    ))
 }
 
 fn expand_enabled(s: &Session) -> std::result::Result<(), String> {
@@ -1539,7 +1687,7 @@ fn expand_enabled(s: &Session) -> std::result::Result<(), String> {
 fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
     let (plan, pads, (nw, nh)) = plan_expand(s, p)?;
     let backend = backend(s)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs } = plan;
     let label = name.clone();
     let job = FillJob {
         backend,
@@ -1558,6 +1706,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
         variations,
         edge,
         enhance,
+        refs,
     };
     crate::jobs::edit_job(
         s,
@@ -1674,13 +1823,16 @@ fn plan_edit(s: &Session, p: &Value) -> Result<FillPlan> {
     }
     let name = name.unwrap_or_else(|| format!("Generative Edit: {}", short(&prompt)));
     let enhance = opt_bool(EDIT, p, "enhance", s.prefs().integrations.enhance_prompts)?;
-    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance })
+    // References (image 2, image 3 …): checked against the planned template; `auto` only
+    // picks among templates with the same slots.
+    let refs = crate::generate_refs::plan(s, EDIT, p, &template)?;
+    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs })
 }
 
 fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_edit(s, p)?;
     let backend = backend(s)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs } = plan;
     let label = name.clone();
     let job = FillJob {
         backend,
@@ -1699,6 +1851,7 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
         variations,
         edge,
         enhance,
+        refs,
     };
     crate::jobs::edit_job(
         s,
@@ -1858,8 +2011,20 @@ fn run_remove_bg(s: &mut Session, p: &Value) -> Result<Value> {
             if segment {
                 params.insert("threshold".to_string(), json!(0.5));
             }
-            let req =
-                Request { template: template_id.clone(), prompt, negative, seed, steps, guidance, image: Some(image), mask: None, models, size: None, params };
+            let req = Request {
+                template: template_id.clone(),
+                prompt,
+                negative,
+                seed,
+                steps,
+                guidance,
+                image: Some(image),
+                mask: None,
+                models,
+                size: None,
+                params,
+                references: Vec::new(),
+            };
             let resp = match run_switching(backend.as_ref(), &server, &req, &JobProgress::new(ctx)) {
                 Ok(r) => r,
                 Err(photocraft_genai::Error::NoOutput(_)) if segment => {
@@ -2038,6 +2203,7 @@ fn run_split(s: &mut Session, p: &Value) -> Result<Value> {
                 models,
                 size: Some((rw, rh)),
                 params,
+                references: Vec::new(),
             };
             let resp = run_switching(backend.as_ref(), &server, &req, &JobProgress::new(ctx)).map_err(gen_err)?;
             ctx.check()?;
@@ -2100,8 +2266,45 @@ fn run_health(s: &mut Session, _p: &Value) -> Result<Value> {
     serde_json::to_value(&h).map_err(|e| EngineError::Other(e.to_string()))
 }
 
+/// The template `auto` most likely picks for `command` (the first tier of its order: what a
+/// server with the Lightning LoRA runs), for estimates before the server has answered.
+pub fn likely_auto(command: &str) -> &'static str {
+    let order = match command {
+        FILL => AUTO_FILL_ORDER,
+        EXPAND => AUTO_EXPAND_ORDER,
+        EDIT => AUTO_EDIT_ORDER,
+        _ => return DEFAULT_IMAGE_TEMPLATE,
+    };
+    order.first().copied().unwrap_or(DEFAULT_FILL_TEMPLATE)
+}
+
+/// Seconds a run of `template` for a `width × height` area with `count` variations and
+/// `references` reference images is expected to take on a warm server (the template's
+/// `estimatedSeconds`; a fill, expand or edit counts at the size it is sent at, see
+/// [`request_size`]). `None` for an unknown template. The one
+/// formula the Generate panel, `generate.models` and scripts share.
+pub fn estimate_seconds(template: &str, width: u32, height: u32, count: u32, references: u32) -> Option<f32> {
+    let t = template::find(template).ok()?;
+    let (w, h) = match t.meta.task {
+        Task::Fill | Task::Expand | Task::Edit => request_size(width, height),
+        _ => (width, height),
+    };
+    Some(t.meta.estimate_seconds(w, h, count, references))
+}
+
 fn run_models(s: &mut Session, p: &Value) -> Result<Value> {
     let allow_research = s.prefs().integrations.allow_research_models;
+    // An area and a count make every template report its time estimate for them (`eta`).
+    let eta_for = match (opt_num(MODELS, p, "width", 1.0, 65_536.0)?, opt_num(MODELS, p, "height", 1.0, 65_536.0)?) {
+        (Some(w), Some(h)) => Some((
+            w as u32,
+            h as u32,
+            opt_num(MODELS, p, "count", 1.0, 64.0)?.map_or(1, |c| c as u32),
+            opt_num(MODELS, p, "references", 0.0, 16.0)?.map_or(0, |c| c as u32),
+        )),
+        (None, None) => None,
+        _ => return Err(bad(MODELS, "give both `width` and `height` (or neither)")),
+    };
     // `probe: false` lists the templates without contacting the server (the UI's picker).
     let probe = match p.get("probe") {
         None | Some(Value::Null) => true,
@@ -2118,18 +2321,18 @@ fn run_models(s: &mut Session, p: &Value) -> Result<Value> {
             false,
             move |ctx| {
                 ctx.progress(0.2, "Asking the server");
-                Ok(models_json(Some(backend.as_ref()), allow_research))
+                Ok(models_json(Some(backend.as_ref()), allow_research, eta_for))
             },
             move |_, v| Ok(v),
         );
     }
     let backend = if probe { backend(s).ok() } else { None };
-    Ok(models_json(backend.as_deref(), allow_research))
+    Ok(models_json(backend.as_deref(), allow_research, eta_for))
 }
 
-/// `generate.models`' answer: every template with its model slots and, with a `backend`, what
-/// the server has installed and what `auto` would pick.
-fn models_json(backend: Option<&dyn GenerativeBackend>, allow_research: bool) -> Value {
+/// `generate.models`' answer: every template with its model slots, capabilities and estimate
+/// and, with a `backend`, what the server has installed and what `auto` would pick.
+fn models_json(backend: Option<&dyn GenerativeBackend>, allow_research: bool, eta_for: Option<(u32, u32, u32, u32)>) -> Value {
     let health = backend.map(|b| b.health());
     let online = health.as_ref().is_some_and(|h| h.ok);
     let mut folders: BTreeMap<String, Option<Vec<String>>> = BTreeMap::new();
@@ -2153,11 +2356,14 @@ fn models_json(backend: Option<&dyn GenerativeBackend>, allow_research: bool) ->
             }
             slots.push(v);
         }
+        let eta = eta_for.and_then(|(w, h, c, r)| estimate_seconds(&m.id, w, h, c, r));
         templates.push(json!({
             "id": m.id, "name": m.name, "family": m.family, "task": m.task, "license": m.license, "licenseNote": m.license_note,
             "allowed": m.license != License::Research || allow_research,
             "defaults": {"steps": m.defaults.steps, "guidance": m.defaults.guidance},
             "needsImage": m.needs_image, "needsMask": m.needs_mask, "models": slots,
+            "creator": m.creator, "description": m.description, "badges": m.badges, "references": m.references,
+            "sizes": m.sizes, "counts": m.counts, "estimatedSeconds": m.estimated_seconds, "pages": m.pages, "eta": eta,
         }));
     }
     // What `auto` would pick right now (needs the server's model lists).
@@ -2215,11 +2421,12 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(EngineError::Other("a split layer has no \"similar\": split the picture again instead".into()));
     }
     if info.command == IMAGE {
-        // A generated image: the same request, as a layer above this one.
+        // A generated image: the same request (its references resolved again), as a layer
+        // above this one.
         let q = json!({
             "prompt": info.prompt, "negative": info.negative, "template": info.template, "seed": seed, "steps": info.steps,
             "guidance": info.guidance, "target": "layer", "width": info.width, "height": info.height, "name": info.name,
-            "transparent": info.transparent,
+            "transparent": info.transparent, "references": info.references, "variations": variations,
         });
         s.edit("Select Layer", |_, active| {
             *active = Some(id);
@@ -2246,6 +2453,7 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
         c if c == FILL => (FILL, false, AUTO_FILL_ORDER, info.template.clone()),
         _ => (FILL, true, AUTO_FILL_ORDER, DEFAULT_FILL_TEMPLATE.to_string()),
     };
+    let refs = crate::generate_refs::Refs { images: crate::generate_refs::resolve(s, &info.references)?, specs: info.references.clone() };
     let backend = backend(s)?;
     let job = FillJob {
         backend,
@@ -2265,6 +2473,7 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
         edge: if info.edge == "hard" { Edge::Hard } else { Edge::Soft },
         // A layer whose prompt was rewritten is made again from the typed one, rewritten anew.
         enhance: !info.enhanced.is_empty(),
+        refs,
     };
     let label = format!("Generate Similar: {}", short(&info.prompt));
     crate::jobs::edit_job(
@@ -2365,7 +2574,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generate Image…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"target":"auto|layer|document","width":int=0,"height":int=0,"transparent":bool=false,"steps":0..250=0,"guidance":0..30=0,"seed":{u64?=random},"template":{id?=Preferences › Default Image Template},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"name":{str?}} → {"layer"|"document","seed","template","runId","width","height","ms"} (target auto = a layer over the whole canvas when a document is open, else a new document; enhance = expand the idea into a detailed paragraph first with the vision-language model (generate.enhancePrompt); width/height 0 = the document's size or 1024, otherwise 64..4096 rounded down to multiples of 16; transparent = ask for the subject alone on a transparent background and keep the alpha the model returns (templates whose model can, such as qwen-2.1/image; others refuse); steps and guidance 0 = the template's defaults; a background job; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"target":"auto|layer|document","width":int=0,"height":int=0,"transparent":bool=false,"steps":0..250=0,"guidance":0..30=0,"seed":{u64?=random},"template":{id?=Preferences › Default Image Template},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"name":{str?},"variations":int=1,"references":[{"layer":id}|{"path":file}|{"job":id,"index":int=0}]?} → {"layer"|"document","layers":[id],"seed","seeds":[u64],"template","runId","width","height","ms"} (target auto = a layer over the whole canvas when a document is open, else a new document; enhance = expand the idea into a detailed paragraph first with the vision-language model (generate.enhancePrompt); width/height 0 = the document's size or 1024, otherwise 64..4096 rounded down to multiples of 16; transparent = ask for the subject alone on a transparent background and keep the alpha the model returns (templates whose model can, such as qwen-2.1/image; others refuse); steps and guidance 0 = the template's defaults; variations 1..4 = results with consecutive seeds, each a layer (in the one new document with target document), only the first visible; references = images that guide the result (a pixel layer of the active document, an image file, or a stored result of the Generations library), at most the template's references.max (generate.models); with references and no template named, a default template that takes none gives way to qwen-edit-2511/image-ref; a background job; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: image_enabled,
             run: run_image,
             journal: true,
@@ -2387,7 +2596,7 @@ pub fn specs() -> Vec<CommandSpec> {
             // Placed by the menu catalogue under Edit, with the other generative items.
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?="auto": the Lightning edit tier when its LoRA is installed, else the 40-step one},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings"} (edits the whole picture by instruction; enhance = rewrite the instruction first with the vision-language model, the picture in view, so it names what is there instead of "this" (generate.enhancePrompt): "make the sky stormy", "turn the boat blue", "remove the person"; a description such as "a stormy sky" is wrapped as "change this image so that it shows …"; the composite goes to the model and the result is a new layer above the active one; with a selection the layer is masked to it (edge soft = a dithered fade around it, hard = exactly) so only that part of the edit shows; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; pictures over 0.75 megapixels are sent downscaled and come back resampled; a background job; needs a ComfyUI server)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?="auto": the Lightning edit tier when its LoRA is installed, else the 40-step one},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"name":{str?},"references":[{"layer":id}|{"path":file}|{"job":id,"index":int=0}]?} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings"} (edits the whole picture by instruction; enhance = rewrite the instruction first with the vision-language model, the picture in view, so it names what is there instead of "this" (generate.enhancePrompt): "make the sky stormy", "turn the boat blue", "remove the person"; a description such as "a stormy sky" is wrapped as "change this image so that it shows …"; the composite goes to the model and the result is a new layer above the active one; with a selection the layer is masked to it (edge soft = a dithered fade around it, hard = exactly) so only that part of the edit shows; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; pictures over 0.75 megapixels are sent downscaled and come back resampled; references = extra images the instruction can name as image 2, image 3 (the 2511 templates take two, qwen-2.1/edit nine; see references.max in generate.models): a pixel layer, an image file or a stored generation; a background job; needs a ComfyUI server)"#,
             enabled: edit_enabled,
             run: run_edit,
             journal: true,
@@ -2430,7 +2639,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Layer Info",
             menu: &[],
             shortcut: None,
-            params: r#"{"layer":{id?=active}} → {"layer","generative":{"command","prompt","negative","template","seed","steps","guidance","edge","rect":[x,y,w,h],"name","width","height","transparent","enhanced"}|null,"job":{u64?}} (what a layer remembers about the generative run that made it; prompt = as typed, enhanced = the rewritten prompt the model got when `enhance` was on, else empty; kept with the layer through PSD round trips; job = its row in the Generations library (generate.jobs) when this session made it)"#,
+            params: r#"{"layer":{id?=active}} → {"layer","generative":{"command","prompt","negative","template","seed","steps","guidance","edge","rect":[x,y,w,h],"name","width","height","transparent","enhanced","references"}|null,"job":{u64?}} (what a layer remembers about the generative run that made it; prompt = as typed, enhanced = the rewritten prompt the model got when `enhance` was on, else empty; references = the reference specs the run had, which generate.similar resolves again; kept with the layer through PSD round trips; job = its row in the Generations library (generate.jobs) when this session made it)"#,
             enabled: doc_enabled,
             run: run_info,
             journal: false,
@@ -2481,7 +2690,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "List Generative Models",
             menu: &[],
             shortcut: None,
-            params: r#"{"probe":bool=true} → {"server","device","blackwell","templates":[{"id","name","family","task","license","allowed","defaults","models":[{"placeholder","folder","file","installed","nvfp4"?,"nvfp4Installed"?}]}],"autoFill","autoExpand","autoEdit","autoMatte"} (probe false = list the templates without contacting the server: no server status, installed unknown; nvfp4 = the slot's NVFP4 alternative, which Preferences › AI Integrations › Model precision "auto" loads instead of file on a Blackwell GPU (blackwell true) when the server has it)"#,
+            params: r#"{"probe":bool=true,"width":{int?},"height":{int?},"count":int=1,"references":int=0} → {"server","device","blackwell","templates":[{"id","name","family","task","license","allowed","defaults","models":[{"placeholder","folder","file","installed","nvfp4"?,"nvfp4Installed"?}],"creator","description","badges","references":{"max","min","placeholders","nodes"},"sizes":{"aspects","min","max","step"},"counts":{"max","default"},"estimatedSeconds":{"base","perMegapixel","perReference"},"pages","eta"}],"autoFill","autoExpand","autoEdit","autoMatte"} (the capabilities drive the Generate panel: pages = where a template is offered (image, fill, edit, expand, matte, split, select, enhance), references = how many reference images it takes, sizes = an image template's aspects and side limits; with width and height every template reports eta = (base + perMegapixel × megapixels + perReference × extra references) × count seconds on a warm server, fills and edits at the size they are sent at (a reference-driven text to image's first reference is in base); probe false = list the templates without contacting the server: no server status, installed unknown; nvfp4 = the slot's NVFP4 alternative, which Preferences › AI Integrations › Model precision "auto" loads instead of file on a Blackwell GPU (blackwell true) when the server has it)"#,
             enabled: always,
             run: run_models,
             journal: false,

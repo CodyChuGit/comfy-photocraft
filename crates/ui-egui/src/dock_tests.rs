@@ -48,7 +48,10 @@ fn short_columns_squeeze_groups_down_to_their_minimum_and_never_go_negative() {
 #[test]
 fn bad_stored_values_are_sanitised() {
     let mut l = DockLayout { order: vec![Group::Layers, Group::Layers, Group::Color], ..Default::default() };
-    assert_eq!(l.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Generations, Group::Character, Group::Navigator, Group::History]);
+    assert_eq!(
+        l.order(),
+        vec![Group::Layers, Group::Color, Group::Properties, Group::Generate, Group::Generations, Group::Character, Group::Navigator, Group::History]
+    );
     for bad in [f32::NAN, -10.0, f32::INFINITY, 1e12] {
         l.heights.insert(Group::Color, bad);
         let h = l.height(Group::Color);
@@ -56,7 +59,10 @@ fn bad_stored_values_are_sanitised() {
     }
     // Unknown fields, wrong types and old UI state all load.
     let back: DockLayout = serde_json::from_value(json!({"order": ["layers"], "bogus": 1})).unwrap();
-    assert_eq!(back.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Generations, Group::Character, Group::Navigator, Group::History]);
+    assert_eq!(
+        back.order(),
+        vec![Group::Layers, Group::Color, Group::Properties, Group::Generate, Group::Generations, Group::Character, Group::Navigator, Group::History]
+    );
     let mut ui = serde_json::to_value(crate::state::UiState::default()).unwrap();
     ui.as_object_mut().unwrap().remove("dock");
     let ui: crate::state::UiState = serde_json::from_value(ui).unwrap();
@@ -146,8 +152,10 @@ fn switching_layer_kinds_keeps_the_layers_panel_still() {
 #[test]
 fn dragging_the_splitter_resizes_and_survives_a_ui_state_round_trip() {
     let (mut app, _, _) = app_with_layers();
-    // Properties directly above the filler (PhotoshopEX's Generations group would sit between).
+    // Properties directly above the filler (PhotoshopEX's Generate and Generations groups would
+    // sit between).
     app.ui.panels.generations = false;
+    app.ui.panels.generate = false;
     let mut h = harness(app, vec2(1200.0, 800.0), ThemeKind::ProMedium);
     let props = rect_of(&h, Group::Properties);
     let layers = rect_of(&h, Group::Layers);
@@ -358,12 +366,13 @@ fn is_pro(theme: ThemeKind) -> bool {
 }
 
 /// Full app at `size` (1× scale) on a document with `n` layers named "Row 00", "Row 01", …
-fn app_harness_rows(size: egui::Vec2, theme: ThemeKind, n: usize, generations: bool) -> Harness<'static, PhotocraftApp> {
+fn app_harness_rows(size: egui::Vec2, theme: ThemeKind, n: usize, generative: bool) -> Harness<'static, PhotocraftApp> {
     let mut h = Harness::builder().with_size(size).with_max_steps(64).build_eframe(move |cc| {
         PhotocraftApp::setup_context(&cc.egui_ctx, theme);
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
         app.ui.theme = theme;
-        app.ui.panels.generations = generations;
+        app.ui.panels.generations = generative;
+        app.ui.panels.generate = generative;
         app.run("file.new", json!({"width": 200, "height": 150})).unwrap();
         for i in 0..n {
             app.run("layer.new.layer", json!({"name": format!("Row {i:02}")})).unwrap();
@@ -390,23 +399,65 @@ fn rows_in_view(h: &Harness<'static, PhotocraftApp>, n: usize) -> usize {
 
 /// #147: the default workspace gives Layers the column's spare height: at least ten rows on a
 /// 900 pt window, and a usable list on a 720 pt one. PhotoshopEX's Essentials also shows the
-/// Generations group (the owner's choice, plan §0), which costs Layers two rows at 900 pt:
-/// upstream's guarantee is checked without it, PhotoshopEX's layout with it.
+/// Generate and Generations groups (the owner's choice, plan §0): at 900 pt each sits at its
+/// 80-pt compact form and Layers keeps five rows; at 720 pt they fold to their tab strips
+/// (`Group::yields`) so Layers keeps a usable list. Upstream's guarantee is checked without
+/// them.
 #[test]
 fn default_layout_shows_ten_layer_rows_at_900pt() {
-    for (size, want, generations) in
-        [(vec2(1440.0, 900.0), 10, false), (vec2(1280.0, 720.0), 4, false), (vec2(1440.0, 900.0), 8, true), (vec2(1280.0, 720.0), 2, true)]
-    {
-        let h = app_harness_rows(size, ThemeKind::ProMedium, 40, generations);
+    for (size, want, generative, folded) in [
+        (vec2(1440.0, 900.0), 10, false, false),
+        (vec2(1280.0, 720.0), 4, false, false),
+        (vec2(1440.0, 900.0), 5, true, false),
+        (vec2(1280.0, 720.0), 3, true, true),
+    ] {
+        let h = app_harness_rows(size, ThemeKind::ProMedium, 40, generative);
         let rows = rows_in_view(&h, 40);
         let groups = last_rects(&h.ctx);
-        assert!(rows >= want, "{size:?} (Generations {generations}): {rows} rows visible, want ≥ {want}: {groups:?}");
-        // Color, Properties (and Generations) stay open, just not at the expense of Layers.
-        let open: &[Group] = if generations { &[Group::Color, Group::Properties, Group::Generations] } else { &[Group::Color, Group::Properties] };
-        for g in open {
-            assert!(rect_of(&h, *g).height() >= g.compact_height() - 0.5, "{g:?} at {size:?}: {groups:?}");
+        assert!(rows >= want, "{size:?} (generative groups {generative}): {rows} rows visible, want ≥ {want}: {groups:?}");
+        // Color and Properties stay open, just not at the expense of Layers.
+        for g in [Group::Color, Group::Properties] {
+            assert!(rect_of(&h, g).height() >= g.compact_height() - 0.5, "{g:?} at {size:?}: {groups:?}");
+        }
+        if generative {
+            for g in [Group::Generate, Group::Generations] {
+                let height = rect_of(&h, g).height();
+                if folded {
+                    assert!(height < g.compact_height(), "{g:?} folds at {size:?}: {groups:?}");
+                } else {
+                    assert!(height >= g.compact_height() - 0.5, "{g:?} at {size:?}: {groups:?}");
+                }
+            }
         }
     }
+}
+
+#[test]
+fn on_a_tall_window_the_prompt_box_keeps_its_full_height() {
+    // 1250-pt window (the development PC): the dock column is about 1110 pt.
+    let shown = [Group::Color, Group::Properties, Group::Generate, Group::Generations, Group::Layers];
+    let hs = DockLayout::default().heights_for(&shown, 1110.0, 28.0);
+    assert_eq!(hs[2].1, Group::Generate.default_height(), "{hs:?}");
+    assert!(hs[3].1 > Group::Generations.compact_height(), "the feed has room too: {hs:?}");
+    assert!(hs[4].1 >= Group::Layers.preferred_fill_beside_generative() - 0.5, "{hs:?}");
+}
+
+#[test]
+fn generative_groups_fold_before_layers_runs_out_and_user_sizes_stay() {
+    let shown = [Group::Color, Group::Properties, Group::Generate, Group::Generations, Group::Layers];
+    let l = DockLayout::default();
+    let hs = l.heights_for(&shown, 560.0, 28.0);
+    assert_eq!((hs[2].1, hs[3].1), (28.0, 28.0), "folded: {hs:?}");
+    let rest = 560.0 - (130.0 + 160.0 + 28.0 + 28.0) - 4.0 * GAP;
+    assert!((hs[4].1 - rest).abs() < 0.5, "Layers takes what they gave back: {hs:?}");
+    // Tall: their defaults; a size the user dragged to is kept.
+    let hs = l.heights_for(&shown, 2000.0, 28.0);
+    assert_eq!((hs[2].1, hs[3].1), (Group::Generate.default_height(), Group::Generations.default_height()));
+    let mut mine = DockLayout::default();
+    mine.heights.insert(Group::Generations, 150.0);
+    let hs = mine.heights_for(&shown, 560.0, 28.0);
+    assert_eq!(hs[3].1, 150.0_f32.min(hs[3].1).max(Group::Generations.min_height()), "{hs:?}");
+    assert!(hs[3].1 > 28.0, "not folded: the user sized it");
 }
 
 #[test]
@@ -467,7 +518,10 @@ fn window_character_opens_its_own_group_and_keeps_properties() {
     let old = DockLayout { order: vec![Group::Color, Group::Properties, Group::Navigator, Group::History, Group::Layers], ..Default::default() };
     assert_eq!(old.order(), Group::ALL.to_vec());
     let moved = DockLayout { order: vec![Group::Layers, Group::Color], ..Default::default() };
-    assert_eq!(moved.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Generations, Group::Character, Group::Navigator, Group::History]);
+    assert_eq!(
+        moved.order(),
+        vec![Group::Layers, Group::Color, Group::Properties, Group::Generate, Group::Generations, Group::Character, Group::Navigator, Group::History]
+    );
 }
 
 type StripProbe = Option<(Vec<(usize, Rect)>, Rect, Option<Rect>, Rect)>;

@@ -17,7 +17,13 @@
     "models": [
       { "placeholder": "ckpt", "folder": "checkpoints", "default": "sam3.1_multiplex_fp16.safetensors" }
     ],
-    "notes": "Node names follow ComfyUI's official 'Image Segment (SAM3)' template (utility_image_segment_sam3.json): CheckpointLoaderSimple loads the SAM 3.1 checkpoint (MODEL + CLIP), CLIPTextEncode on that CLIP turns the phrase into conditioning (≤ 32 tokens; comma-separated terms; 'term:N' caps instances), SAM3_Detect returns one mask per instance (individual_masks true) after 2 decoder refinement passes. MaskToImage + SaveImage write one PNG per instance; PhotoCraft reads each as coverage, picks an instance or unions them, and combines with the current selection."
+    "notes": "Node names follow ComfyUI's official 'Image Segment (SAM3)' template (utility_image_segment_sam3.json): CheckpointLoaderSimple loads the SAM 3.1 checkpoint (MODEL + CLIP), CLIPTextEncode on that CLIP turns the phrase into conditioning (≤ 32 tokens; comma-separated terms; 'term:N' caps instances), SAM3_Detect returns one mask per instance (individual_masks true) after 2 decoder refinement passes. MaskToImage + SaveImage write one PNG per instance; PhotoCraft reads each as coverage, picks an instance or unions them, and combines with the current selection.",
+    "creator": "Meta",
+    "description": "Finds the objects a phrase names",
+    "badges": [],
+    "counts": {"max": 1, "default": 1},
+    "estimatedSeconds": {"base": 1.5, "perMegapixel": 0},
+    "pages": ["select", "matte"]
   },
   "graph": {
     "1": { "class_type": "CheckpointLoaderSimple", "inputs": { "ckpt_name": "{{ckpt}}" } },

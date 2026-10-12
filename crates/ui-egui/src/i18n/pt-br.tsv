@@ -2655,3 +2655,33 @@ cameraRaw	Whites	Brancos
 	Server unreachable	Servidor inacessível
 	Timed out	Tempo esgotado
 	Unpin	Desafixar
+	Active layer ({name})	Camada ativa ({name})
+	Add a reference image	Adicionar uma imagem de referência
+	Clear all	Limpar tudo
+	Clear the prompt and remove the reference images?	Limpar o prompt e remover as imagens de referência?
+	Describe what continues the scene…	Descreva como a cena continua…
+	Describe what to generate in the selection…	Descreva o que gerar na seleção…
+	Describe what you want in the image…	Descreva o que você quer na imagem…
+	File: {name}	Arquivo: {name}
+	File…	Arquivo…
+	Fill needs a selection	O preenchimento precisa de uma seleção
+	From Generations	De Gerações
+	Generation: {name}	Geração: {name}
+	Give the expand at least one side	Informe pelo menos um lado para expandir
+	Hide negative prompt	Ocultar prompt negativo
+	Layer: {name}	Camada: {name}
+	More than this model takes	Mais do que este modelo aceita
+	Move left	Mover para a esquerda
+	Move right	Mover para a direita
+	Negative prompt	Prompt negativo
+	New document	Novo documento
+	Only files with a path can be references here	Aqui só arquivos com caminho podem ser referências
+	Open a document first	Abra um documento primeiro
+	Open the prompt in a larger editor	Abrir o prompt em um editor maior
+	Reference images (optional)	Imagens de referência (opcional)
+	This model takes at most {n} reference images	Este modelo aceita no máximo {n} imagens de referência
+	Type a prompt first	Digite um prompt primeiro
+	Type what to generate first	Digite primeiro o que gerar
+	What to avoid…	O que evitar…
+	a layer that is gone	uma camada que não existe mais
+	Enter to generate	Enter para gerar

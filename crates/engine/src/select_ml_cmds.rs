@@ -163,6 +163,7 @@ fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Resu
                 models,
                 size: None,
                 params,
+                references: Vec::new(),
             };
             let resp = match generate_cmds::run_switching(backend.as_ref(), &server, &req, &JobProgress::new(ctx)) {
                 Ok(r) => r,

@@ -159,6 +159,26 @@ Phase 1 ships: `qwen-edit-2511/fill.json`, `qwen-edit-2511/expand.json` (same gr
 `qwen-2.1/edit.json`, `qwen-2.1/rgba.json`, `birefnet/matte.json`. Phase 4 lets users import their
 own.
 
+**Capabilities (PhotoshopEX, plan Phase 2).** Every template's `meta` also says what the
+Generate panel offers for it, all optional (`#[serde(default)]`):
+
+| Field | Meaning |
+|---|---|
+| `creator`, `description`, `badges` | The picker's face: "Alibaba Qwen", one line, free-text badges |
+| `pages` | Where it is offered: `image`, `fill`, `edit`, `expand`, `matte`, `split`, `select`, `enhance` |
+| `references {max, min, placeholders, nodes}` | Reference images: how many, the `LoadImage` placeholders they bind in order, and per placeholder the nodes that exist only for it. A reference not given is pruned with its nodes and every input that linked to them (`Template::fill`); the inputs must be optional (`TextEncodeQwenImageEditPlus`'s `image2`, `TextEncodeQwenImage21`'s `images.image_N`) |
+| `sizes {aspects, min, max, step}` | An image template's aspect ratios, side limits and grid |
+| `counts {max, default}` | Variations per request (default 4 / 1) |
+| `estimatedSeconds {base, perMegapixel, perReference}` | `Meta::estimate_seconds(w, h, count, refs) = (base + perMegapixel × MP + perReference × extra references) × count` on a warm server (a reference-driven text to image's first reference is in `base`); `generate_cmds::estimate_seconds` applies it at the size a fill, expand or edit is sent at, and `generate.models {width, height, count, references}` reports it per template as `eta`. Fitted in `benchmarks.md` §5g |
+
+`Request.references: Vec<Rgba8>` carries the pictures; `ComfyBackend::run` checks the count
+against `min`/`max` before any network call, uploads each content-addressed and binds the
+placeholders. `generate.edit` and `generate.image` take `references` specs (`{"layer"}`,
+`{"path"}`, `{"job", "index"}`, resolved by `generate_refs.rs` to straight RGBA at most 1 MP);
+the result layers remember the specs (`GenerativeInfo.references`) so Generate Similar resolves
+them again. `generate.image` gained `variations` too (results with consecutive seeds, the first
+visible; one new document holds them all with `target: document`).
+
 ### 2.4 Pixels in and out
 
 - **Crop with context.** For Fill/Edit the request image is the flattened composite over the
@@ -351,8 +371,30 @@ Each one is read by code in the same change that adds it, so the audit count doe
   hover and every action in the context menu. A click selects the result's layer while its
   document is open and opens it as a new document otherwise. Only visible lines are laid out
   and thumbnails decode lazily (six per frame at most); the panel re-reads the index once a
-  second for the CLI's rows. Squeezed below 140 pt (its compact height is 80 pt, so Layers keeps
-  eight rows at 900 pt) it becomes one strip of square tiles with tooltips and context menus.
+  second for the CLI's rows. Squeezed below 140 pt (its compact height is 80 pt) it becomes one
+  strip of square tiles with tooltips and context menus.
+- **Window › Generate** (PhotoshopEX, `generate_panel.rs`): the docked prompt box above
+  Generations, on in Essentials. A mode strip (Image · Fill · Edit · Expand); a reference deck
+  (36-px thumbnails numbered as the prompt names them, × and a context menu to reorder or remove;
+  + adds the active layer, a layer, a file, or a stored generation; files dropped on the panel
+  become references) shown when the mode's template takes references (`refs_limit`); a prompt
+  growing from two to six rows with a counter, a larger editor, the Enhance wand and a negative
+  prompt behind a disclosure; the model (Auto, then the page's templates), aspect and size (1K /
+  1.5K / 2K within the template's `sizes`, or a custom size on its grid), count and the image
+  destination (new document / layer) or the expand pads; Clear all; and **Generate · ~16 s**,
+  the estimate from `generate_cmds::estimate_seconds`, which turns into Cancel with the percent
+  while its job runs. Ctrl+Enter generates, Enter too with `integrations.enterToGenerate`. In a
+  group under 150 pt it is one row: mode, prompt, Generate. The task bar under a selection is its
+  compact form: both read and write `UiState::generate` (prompt, per-mode template, count), and
+  `integrations.showGenerativeBar` (`auto` / `always` / `never`; a saved boolean reads as `auto` /
+  `never`) shows the bar in `auto` only while the panel is not on screen; Edit › Generative Fill…
+  then focuses the panel's Fill mode instead of opening the bar.
+- **Dock budget**: with the two generative groups open the filler (Layers) asks for 320 pt instead
+  of 500, the other groups give way to their compact heights before the generative ones, and the
+  generative groups fold to their tab strips when Layers would drop under 260 pt
+  (`Group::yields`, `usable_fill`). Measured: a 1250-pt window keeps the full prompt box; at
+  900 pt both are in their one-row forms and Layers shows five rows (ten without them); at 720 pt
+  they fold and Layers shows three (four without them).
 
 ## 6. Headless and agents
 

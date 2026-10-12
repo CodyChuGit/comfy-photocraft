@@ -2648,3 +2648,33 @@ cameraRaw	Blending	Fusion
 	Server unreachable	Serveur injoignable
 	Timed out	Délai dépassé
 	Unpin	Désépingler
+	Active layer ({name})	Calque actif ({name})
+	Add a reference image	Ajouter une image de référence
+	Clear all	Tout effacer
+	Clear the prompt and remove the reference images?	Effacer le prompt et retirer les images de référence ?
+	Describe what continues the scene…	Décrivez la suite de la scène…
+	Describe what to generate in the selection…	Décrivez ce qu'il faut générer dans la sélection…
+	Describe what you want in the image…	Décrivez ce que vous voulez dans l'image…
+	File: {name}	Fichier : {name}
+	File…	Fichier…
+	Fill needs a selection	Le remplissage demande une sélection
+	From Generations	Depuis Générations
+	Generation: {name}	Génération : {name}
+	Give the expand at least one side	Indiquez au moins un côté à étendre
+	Hide negative prompt	Masquer le prompt négatif
+	Layer: {name}	Calque : {name}
+	More than this model takes	Plus que ce que ce modèle accepte
+	Move left	Déplacer à gauche
+	Move right	Déplacer à droite
+	Negative prompt	Prompt négatif
+	New document	Nouveau document
+	Only files with a path can be references here	Seuls les fichiers avec un chemin peuvent servir de référence ici
+	Open a document first	Ouvrez d'abord un document
+	Open the prompt in a larger editor	Ouvrir le prompt dans un éditeur plus grand
+	Reference images (optional)	Images de référence (facultatif)
+	This model takes at most {n} reference images	Ce modèle accepte au plus {n} images de référence
+	Type a prompt first	Saisissez d'abord un prompt
+	Type what to generate first	Saisissez d'abord ce qu'il faut générer
+	What to avoid…	Ce qu'il faut éviter…
+	a layer that is gone	un calque qui n'existe plus
+	Enter to generate	Générer avec Entrée

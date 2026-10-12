@@ -1,0 +1,1089 @@
+//! Window › Generate (PhotoshopEX): the docked prompt box, ArtCraft-style. One prompt shaped by
+//! the chosen template's capabilities (`generate.models`): a reference deck when the template
+//! takes reference images, aspect and size pickers for text to image, a count, the Enhance wand,
+//! and a Generate button that shows the time estimate (`generate_cmds::estimate_seconds`, the
+//! formula the CLI and scripts use) and turns into Cancel while the job runs. A mode strip picks
+//! Image · Fill · Edit · Expand. When the dock squeezes the group it shows one row: mode, prompt,
+//! Generate.
+//!
+//! The task bar under a selection (`generative_bar`) is this panel's compact form: both read and
+//! write [`GeneratePanel`]'s prompt, per-mode template and count, so they never disagree. Every
+//! run is an engine command (`generate.image`, `.fill`, `.edit`, `.expand`), so the Generations
+//! library records it and automation can do the same through `ui.set {generatePanel}` and
+//! `ui.inspect.generatePanel`.
+
+use std::collections::BTreeMap;
+
+use egui::{Align2, FontId, Rect, RichText, Sense, Stroke, StrokeKind, pos2, vec2};
+use photocraft_engine::jobs::{JobEvent, JobId, JobOutcome};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+use crate::PhotocraftApp;
+use crate::icons;
+use crate::theme::Tokens;
+use crate::widgets;
+
+pub const MODES: [&str; 4] = ["image", "fill", "edit", "expand"];
+/// Sizes the image page offers: the longer side in pixels (the template's limits apply).
+pub const SIZES: [(&str, u32); 3] = [("1K", 1024), ("1.5K", 1536), ("2K", 2048)];
+/// The prompt's length limit (the engine's `MAX_PROMPT_CHARS`).
+pub const MAX_PROMPT: usize = 4000;
+/// Below this content height the group shows its one-row compact form.
+const COMPACT_BELOW: f32 = 150.0;
+/// Reference thumbnails in the deck.
+const THUMB: f32 = 36.0;
+
+/// One template as the panel needs it (from `generate.models`, without contacting the server).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+    pub task: String,
+    pub pages: Vec<String>,
+    pub refs_max: u32,
+    pub refs_min: u32,
+    pub aspects: Vec<String>,
+    pub size_min: u32,
+    pub size_max: u32,
+    pub step: u32,
+    pub counts_max: u32,
+    pub allowed: bool,
+}
+
+/// The Generate panel's state (`UiState::generate`), shared with the task bar.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GeneratePanel {
+    /// `image`, `fill`, `edit` or `expand`.
+    pub mode: String,
+    /// Image mode: `document` (a new document) or `layer` (a layer over the canvas).
+    pub into: String,
+    pub prompt: String,
+    pub negative: String,
+    /// The negative prompt field is open (it is behind a disclosure).
+    pub show_negative: bool,
+    /// Reference images as `references` specs: `{"layer"}`, `{"path"}`, `{"job", "index"}`.
+    pub references: Vec<Value>,
+    /// The template per mode; empty = Auto / the preference's default.
+    pub template: BTreeMap<String, String>,
+    /// Image mode: `"1:1"`, `"3:2"`, … or `"custom"`.
+    pub aspect: String,
+    /// Image mode: `1K`, `1.5K` or `2K` (the longer side).
+    pub size: String,
+    /// Image mode with a custom aspect: the size itself.
+    pub width: u32,
+    pub height: u32,
+    /// Results per run.
+    pub count: u8,
+    /// Rewrite the prompt first; None = Preferences › Enhance prompts.
+    pub enhance: Option<bool>,
+    /// Expand mode: pixels to add on the left, top, right and bottom.
+    pub expand: [u32; 4],
+    /// The job the panel started (its button shows Cancel and the percent meanwhile).
+    #[serde(skip)]
+    pub job: Option<u64>,
+    /// The `generate.enhancePrompt` job of the wand.
+    #[serde(skip)]
+    pub enhance_job: Option<u64>,
+    /// The prompt takes the keyboard focus next frame.
+    #[serde(skip)]
+    pub focus: bool,
+    /// Templates, loaded once.
+    #[serde(skip)]
+    pub catalog: Vec<ModelInfo>,
+    /// Drawn in its compact form last frame.
+    #[serde(skip)]
+    pub compact: bool,
+    /// The frame it was last drawn in (the task bar steps aside meanwhile in `auto` mode).
+    #[serde(skip)]
+    pub drawn_frame: Option<u64>,
+    /// Where files dropped onto the panel become references (last frame's rect).
+    #[serde(skip)]
+    pub drop_rect: Option<egui::Rect>,
+    /// "Clear all" with references attached waits for a confirmation.
+    #[serde(skip)]
+    pub confirm_clear: bool,
+    /// The prompt is open in its large editor.
+    #[serde(skip)]
+    pub editor: bool,
+}
+
+impl Default for GeneratePanel {
+    fn default() -> Self {
+        Self {
+            mode: "image".into(),
+            into: "document".into(),
+            prompt: String::new(),
+            negative: String::new(),
+            show_negative: false,
+            references: Vec::new(),
+            template: BTreeMap::new(),
+            aspect: "1:1".into(),
+            size: "1K".into(),
+            width: 1024,
+            height: 1024,
+            count: 1,
+            enhance: None,
+            expand: [0, 0, 256, 0],
+            job: None,
+            enhance_job: None,
+            focus: false,
+            catalog: Vec::new(),
+            compact: false,
+            drawn_frame: None,
+            drop_rect: None,
+            confirm_clear: false,
+            editor: false,
+        }
+    }
+}
+
+/// The engine command a mode runs.
+pub fn command_of(mode: &str) -> &'static str {
+    match mode {
+        "fill" => "generate.fill",
+        "edit" => "generate.edit",
+        "expand" => "generate.expand",
+        _ => "generate.image",
+    }
+}
+
+fn mode_label(mode: &str) -> &'static str {
+    match mode {
+        "fill" => tl!("Fill"),
+        "edit" => tl!("Edit"),
+        "expand" => tl!("Expand"),
+        _ => tl!("Image"),
+    }
+}
+
+fn hint(mode: &str) -> &'static str {
+    match mode {
+        "fill" => tl!("Describe what to generate in the selection…"),
+        "edit" => tl!("Describe the change…"),
+        "expand" => tl!("Describe what continues the scene…"),
+        _ => tl!("Describe what you want in the image…"),
+    }
+}
+
+/// Load the template list once (offline: `generate.models` without the server).
+pub fn load_catalog(app: &mut PhotocraftApp) {
+    if !app.ui.generate.catalog.is_empty() {
+        return;
+    }
+    let Ok(v) = app.session.execute("generate.models", json!({"probe": false})) else { return };
+    let num = |t: &Value, a: &str, b: &str| t[a][b].as_u64().unwrap_or(0) as u32;
+    app.ui.generate.catalog = v["templates"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|t| {
+                    Some(ModelInfo {
+                        id: t["id"].as_str()?.to_string(),
+                        name: t["name"].as_str().unwrap_or_default().to_string(),
+                        task: t["task"].as_str().unwrap_or_default().to_string(),
+                        pages: t["pages"].as_array().map(|p| p.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default(),
+                        refs_max: num(t, "references", "max"),
+                        refs_min: num(t, "references", "min"),
+                        aspects: t["sizes"]["aspects"]
+                            .as_array()
+                            .map(|p| p.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+                            .unwrap_or_default(),
+                        size_min: num(t, "sizes", "min"),
+                        size_max: num(t, "sizes", "max"),
+                        step: num(t, "sizes", "step"),
+                        counts_max: num(t, "counts", "max").max(1),
+                        allowed: t["allowed"].as_bool().unwrap_or(false),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+}
+
+fn info<'a>(app: &'a PhotocraftApp, id: &str) -> Option<&'a ModelInfo> {
+    app.ui.generate.catalog.iter().find(|m| m.id == id)
+}
+
+/// The template the panel's choice names for `mode` (validated against the catalogue), if any.
+pub fn chosen_template(app: &PhotocraftApp, mode: &str) -> Option<String> {
+    let id = app.ui.generate.template.get(mode).map(|s| s.trim()).filter(|s| !s.is_empty() && *s != photocraft_engine::generate_cmds::AUTO_TEMPLATE)?;
+    info(app, id).filter(|m| m.pages.iter().any(|p| p == mode)).map(|m| m.id.clone())
+}
+
+/// The template a run of `mode` will most likely use: the choice, else the preference's
+/// default, else what `auto` picks first; image mode with references and a default that takes
+/// none goes to the reference template (as the engine does).
+pub fn effective_template(app: &PhotocraftApp, mode: &str) -> String {
+    use photocraft_engine::generate_cmds as g;
+    if let Some(t) = chosen_template(app, mode) {
+        return t;
+    }
+    let prefs = &app.session.prefs().integrations;
+    match mode {
+        "image" => {
+            let t = if prefs.default_image_template.trim().is_empty() {
+                g::DEFAULT_IMAGE_TEMPLATE.to_string()
+            } else {
+                prefs.default_image_template.trim().to_string()
+            };
+            let takes_refs = info(app, &t).is_some_and(|m| m.refs_max > 0);
+            if !app.ui.generate.references.is_empty() && !takes_refs { g::DEFAULT_IMAGE_REF_TEMPLATE.to_string() } else { t }
+        }
+        "fill" => {
+            let t = prefs.default_fill_template.trim();
+            if t.is_empty() || t == g::AUTO_TEMPLATE { g::likely_auto("generate.fill").to_string() } else { t.to_string() }
+        }
+        m => g::likely_auto(command_of(m)).to_string(),
+    }
+}
+
+/// Image mode's output size: the aspect at the size preset (or the custom size), on the
+/// template's grid and within its limits.
+pub fn image_size(app: &PhotocraftApp) -> (u32, u32) {
+    let p = &app.ui.generate;
+    let m = info(app, &effective_template(app, "image")).cloned().unwrap_or_default();
+    let (lo, hi, step) = (m.size_min.max(64), if m.size_max == 0 { 2048 } else { m.size_max }, m.step.max(16));
+    let snap = |v: u32| (v / step * step).clamp(lo, hi.max(lo));
+    if p.aspect == "custom" {
+        return (snap(p.width), snap(p.height));
+    }
+    let long = SIZES.iter().find(|(k, _)| *k == p.size).map_or(1024, |(_, v)| *v);
+    let (aw, ah) = p
+        .aspect
+        .split_once(':')
+        .and_then(|(a, b)| Some((a.trim().parse::<f64>().ok()?, b.trim().parse::<f64>().ok()?)))
+        .filter(|(a, b)| *a > 0.0 && *b > 0.0)
+        .unwrap_or((1.0, 1.0));
+    let (w, h) = if aw >= ah { (f64::from(long), f64::from(long) * ah / aw) } else { (f64::from(long) * aw / ah, f64::from(long)) };
+    (snap(w.round() as u32), snap(h.round() as u32))
+}
+
+/// The area a run of `mode` works on (for the estimate): the image size, the selection with
+/// the fill's margin, the picture, or the picture grown by the pads. None when it can't run.
+fn work_area(app: &PhotocraftApp, mode: &str) -> Option<(u32, u32)> {
+    let d = app.session.active();
+    match mode {
+        "image" => Some(image_size(app)),
+        "fill" => {
+            let b = d?.doc.selection.as_ref()?.content_bounds();
+            let m = (f64::from(b.width().max(b.height())) * 0.25) as u32;
+            (!b.is_empty()).then(|| (b.width() + 2 * m, b.height() + 2 * m))
+        }
+        "edit" => d.map(|d| (d.doc.size.width, d.doc.size.height)),
+        "expand" => {
+            let e = app.ui.generate.expand;
+            d.map(|d| (d.doc.size.width + e[0] + e[2], d.doc.size.height + e[1] + e[3]))
+        }
+        _ => None,
+    }
+}
+
+/// Seconds the next run should take (warm server), for the Generate button.
+pub fn estimate(app: &PhotocraftApp, mode: &str) -> Option<f32> {
+    let (w, h) = work_area(app, mode)?;
+    let count = if mode == "expand" { 1 } else { u32::from(app.ui.generate.count.max(1)) };
+    let refs = if matches!(mode, "image" | "edit") { app.ui.generate.references.len() as u32 } else { 0 };
+    photocraft_engine::generate_cmds::estimate_seconds(&effective_template(app, mode), w, h, count, refs)
+}
+
+/// "~24 s", "~2 min".
+pub fn eta_label(secs: f32) -> String {
+    if !secs.is_finite() || secs <= 0.0 {
+        return String::new();
+    }
+    if secs < 90.0 { format!("~{:.0} s", secs.max(1.0)) } else { format!("~{:.0} min", (secs / 60.0).round().max(2.0)) }
+}
+
+/// Why `mode` can't run now (shown under the strip), if it can't.
+fn blocked(app: &PhotocraftApp, mode: &str) -> Option<&'static str> {
+    let d = app.session.active();
+    match mode {
+        "fill" if d.is_none_or(|d| d.doc.selection.is_none()) => Some(tl!("Fill needs a selection")),
+        "edit" | "expand" if d.is_none() => Some(tl!("Open a document first")),
+        _ => None,
+    }
+}
+
+/// The command and params a Generate of the current state runs.
+pub fn request(app: &PhotocraftApp) -> Result<(&'static str, Value), String> {
+    let p = &app.ui.generate;
+    let mode = p.mode.as_str();
+    let prompt = p.prompt.trim();
+    if prompt.is_empty() && mode != "expand" {
+        return Err(tl!("Type what to generate first").to_string());
+    }
+    if let Some(why) = blocked(app, mode) {
+        return Err(why.to_string());
+    }
+    let mut q = json!({"prompt": prompt});
+    if let Some(t) = chosen_template(app, mode) {
+        q["template"] = json!(t);
+    }
+    if let Some(e) = p.enhance {
+        q["enhance"] = json!(e);
+    }
+    if p.show_negative && !p.negative.trim().is_empty() && mode != "expand" {
+        q["negative"] = json!(p.negative.trim());
+    }
+    let count = p.count.clamp(1, 4);
+    match mode {
+        "image" => {
+            let (w, h) = image_size(app);
+            q["width"] = json!(w);
+            q["height"] = json!(h);
+            q["variations"] = json!(count);
+            q["target"] = json!(if p.into == "layer" && app.session.active().is_some() { "layer" } else { "document" });
+        }
+        "fill" => q["variations"] = json!(count),
+        "edit" => q["variations"] = json!(count),
+        _ => {
+            let e = p.expand;
+            if e.iter().all(|v| *v == 0) {
+                return Err(tl!("Give the expand at least one side").to_string());
+            }
+            q = json!({"prompt": prompt, "left": e[0], "top": e[1], "right": e[2], "bottom": e[3]});
+            if let Some(t) = chosen_template(app, mode) {
+                q["template"] = json!(t);
+            }
+        }
+    }
+    if matches!(mode, "image" | "edit") && !p.references.is_empty() {
+        q["references"] = Value::Array(p.references.clone());
+    }
+    Ok((command_of(mode), q))
+}
+
+/// Generate: run the command for the current state (a background job in the desktop app).
+pub fn generate(app: &mut PhotocraftApp) -> Result<Value, String> {
+    let (cmd, q) = request(app).inspect_err(|e| {
+        app.ui.status = e.clone();
+        app.ui.status_error = true;
+    })?;
+    match app.run(cmd, q) {
+        Ok(v) => {
+            app.ui.generate.job = v.get("pending").and_then(Value::as_bool).filter(|p| *p).and_then(|_| v.get("job").and_then(Value::as_u64));
+            Ok(v)
+        }
+        Err(e) => {
+            crate::notices::error(app, format!("{}: {e}", mode_label(&app.ui.generate.mode)));
+            Err(e)
+        }
+    }
+}
+
+/// The wand: rewrite the prompt with the vision-language model (`generate.enhancePrompt`).
+pub fn enhance(app: &mut PhotocraftApp) -> Result<Value, String> {
+    let prompt = app.ui.generate.prompt.trim().to_string();
+    if prompt.is_empty() || app.ui.generate.enhance_job.is_some() {
+        return Err(tl!("Type a prompt first").to_string());
+    }
+    let task = match app.ui.generate.mode.as_str() {
+        "fill" => "fill",
+        "edit" => "edit",
+        _ => "image",
+    };
+    match app.run("generate.enhancePrompt", json!({"prompt": prompt, "task": task})) {
+        Ok(v) => {
+            if v.get("pending").and_then(Value::as_bool) == Some(true) {
+                app.ui.generate.enhance_job = v.get("job").and_then(Value::as_u64);
+            } else {
+                apply_enhanced(app, &v);
+            }
+            Ok(v)
+        }
+        Err(e) => {
+            crate::notices::error(app, format!("Enhance Prompt: {e}"));
+            Err(e)
+        }
+    }
+}
+
+fn apply_enhanced(app: &mut PhotocraftApp, v: &Value) {
+    match (v["enhanced"].as_bool(), v["prompt"].as_str()) {
+        (Some(true), Some(p)) if !p.trim().is_empty() => app.ui.generate.prompt = p.to_string(),
+        _ => {
+            app.ui.status = tl!("The model could not improve this prompt").to_string();
+            app.ui.status_error = false;
+        }
+    }
+}
+
+/// A job ended: the panel's own run frees the button; the wand's answer replaces the prompt.
+pub fn on_event(app: &mut PhotocraftApp, e: &JobEvent) {
+    if app.ui.generate.job == Some(e.id.0) {
+        app.ui.generate.job = None;
+    }
+    if app.ui.generate.enhance_job == Some(e.id.0) {
+        app.ui.generate.enhance_job = None;
+        match &e.outcome {
+            JobOutcome::Done(v) => apply_enhanced(app, v),
+            JobOutcome::Failed(msg) => crate::notices::error(app, format!("Enhance Prompt: {msg}")),
+            JobOutcome::Cancelled => {}
+        }
+    }
+}
+
+/// Is the panel on screen (shown and not collapsed)? The task bar steps aside then (`auto`).
+pub fn visible(app: &PhotocraftApp) -> bool {
+    app.ui.panels.generate && !app.ui.dock.is_collapsed(crate::dock::Group::Generate) && app.ui.generate.drawn_frame.is_some_and(|f| app.frame <= f + 2)
+}
+
+/// Switch the panel to `mode` and put the keyboard in its prompt (Edit › Generative Fill… while
+/// the panel is on screen, the bar's mode switch).
+pub fn focus_mode(app: &mut PhotocraftApp, mode: &str) {
+    if MODES.contains(&mode) {
+        app.ui.generate.mode = mode.to_string();
+    }
+    app.ui.generate.focus = true;
+}
+
+/// How many references `mode` takes now: the chosen template's limit; with Auto in image mode,
+/// the reference template's (the engine switches to it when references come).
+pub fn refs_limit(app: &PhotocraftApp, mode: &str) -> u32 {
+    let max_of = |id: &str| info(app, id).map_or(0, |m| m.refs_max);
+    match mode {
+        "edit" => max_of(&effective_template(app, "edit")),
+        "image" => match chosen_template(app, "image") {
+            Some(t) => max_of(&t),
+            None => max_of(&effective_template(app, "image")).max(max_of(photocraft_engine::generate_cmds::DEFAULT_IMAGE_REF_TEMPLATE)),
+        },
+        _ => 0,
+    }
+}
+
+/// Add a reference spec, within the template's limit (the status bar says when it is full).
+pub fn add_reference(app: &mut PhotocraftApp, spec: Value) {
+    let mode = app.ui.generate.mode.clone();
+    let max = refs_limit(app, &mode);
+    if app.ui.generate.references.len() >= max as usize {
+        app.ui.status = crate::i18n::fmt(tl!("This model takes at most {n} reference images"), &[("n", &max.to_string())]);
+        app.ui.status_error = true;
+        return;
+    }
+    if !app.ui.generate.references.contains(&spec) {
+        app.ui.generate.references.push(spec);
+    }
+}
+
+/// Files dropped onto the panel: each one (with a path) becomes a reference.
+pub fn add_dropped(app: &mut PhotocraftApp, files: Vec<egui::DroppedFileHandle>) {
+    for f in files {
+        let path = f.path();
+        if path.is_absolute() {
+            add_reference(app, json!({"path": path.to_string_lossy()}));
+        } else {
+            app.ui.status = tl!("Only files with a path can be references here").to_string();
+            app.ui.status_error = true;
+        }
+    }
+}
+
+/// The dock group's body.
+pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    load_catalog(app);
+    app.ui.generate.drawn_frame = Some(app.frame);
+    let t = Tokens::get(ui.ctx());
+    let mut action: Option<Action> = None;
+    let compact = ui.available_height() < COMPACT_BELOW;
+    app.ui.generate.compact = compact;
+    let top = ui.cursor().min;
+    if compact {
+        compact_row(app, ui, &t, &mut action);
+    } else {
+        egui::ScrollArea::vertical().id_salt("generate-panel").auto_shrink([false, true]).show(ui, |ui| full(app, ui, &t, &mut action));
+    }
+    app.ui.generate.drop_rect = Some(Rect::from_min_max(top, ui.min_rect().max.max(top + vec2(ui.available_width(), 0.0))));
+    editor(app, ui.ctx(), &mut action);
+    confirm_clear(app, ui.ctx(), &mut action);
+    if let Some(a) = action {
+        apply(app, a);
+    }
+}
+
+#[derive(Clone, Debug)]
+enum Action {
+    Generate,
+    Cancel(JobId),
+    Enhance,
+    Mode(String),
+    AddRef(Value),
+    RemoveRef(usize),
+    MoveRef(usize, isize),
+    PickFile,
+    ClearAll,
+    ClearAllNow,
+    OpenEditor(bool),
+}
+
+fn apply(app: &mut PhotocraftApp, a: Action) {
+    match a {
+        Action::Generate => {
+            let _ = generate(app);
+        }
+        Action::Cancel(j) => crate::jobs_ui::cancel(app, j),
+        Action::Enhance => {
+            let _ = enhance(app);
+        }
+        Action::Mode(m) => {
+            app.ui.generate.mode = m.clone();
+            // The bar follows for the modes it has.
+            if m == "fill" || m == "edit" {
+                app.ui.generative_bar.mode = m;
+            }
+        }
+        Action::AddRef(spec) => add_reference(app, spec),
+        Action::RemoveRef(i) => {
+            if i < app.ui.generate.references.len() {
+                app.ui.generate.references.remove(i);
+            }
+        }
+        Action::MoveRef(i, d) => {
+            let refs = &mut app.ui.generate.references;
+            let j = i as isize + d;
+            if i < refs.len() && j >= 0 && (j as usize) < refs.len() {
+                refs.swap(i, j as usize);
+            }
+        }
+        Action::PickFile => {
+            if let Some(path) = app.services.pick_open_paths.as_mut().and_then(|f| f()).and_then(|p| p.into_iter().next()) {
+                add_reference(app, json!({"path": path}));
+            }
+        }
+        Action::ClearAll => {
+            if app.ui.generate.references.is_empty() {
+                app.ui.generate.prompt.clear();
+            } else {
+                app.ui.generate.confirm_clear = true;
+            }
+        }
+        Action::ClearAllNow => {
+            app.ui.generate.prompt.clear();
+            app.ui.generate.negative.clear();
+            app.ui.generate.references.clear();
+            app.ui.generate.confirm_clear = false;
+        }
+        Action::OpenEditor(on) => app.ui.generate.editor = on,
+    }
+}
+
+/// The running job the button follows: the panel's own, or a generative job on this document.
+fn running_job(app: &PhotocraftApp) -> Option<photocraft_engine::jobs::JobInfo> {
+    app.ui.generate.job.map(JobId).and_then(|j| app.session.job(j))
+}
+
+fn generate_button(app: &PhotocraftApp, ui: &mut egui::Ui, action: &mut Option<Action>, width: f32) {
+    if let Some(j) = running_job(app) {
+        let label = format!("{} · {:.0}%", tl!("Cancel"), j.progress.clamp(0.0, 1.0) * 100.0);
+        if widgets::secondary_button(ui, &label, width).clicked() {
+            *action = Some(Action::Cancel(j.id));
+        }
+        return;
+    }
+    let mode = app.ui.generate.mode.clone();
+    // A narrow one-line form keeps the prompt usable: the estimate moves to the tooltip.
+    let narrow = width == 0.0 && ui.available_width() < 240.0;
+    let eta = estimate(app, &mode).map(eta_label).filter(|s| !s.is_empty() && !narrow);
+    let label = match eta {
+        Some(e) => format!("{} · {e}", tl!("Generate")),
+        None => tl!("Generate").to_string(),
+    };
+    let can = request(app).is_ok();
+    let r = ui.add_enabled_ui(can, |ui| widgets::primary_button(ui, &label, width)).inner;
+    if r.clicked() {
+        *action = Some(Action::Generate);
+    }
+    if !can && let Err(why) = request(app) {
+        r.on_disabled_hover_text(why);
+    }
+}
+
+/// Enter (or Ctrl+Enter) in a focused prompt generates: Ctrl+Enter always, plain Enter when
+/// `enter` (the one-line form always; the full form when the preference says so).
+fn submitted(ui: &egui::Ui, app: &PhotocraftApp, field: egui::Id, enter: bool) -> bool {
+    let focused = ui.ctx().memory(|m| m.has_focus(field));
+    focused
+        && request(app).is_ok()
+        && ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Enter) || (enter && i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)))
+}
+
+fn compact_row(app: &mut PhotocraftApp, ui: &mut egui::Ui, _t: &Tokens, action: &mut Option<Action>) {
+    let field_id = egui::Id::new("generate-prompt-compact");
+    if submitted(ui, app, field_id, true) {
+        *action = Some(Action::Generate);
+    }
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        let mut mode = app.ui.generate.mode.clone();
+        let options: Vec<(String, &str)> = MODES.iter().map(|m| (m.to_string(), mode_label(m))).collect();
+        if widgets::dropdown(ui, "generate-mode-compact", &mut mode, &options, 70.0) {
+            *action = Some(Action::Mode(mode.clone()));
+        }
+        // The button at the right edge first; the prompt takes what is left.
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            generate_button(app, ui, action, 0.0);
+            let w = ui.available_width().max(40.0);
+            let field = egui::TextEdit::singleline(&mut app.ui.generate.prompt).hint_text(hint(&mode)).desired_width(w).id(field_id);
+            let resp = ui.add(field);
+            if std::mem::take(&mut app.ui.generate.focus) {
+                resp.request_focus();
+            }
+        });
+    });
+}
+
+fn full(app: &mut PhotocraftApp, ui: &mut egui::Ui, t: &Tokens, action: &mut Option<Action>) {
+    let mode = app.ui.generate.mode.clone();
+    // The mode strip.
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
+        for m in MODES {
+            if widgets::pill_tab(ui, mode_label(m), mode == m).clicked() && mode != m {
+                *action = Some(Action::Mode(m.to_string()));
+            }
+        }
+    });
+    if let Some(why) = blocked(app, &mode) {
+        ui.label(RichText::new(why).small().color(t.text_faint));
+    }
+    ui.add_space(4.0);
+    // The reference deck: its own row above the prompt, when the template takes references.
+    let template = effective_template(app, &mode);
+    let refs_max = refs_limit(app, &mode);
+    let has_refs = matches!(mode.as_str(), "image" | "edit") && !app.ui.generate.references.is_empty();
+    if refs_max > 0 || has_refs {
+        deck(app, ui, t, refs_max, action);
+    }
+    // The prompt: grows from two to six rows; the counter; Enter / Ctrl+Enter.
+    let rows = app.ui.generate.prompt.lines().count().clamp(2, 6);
+    let enter_generates = app.session.prefs().integrations.enter_to_generate;
+    let field_id = egui::Id::new("generate-prompt");
+    let submit = submitted(ui, app, field_id, enter_generates);
+    ui.horizontal(|ui| {
+        let w = (ui.available_width() - 24.0).max(80.0);
+        let field = egui::TextEdit::multiline(&mut app.ui.generate.prompt)
+            .hint_text(hint(&mode))
+            .desired_rows(rows)
+            .desired_width(w)
+            .char_limit(MAX_PROMPT * 2)
+            .id(field_id);
+        let resp = ui.add(field);
+        if std::mem::take(&mut app.ui.generate.focus) {
+            resp.request_focus();
+        }
+        ui.vertical(|ui| {
+            if icons::button(ui, "scaling", 20.0, false, tl!("Open the prompt in a larger editor")).clicked() {
+                *action = Some(Action::OpenEditor(true));
+            }
+            let enhancing = app.ui.generate.enhance_job.is_some();
+            let can = !enhancing && !app.ui.generate.prompt.trim().is_empty();
+            if icons::button(ui, "wand-sparkles", 20.0, enhancing, tl!("Enhance prompt")).clicked() && can {
+                *action = Some(Action::Enhance);
+            }
+        });
+    });
+    if submit {
+        *action = Some(Action::Generate);
+    }
+    // Counter and the negative prompt's disclosure.
+    let n = app.ui.generate.prompt.chars().count();
+    ui.horizontal(|ui| {
+        if mode != "expand" {
+            let label = if app.ui.generate.show_negative { tl!("Hide negative prompt") } else { tl!("Negative prompt") };
+            if ui.link(RichText::new(label).small().color(t.text_dim)).clicked() {
+                app.ui.generate.show_negative = !app.ui.generate.show_negative;
+            }
+        }
+        if app.ui.generate.enhance_job.is_some() {
+            ui.label(RichText::new(tl!("Enhancing…")).small().color(t.accent));
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let color = if n > MAX_PROMPT { t.danger } else { t.text_faint };
+            ui.label(RichText::new(format!("{n} / {MAX_PROMPT}")).small().color(color));
+        });
+    });
+    if app.ui.generate.show_negative && mode != "expand" {
+        ui.add(
+            egui::TextEdit::singleline(&mut app.ui.generate.negative)
+                .hint_text(tl!("What to avoid…"))
+                .desired_width(f32::INFINITY)
+                .id_salt("generate-negative"),
+        );
+    }
+    ui.add_space(4.0);
+    options_row(app, ui, &mode, &template, action);
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        if ui.link(RichText::new(tl!("Clear all")).small().color(t.text_dim)).clicked() {
+            *action = Some(Action::ClearAll);
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            generate_button(app, ui, action, 150.0);
+        });
+    });
+}
+
+/// Model, aspect, size, count (and the expand pads / the image destination).
+fn options_row(app: &mut PhotocraftApp, ui: &mut egui::Ui, mode: &str, template: &str, _action: &mut Option<Action>) {
+    let research = app.session.prefs().integrations.allow_research_models;
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        // Model: Auto, then the page's templates (research ones only when allowed).
+        let mut current = app.ui.generate.template.get(mode).cloned().unwrap_or_default();
+        let auto_label = tl!("Auto");
+        let names: Vec<(String, String)> = app
+            .ui
+            .generate
+            .catalog
+            .iter()
+            .filter(|m| m.pages.iter().any(|p| p == mode) && (m.allowed || research || m.id == current))
+            .map(|m| (m.id.clone(), m.name.clone()))
+            .collect();
+        let mut options: Vec<(String, &str)> = vec![(String::new(), auto_label)];
+        options.extend(names.iter().map(|(id, n)| (id.clone(), n.as_str())));
+        if widgets::dropdown(ui, "generate-model", &mut current, &options, 150.0) {
+            app.ui.generate.template.insert(mode.to_string(), current);
+        }
+        if mode == "image" {
+            let m = info(app, template).cloned().unwrap_or_default();
+            let mut aspect = app.ui.generate.aspect.clone();
+            let aspects: Vec<(String, &str)> =
+                m.aspects.iter().map(|a| (a.clone(), a.as_str())).chain(std::iter::once(("custom".to_string(), tl!("Custom")))).collect();
+            if widgets::dropdown(ui, "generate-aspect", &mut aspect, &aspects, 70.0) {
+                app.ui.generate.aspect = aspect.clone();
+            }
+            if aspect == "custom" {
+                let (lo, hi) = (m.size_min.max(64) as f32, if m.size_max == 0 { 2048.0 } else { m.size_max as f32 });
+                let mut w = app.ui.generate.width as f32;
+                let mut h = app.ui.generate.height as f32;
+                widgets::value_field(ui, &mut w, lo..=hi, "", 52.0);
+                ui.label("×");
+                widgets::value_field(ui, &mut h, lo..=hi, "", 52.0);
+                app.ui.generate.width = w.round() as u32;
+                app.ui.generate.height = h.round() as u32;
+            } else {
+                let mut size = app.ui.generate.size.clone();
+                let sizes: Vec<(String, &str)> = SIZES.iter().filter(|(_, v)| m.size_max == 0 || *v <= m.size_max).map(|(k, _)| (k.to_string(), *k)).collect();
+                if widgets::dropdown(ui, "generate-size", &mut size, &sizes, 56.0) {
+                    app.ui.generate.size = size;
+                }
+            }
+        }
+        if mode != "expand" {
+            let max = info(app, template).map_or(4, |m| m.counts_max).clamp(1, 4) as u8;
+            let mut n = app.ui.generate.count.clamp(1, max);
+            let counts: Vec<(u8, &str)> = [(1u8, "1"), (2, "2"), (3, "3"), (4, "4")].into_iter().filter(|(c, _)| *c <= max).collect();
+            widgets::dropdown(ui, "generate-count", &mut n, &counts, 40.0);
+            app.ui.generate.count = n;
+        }
+    });
+    if mode == "image" && app.session.active().is_some() {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            let into = app.ui.generate.into.clone();
+            if widgets::pill_tab(ui, tl!("New document"), into != "layer").clicked() {
+                app.ui.generate.into = "document".into();
+            }
+            if widgets::pill_tab(ui, tl!("Layer"), into == "layer").clicked() {
+                app.ui.generate.into = "layer".into();
+            }
+        });
+    }
+    if mode == "expand" {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+            for (i, label) in [tl!("Left"), tl!("Top"), tl!("Right"), tl!("Bottom")].into_iter().enumerate() {
+                ui.label(RichText::new(label).small());
+                let mut v = app.ui.generate.expand[i] as f32;
+                widgets::value_field(ui, &mut v, 0.0..=4096.0, "", 46.0);
+                app.ui.generate.expand[i] = v.round() as u32;
+            }
+        });
+    }
+}
+
+/// The reference deck: thumbnails with × and context menus, and the + menu.
+fn deck(app: &mut PhotocraftApp, ui: &mut egui::Ui, t: &Tokens, max: u32, action: &mut Option<Action>) {
+    let refs = app.ui.generate.references.clone();
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        for (i, spec) in refs.iter().enumerate() {
+            let (rect, resp) = ui.allocate_exact_size(vec2(THUMB, THUMB), Sense::click());
+            widgets::checker(ui.painter(), rect, 4.0);
+            match reference_texture(app, ui.ctx(), spec) {
+                Some(tex) => {
+                    ui.painter().image(tex, rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), egui::Color32::WHITE);
+                }
+                None => icons::paint(ui, rect, "image", 16.0, t.text_faint),
+            }
+            let over = i as u32 >= max;
+            ui.painter().rect_stroke(rect, 3.0, Stroke::new(1.0, if over { t.danger } else { t.separator }), StrokeKind::Inside);
+            ui.painter().text(rect.left_bottom() + vec2(3.0, -2.0), Align2::LEFT_BOTTOM, (i + 1).to_string(), FontId::proportional(9.0), egui::Color32::WHITE);
+            if resp.hovered() {
+                let x = Rect::from_min_size(pos2(rect.right() - 13.0, rect.top() + 1.0), vec2(12.0, 12.0));
+                ui.painter().circle_filled(x.center(), 6.0, t.chrome.gamma_multiply(0.9));
+                icons::paint(ui, x, "x", 9.0, t.text);
+                if resp.clicked() && ui.input(|i| i.pointer.interact_pos()).is_some_and(|p| x.contains(p)) {
+                    *action = Some(Action::RemoveRef(i));
+                }
+            }
+            let tip = describe_reference(app, spec);
+            let tip = if over { format!("{tip}\n{}", tl!("More than this model takes")) } else { tip };
+            resp.on_hover_text(tip).context_menu(|ui| {
+                if ui.button(tl!("Move left")).clicked() {
+                    *action = Some(Action::MoveRef(i, -1));
+                }
+                if ui.button(tl!("Move right")).clicked() {
+                    *action = Some(Action::MoveRef(i, 1));
+                }
+                if ui.button(tl!("Remove")).clicked() {
+                    *action = Some(Action::RemoveRef(i));
+                }
+            });
+        }
+        if (refs.len() as u32) < max.max(1) {
+            let plus = icons::button(ui, "plus", THUMB, false, tl!("Add a reference image"));
+            egui::Popup::menu(&plus).show(|ui| add_menu(app, ui, action));
+        }
+        if refs.is_empty() {
+            ui.label(RichText::new(tl!("Reference images (optional)")).small().color(t.text_faint));
+        }
+    });
+    ui.add_space(4.0);
+}
+
+fn add_menu(app: &mut PhotocraftApp, ui: &mut egui::Ui, action: &mut Option<Action>) {
+    // The document's pixel layers, active one first.
+    if let Some(d) = app.session.active() {
+        let active = d.active_layer;
+        if let Some(l) = active.and_then(|a| d.doc.layer(a)).filter(|l| l.surface().is_some())
+            && ui.button(crate::i18n::fmt(tl!("Active layer ({name})"), &[("name", &l.name)])).clicked()
+        {
+            *action = Some(Action::AddRef(json!({"layer": l.id.0})));
+        }
+        let layers: Vec<(u64, String)> = d.doc.layers.iter().rev().filter(|l| l.surface().is_some()).map(|l| (l.id.0, l.name.clone())).collect();
+        if !layers.is_empty() {
+            ui.menu_button(tl!("Layer"), |ui| {
+                for (id, name) in layers {
+                    if ui.button(name).clicked() {
+                        *action = Some(Action::AddRef(json!({"layer": id})));
+                    }
+                }
+            });
+        }
+    }
+    if app.services.pick_open_paths.is_some() && ui.button(tl!("File…")).clicked() {
+        *action = Some(Action::PickFile);
+    }
+    let recent: Vec<(u64, String)> = app
+        .session
+        .generations
+        .records()
+        .iter()
+        .rev()
+        .filter(|r| r.result.as_ref().is_some_and(|x| !x.files.is_empty()))
+        .take(12)
+        .map(|r| (r.id, if r.prompt.is_empty() { r.label.clone() } else { r.prompt.chars().take(40).collect() }))
+        .collect();
+    if !recent.is_empty() {
+        ui.menu_button(tl!("From Generations"), |ui| {
+            for (id, label) in recent {
+                if ui.button(label).clicked() {
+                    *action = Some(Action::AddRef(json!({"job": id, "index": 0})));
+                }
+            }
+        });
+    }
+}
+
+fn describe_reference(app: &PhotocraftApp, spec: &Value) -> String {
+    if let Some(id) = spec["layer"].as_u64() {
+        let name = app
+            .session
+            .active()
+            .and_then(|d| d.doc.layer(photocraft_doc::LayerId(id)))
+            .map_or_else(|| tl!("a layer that is gone").to_string(), |l| l.name.clone());
+        return crate::i18n::fmt(tl!("Layer: {name}"), &[("name", &name)]);
+    }
+    if let Some(p) = spec["path"].as_str() {
+        return crate::i18n::fmt(tl!("File: {name}"), &[("name", &crate::file_open::display_name(p))]);
+    }
+    if let Some(id) = spec["job"].as_u64() {
+        let label = app.session.generations.get(id).map_or_else(String::new, |r| r.prompt.clone());
+        return crate::i18n::fmt(tl!("Generation: {name}"), &[("name", &label)]);
+    }
+    String::new()
+}
+
+/// A thumbnail for a reference: the layer's (from the layer cache), a generation's (from the
+/// Generations panel's cache); files show an icon.
+fn reference_texture(app: &mut PhotocraftApp, ctx: &egui::Context, spec: &Value) -> Option<egui::TextureId> {
+    if let Some(id) = spec["layer"].as_u64() {
+        let doc = app.session.active()?.doc.clone();
+        let layer = doc.layer(photocraft_doc::LayerId(id))?.clone();
+        return Some(app.layer_thumb(ctx, &doc, &layer));
+    }
+    if let Some(id) = spec["job"].as_u64() {
+        return crate::generations_panel::thumbnail(app, ctx, id).map(|t| t.id());
+    }
+    None
+}
+
+/// The large prompt editor (⤢).
+fn editor(app: &mut PhotocraftApp, ctx: &egui::Context, action: &mut Option<Action>) {
+    if !app.ui.generate.editor {
+        return;
+    }
+    let mode = app.ui.generate.mode.clone();
+    egui::Modal::new(egui::Id::new("generate-prompt-editor")).show(ctx, |ui| {
+        ui.set_width(560.0);
+        widgets::section_label(ui, mode_label(&mode));
+        ui.add(egui::TextEdit::multiline(&mut app.ui.generate.prompt).hint_text(hint(&mode)).desired_rows(14).desired_width(f32::INFINITY));
+        ui.add_space(8.0);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if widgets::primary_button(ui, tl!("Done"), 80.0).clicked() {
+                *action = Some(Action::OpenEditor(false));
+            }
+        });
+    });
+}
+
+fn confirm_clear(app: &mut PhotocraftApp, ctx: &egui::Context, action: &mut Option<Action>) {
+    if !app.ui.generate.confirm_clear {
+        return;
+    }
+    let mut answer = None;
+    egui::Modal::new(egui::Id::new("generate-clear")).show(ctx, |ui| {
+        ui.set_max_width(320.0);
+        ui.label(tl!("Clear the prompt and remove the reference images?"));
+        ui.add_space(10.0);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            answer = widgets::dialog_buttons(
+                ui,
+                &[
+                    widgets::DialogButton::new(widgets::ButtonRole::Default, tl!("Clear"), 80.0),
+                    widgets::DialogButton::new(widgets::ButtonRole::Cancel, tl!("Cancel"), 80.0),
+                ],
+            );
+        });
+    });
+    match answer {
+        Some(widgets::ButtonRole::Default) => *action = Some(Action::ClearAllNow),
+        Some(_) => app.ui.generate.confirm_clear = false,
+        None => {}
+    }
+}
+
+/// `ui.inspect.generatePanel`.
+pub fn inspect(app: &PhotocraftApp) -> Value {
+    let p = &app.ui.generate;
+    let mode = p.mode.as_str();
+    let template = effective_template(app, mode);
+    let request = request(app);
+    json!({
+        "mode": p.mode, "into": p.into, "prompt": p.prompt, "negative": p.negative, "references": p.references,
+        "template": p.template, "effectiveTemplate": template, "aspect": p.aspect, "size": p.size,
+        "width": p.width, "height": p.height, "imageSize": image_size(app), "count": p.count, "enhance": p.enhance,
+        "expand": p.expand, "job": p.job, "compact": p.compact, "eta": estimate(app, mode), "etaLabel": estimate(app, mode).map(eta_label),
+        "command": request.as_ref().ok().map(|(c, _)| *c), "params": request.as_ref().ok().map(|(_, q)| q.clone()),
+        "blocked": request.err(), "referencesMax": refs_limit(app, mode),
+    })
+}
+
+/// `ui.set {generatePanel: {mode, into, prompt, negative, template, aspect, size, width,
+/// height, count, enhance, references, expand, focus}}`: each field validated before any is
+/// applied; `focus: true` puts the keyboard in the prompt (then `ui.key` Enter with `command`
+/// generates through the panel).
+pub fn set(app: &mut PhotocraftApp, p: &Value) -> Result<(), String> {
+    let Some(v) = p.get("generatePanel") else { return Ok(()) };
+    let o = v.as_object().ok_or("generatePanel must be an object")?;
+    let known = ["mode", "into", "prompt", "negative", "template", "aspect", "size", "width", "height", "count", "enhance", "references", "expand", "focus"];
+    if let Some(k) = o.keys().find(|k| !known.contains(&k.as_str())) {
+        return Err(format!("generatePanel has no field `{k}`"));
+    }
+    load_catalog(app);
+    let mut next = app.ui.generate.clone();
+    if let Some(m) = o.get("mode") {
+        let m = m.as_str().filter(|m| MODES.contains(m)).ok_or("generatePanel.mode must be image, fill, edit or expand")?;
+        next.mode = m.to_string();
+    }
+    if let Some(x) = o.get("into") {
+        next.into = x.as_str().filter(|x| *x == "document" || *x == "layer").ok_or("generatePanel.into must be document or layer")?.to_string();
+    }
+    for (key, slot) in [("prompt", &mut next.prompt), ("negative", &mut next.negative)] {
+        if let Some(x) = o.get(key) {
+            let s = x.as_str().ok_or(format!("generatePanel.{key} must be a string"))?;
+            if s.chars().count() > MAX_PROMPT {
+                return Err(format!("generatePanel.{key} is longer than {MAX_PROMPT} characters"));
+            }
+            *slot = s.to_string();
+        }
+    }
+    if let Some(x) = o.get("template") {
+        let s = x.as_str().ok_or("generatePanel.template must be a template id or empty for Auto")?;
+        if !s.is_empty() && !app.ui.generate.catalog.iter().any(|m| m.id == s && m.pages.contains(&next.mode)) {
+            return Err(format!("`{s}` is not a {} template (see generate.models)", next.mode));
+        }
+        next.template.insert(next.mode.clone(), s.to_string());
+    }
+    if let Some(x) = o.get("aspect") {
+        let s = x.as_str().ok_or("generatePanel.aspect must be like \"3:2\" or \"custom\"")?;
+        let ok = s == "custom" || s.split_once(':').is_some_and(|(a, b)| a.parse::<u32>().is_ok_and(|n| n > 0) && b.parse::<u32>().is_ok_and(|n| n > 0));
+        if !ok {
+            return Err("generatePanel.aspect must be like \"3:2\" or \"custom\"".into());
+        }
+        next.aspect = s.to_string();
+    }
+    if let Some(x) = o.get("size") {
+        next.size = x.as_str().filter(|s| SIZES.iter().any(|(k, _)| k == s)).ok_or("generatePanel.size must be 1K, 1.5K or 2K")?.to_string();
+    }
+    for (key, slot) in [("width", &mut next.width), ("height", &mut next.height)] {
+        if let Some(x) = o.get(key) {
+            *slot = x.as_u64().filter(|n| (64..=4096).contains(n)).ok_or(format!("generatePanel.{key} must be 64..4096"))? as u32;
+        }
+    }
+    if let Some(x) = o.get("count") {
+        next.count = x.as_u64().filter(|n| (1..=4).contains(n)).ok_or("generatePanel.count must be 1 to 4")? as u8;
+    }
+    if let Some(x) = o.get("enhance") {
+        next.enhance = match x {
+            Value::Null => None,
+            Value::Bool(b) => Some(*b),
+            _ => return Err("generatePanel.enhance must be true, false or null (the preference)".into()),
+        };
+    }
+    if let Some(x) = o.get("expand") {
+        let a = x.as_array().filter(|a| a.len() == 4).ok_or("generatePanel.expand must be [left, top, right, bottom]")?;
+        let mut e = [0u32; 4];
+        for (slot, v) in e.iter_mut().zip(a) {
+            *slot = v.as_u64().filter(|n| *n <= 16_384).ok_or("generatePanel.expand values must be 0..16384")? as u32;
+        }
+        next.expand = e;
+    }
+    if let Some(x) = o.get("references") {
+        let a = x.as_array().ok_or("generatePanel.references must be a list")?;
+        if a.len() > 9 {
+            return Err("generatePanel.references takes at most 9".into());
+        }
+        for r in a {
+            let ok = r.as_object().is_some_and(|m| m.len() <= 2 && (r["layer"].is_u64() || r["path"].is_string() || r["job"].is_u64()));
+            if !ok {
+                return Err(format!("not a reference: {r} (use {{\"layer\": id}}, {{\"path\": \"…\"}} or {{\"job\": id, \"index\": i}})"));
+            }
+        }
+        next.references = a.clone();
+    }
+    if let Some(x) = o.get("focus") {
+        next.focus = x.as_bool().ok_or("generatePanel.focus must be true or false")?;
+    }
+    if next.mode != app.ui.generate.mode && (next.mode == "fill" || next.mode == "edit") {
+        app.ui.generative_bar.mode = next.mode.clone();
+    }
+    app.ui.generate = next;
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "generate_panel_tests.rs"]
+mod tests;

@@ -31,6 +31,8 @@ pub enum DropTarget {
     Tabs(usize),
     /// Anywhere else (panels, a dialog, no document): opened like File › Open.
     Elsewhere,
+    /// The Generate panel (PhotoshopEX): each file becomes a reference image.
+    References,
 }
 
 /// A dropped file's name ("dropped" when it has none).
@@ -135,6 +137,7 @@ impl PhotocraftApp {
         let mut slot = match target {
             DropTarget::Tabs(slot) => Some(slot),
             DropTarget::Canvas | DropTarget::Elsewhere => None,
+            DropTarget::References => return crate::generate_panel::add_dropped(self, files),
         };
         for f in files {
             let name = dropped_name(&f);
@@ -157,6 +160,9 @@ impl PhotocraftApp {
         };
         if let Some(strip) = self.tab_strip.as_ref().filter(|s| s.rect.contains(p)) {
             return DropTarget::Tabs(strip.slot(p.x));
+        }
+        if self.ui.generate.drop_rect.is_some_and(|r| r.contains(p)) {
+            return DropTarget::References;
         }
         // The canvas shown last frame may belong to a document closed since.
         if self.session.active().is_some() && self.drop_canvas_rect.is_some_and(|r| r.contains(p)) {

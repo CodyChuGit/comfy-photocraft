@@ -94,6 +94,61 @@ impl Default for Defaults {
     }
 }
 
+/// Reference images a template takes besides its main image (PhotoshopEX's reference deck).
+/// Each placeholder is a `LoadImage` file name; `nodes` lists, per placeholder, the graph nodes
+/// that exist only for it. A reference the caller does not give is pruned: its nodes go, and so
+/// does every input of another node that links to them (the inputs must be optional ones, such
+/// as `TextEncodeQwenImageEditPlus`'s `image2`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct References {
+    /// At most this many (0 = the template takes none).
+    pub max: u32,
+    /// At least this many (a reference-driven template).
+    pub min: u32,
+    /// The placeholders in the order references bind to them.
+    pub placeholders: Vec<String>,
+    pub nodes: BTreeMap<String, Vec<String>>,
+}
+
+/// Output sizes a text-to-image template offers (empty = not an image template).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Sizes {
+    /// `"1:1"`, `"3:2"`, … in the order the picker shows them.
+    pub aspects: Vec<String>,
+    /// Shorter and longer side limits (pixels) and the grid both sides snap to.
+    pub min: u32,
+    pub max: u32,
+    pub step: u32,
+}
+
+/// How many variations one request may ask for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Counts {
+    pub max: u32,
+    pub default: u32,
+}
+
+impl Default for Counts {
+    fn default() -> Self {
+        Self { max: 4, default: 1 }
+    }
+}
+
+/// A run's expected duration on a warm server: `base + perMegapixel × megapixels +
+/// perReference × extra reference images` seconds per variation (measured on the reference
+/// machine, see `docs/comfy/benchmarks.md`). A reference-driven text-to-image template's first
+/// reference stands in for the picture and is in `base`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Estimate {
+    pub base: f32,
+    pub per_megapixel: f32,
+    pub per_reference: f32,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Meta {
@@ -137,6 +192,41 @@ pub struct Meta {
     pub prompt_format_transparent: String,
     #[serde(default)]
     pub notes: String,
+    /// Who made the model ("Alibaba Qwen", "Krea", "Meta"), for the picker.
+    #[serde(default)]
+    pub creator: String,
+    /// One line for the picker ("the fast local edit model").
+    #[serde(default)]
+    pub description: String,
+    /// Free-text badges for the picker (it adds the time estimate itself).
+    #[serde(default)]
+    pub badges: Vec<String>,
+    #[serde(default)]
+    pub references: References,
+    #[serde(default)]
+    pub sizes: Sizes,
+    #[serde(default)]
+    pub counts: Counts,
+    #[serde(default)]
+    pub estimated_seconds: Estimate,
+    /// The Generate panel pages that offer this template: `image`, `fill`, `edit`, `expand`,
+    /// `matte`, `split`, `select`, `enhance`.
+    #[serde(default)]
+    pub pages: Vec<String>,
+}
+
+impl Meta {
+    /// Expected seconds for `count` variations at `width × height` with `references` reference
+    /// images on a warm server (0 when the template has no estimate). One formula for the UI,
+    /// the CLI and scripts.
+    pub fn estimate_seconds(&self, width: u32, height: u32, count: u32, references: u32) -> f32 {
+        let e = &self.estimated_seconds;
+        let mp = f64::from(width) * f64::from(height) / 1_000_000.0;
+        let free = u32::from(!self.needs_image && self.references.min > 0);
+        let extra = f64::from(references.saturating_sub(free));
+        let one = f64::from(e.base) + f64::from(e.per_megapixel) * mp + f64::from(e.per_reference) * extra;
+        (one * f64::from(count.max(1))).clamp(0.0, 1.0e6) as f32
+    }
 }
 
 /// A parsed template.
@@ -170,6 +260,9 @@ const BUILTIN: &[&str] = &[
     include_str!("../workflows/qwen-layered-split.json"),
     include_str!("../workflows/enhance-edit.json"),
     include_str!("../workflows/enhance-image.json"),
+    include_str!("../workflows/qwen-edit-2511-image-ref.json"),
+    include_str!("../workflows/krea2-turbo-image-style.json"),
+    include_str!("../workflows/qwen-2.1-edit.json"),
 ];
 
 /// Verbs a prompt can open with when it is already an edit instruction ("remove the car",
@@ -327,7 +420,47 @@ impl Template {
                 return Err(Error::Template(format!("{}: model slot `{}` is not a placeholder", m.id, slot.placeholder)));
             }
         }
+        let r = &m.references;
+        if r.max as usize > r.placeholders.len() || r.min > r.max {
+            return Err(Error::Template(format!("{}: references need min ≤ max ≤ the placeholders listed", m.id)));
+        }
+        for p in &r.placeholders {
+            if !m.placeholders.contains_key(p) {
+                return Err(Error::Template(format!("{}: reference `{p}` is not a placeholder", m.id)));
+            }
+            for n in r.nodes.get(p).map(Vec::as_slice).unwrap_or_default() {
+                if !nodes.contains_key(n) {
+                    return Err(Error::Template(format!("{}: reference `{p}` names node {n}, which is not in the graph", m.id)));
+                }
+            }
+        }
         Ok(())
+    }
+
+    /// The graph without the nodes of references `bindings` leaves unbound, and without the
+    /// inputs that linked to them (see [`References`]).
+    fn graph_for(&self, bindings: &BTreeMap<String, Value>) -> Value {
+        let r = &self.meta.references;
+        let gone: BTreeSet<&str> = r
+            .placeholders
+            .iter()
+            .filter(|p| !bindings.contains_key(p.as_str()))
+            .flat_map(|p| r.nodes.get(p).into_iter().flatten())
+            .map(String::as_str)
+            .collect();
+        let mut graph = self.graph.clone();
+        if gone.is_empty() {
+            return graph;
+        }
+        if let Some(nodes) = graph.as_object_mut() {
+            nodes.retain(|id, _| !gone.contains(id.as_str()));
+            for n in nodes.values_mut() {
+                if let Some(inputs) = n.get_mut("inputs").and_then(Value::as_object_mut) {
+                    inputs.retain(|_, v| !v.as_array().is_some_and(|a| a.len() == 2 && a.first().and_then(Value::as_str).is_some_and(|id| gone.contains(id))));
+                }
+            }
+        }
+        graph
     }
 
     /// The prompt as the model should see it: `meta.promptFormatImperative` when the prompt
@@ -360,9 +493,10 @@ impl Template {
     }
 
     /// The graph with every placeholder replaced by its typed binding. Unbound placeholders are
-    /// an error; extra bindings are ignored.
+    /// an error, except reference placeholders, whose nodes are pruned (see [`References`]);
+    /// extra bindings are ignored.
     pub fn fill(&self, bindings: &BTreeMap<String, Value>) -> Result<Value> {
-        substitute(&self.graph, bindings, &self.meta.placeholders)
+        substitute(&self.graph_for(bindings), bindings, &self.meta.placeholders)
     }
 
     /// Bindings for the model slots: the template defaults, overridden by `overrides`
@@ -520,6 +654,88 @@ mod tests {
         assert!(version_at_least("v0.37.0", "0.37.0"));
         assert!(!version_at_least("0.25.9", "0.26.0"));
         assert!(version_at_least("garbage", ""));
+    }
+
+    fn bound(t: &Template, extra: &[(&str, Value)]) -> BTreeMap<String, Value> {
+        let mut b = t.model_bindings(&[]).unwrap_or_else(|e| panic!("{e}"));
+        for (k, v) in [("prompt", json!("p")), ("negative", json!("")), ("seed", json!(1)), ("steps", json!(8)), ("cfg", json!(1.0)), ("prefix", json!("x"))] {
+            b.insert(k.into(), v);
+        }
+        for (k, v) in extra {
+            b.insert((*k).to_string(), v.clone());
+        }
+        b
+    }
+
+    #[test]
+    fn unbound_references_are_pruned_with_the_inputs_that_used_them() {
+        let t = find("qwen-edit-2511/edit-lightning-8").unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(t.meta.references.max, 2);
+        // No references: the two LoadImage nodes and the encoders' image2/image3 inputs go.
+        let g = t.fill(&bound(&t, &[("image", json!("in.png"))])).unwrap_or_else(|e| panic!("{e}"));
+        assert!(g.get("20").is_none() && g.get("21").is_none());
+        for n in ["6", "7"] {
+            let inputs = g[n]["inputs"].as_object().unwrap_or_else(|| panic!("inputs"));
+            assert!(inputs.contains_key("image1") && !inputs.contains_key("image2") && !inputs.contains_key("image3"), "{n}: {inputs:?}");
+        }
+        assert!(g.to_string().find("{{").is_none());
+        // One reference: image2 stays, image3 goes.
+        let g = t.fill(&bound(&t, &[("image", json!("in.png")), ("image2", json!("ref.png"))])).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(g["20"]["inputs"]["image"], json!("ref.png"));
+        assert_eq!(g["6"]["inputs"]["image2"], json!(["20", 0]));
+        assert!(g.get("21").is_none() && g["7"]["inputs"].get("image3").is_none());
+        // The 2.1 edit prunes its grouped `images.image_N` keys the same way.
+        let q = find("qwen-2.1/edit").unwrap_or_else(|e| panic!("{e}"));
+        let g = q.fill(&bound(&q, &[("image", json!("in.png")), ("ref2", json!("a.png")), ("ref3", json!("b.png"))])).unwrap_or_else(|e| panic!("{e}"));
+        let keys: Vec<&String> = g["6"]["inputs"].as_object().map(|m| m.keys().filter(|k| k.starts_with("images.")).collect()).unwrap_or_default();
+        assert_eq!(keys.len(), 3, "{keys:?}");
+        // Templates without references fill as before.
+        let k = find("krea2-turbo/image").unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(k.meta.references, References::default());
+        assert!(k.fill(&bound(&k, &[("width", json!(64)), ("height", json!(64))])).is_ok());
+    }
+
+    #[test]
+    fn every_template_says_where_it_shows_and_how_long_it_takes() {
+        for t in builtin() {
+            let m = &t.meta;
+            assert!(!m.pages.is_empty(), "{}: pages", m.id);
+            assert!(!m.creator.is_empty() && !m.description.is_empty(), "{}: creator / description", m.id);
+            assert!(m.estimated_seconds.base > 0.0, "{}: estimate", m.id);
+            assert!(m.counts.default >= 1 && m.counts.default <= m.counts.max, "{}: counts", m.id);
+            if m.task == Task::Image {
+                assert!(!m.sizes.aspects.is_empty() && m.sizes.min > 0 && m.sizes.max >= m.sizes.min && m.sizes.step > 0, "{}: sizes", m.id);
+            }
+            for p in &m.references.placeholders {
+                assert!(m.references.nodes.contains_key(p), "{}: reference {p} lists its nodes", m.id);
+            }
+        }
+        // The one formula: (base + per-MP × MP) × count.
+        let t = find("qwen-edit-2511/fill-lightning-8").unwrap_or_else(|e| panic!("{e}"));
+        assert!((t.meta.estimate_seconds(1000, 1000, 1, 0) - 13.0).abs() < 1e-3);
+        assert!((t.meta.estimate_seconds(1000, 500, 2, 0) - 20.5).abs() < 1e-3);
+        assert!((t.meta.estimate_seconds(0, 0, 0, 0) - 7.5).abs() < 1e-3, "count 0 counts as 1");
+        // Each extra reference image adds its cost; a reference-driven text to image's first
+        // reference stands in for the picture.
+        let e = find("qwen-edit-2511/edit-lightning-8").unwrap_or_else(|e| panic!("{e}"));
+        assert!((e.meta.estimate_seconds(1000, 1000, 1, 2) - (13.0 + 18.0)).abs() < 1e-3);
+        let r = find("qwen-edit-2511/image-ref").unwrap_or_else(|e| panic!("{e}"));
+        assert!((r.meta.estimate_seconds(1000, 1000, 1, 1) - 13.0).abs() < 1e-3);
+        assert!((r.meta.estimate_seconds(1000, 1000, 1, 3) - 31.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn bad_reference_metadata_is_rejected() {
+        let src = find("qwen-edit-2511/edit").unwrap_or_else(|e| panic!("{e}"));
+        let mut t = src.clone();
+        t.meta.references.max = 3;
+        assert!(t.check().is_err(), "more than the placeholders listed");
+        let mut t = src.clone();
+        t.meta.references.nodes.insert("image2".into(), vec!["99".into()]);
+        assert!(t.check().is_err(), "a node not in the graph");
+        let mut t = src;
+        t.meta.references.min = 3;
+        assert!(t.check().is_err(), "min above max");
     }
 
     #[test]

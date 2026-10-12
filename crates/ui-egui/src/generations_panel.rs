@@ -598,6 +598,27 @@ fn card(app: &mut PhotocraftApp, ui: &mut egui::Ui, cell: Rect, r: &Row, t: &Tok
     });
 }
 
+/// Generation `id`'s thumbnail (the Generate panel's reference deck shares the cache).
+pub(crate) fn thumbnail(app: &mut PhotocraftApp, ctx: &egui::Context, id: u64) -> Option<egui::TextureHandle> {
+    let path = app.session.generations.thumbnail_path(id)?;
+    let row = Row {
+        id,
+        status: GenStatus::Done,
+        title: String::new(),
+        template: String::new(),
+        progress: 1.0,
+        message: String::new(),
+        failure: None,
+        size: (0, 0),
+        results: 1,
+        thumbnail: Some(path),
+        selection: false,
+        pinned: false,
+    };
+    let mut decodes = 1;
+    thumb(app, ctx, &row, &mut decodes)
+}
+
 /// The row's thumbnail texture, decoded on first sight (at most `decodes` this frame).
 fn thumb(app: &mut PhotocraftApp, ctx: &egui::Context, r: &Row, decodes: &mut usize) -> Option<egui::TextureHandle> {
     if let Some(t) = app.ui.generations.thumbs.0.get(&r.id) {

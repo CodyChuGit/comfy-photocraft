@@ -25,7 +25,12 @@
     ],
     "promptFormat": "Extend this image beyond its current edges with {prompt}, continuing the scene naturally and matching its perspective, lighting and style.",
     "promptFormatImperative": "{prompt}. Extend the image beyond its current edges, continuing the scene naturally and matching its perspective, lighting and style.",
-    "notes": "Outpainting with the `fill-lightning-8` graph and one difference: the text encoder's reference (image1) is the picture alone, cropped out of the uploaded canvas by ImageCrop at {{ref_x}},{{ref_y}} {{ref_w}}×{{ref_h}} (the engine fills these), while the sampling latent is the whole padded canvas under the noise mask. Shown the padded canvas as its reference, the edit model reproduced the padding (replicated edges or grey) as content; shown the picture alone it paints beyond it."
+    "notes": "Outpainting with the `fill-lightning-8` graph and one difference: the text encoder's reference (image1) is the picture alone, cropped out of the uploaded canvas by ImageCrop at {{ref_x}},{{ref_y}} {{ref_w}}×{{ref_h}} (the engine fills these), while the sampling latent is the whole padded canvas under the noise mask. Shown the padded canvas as its reference, the edit model reproduced the padding (replicated edges or grey) as content; shown the picture alone it paints beyond it.",
+    "creator": "Alibaba Qwen",
+    "description": "Continues the scene past the edges in 8 steps",
+    "badges": ["fast"],
+    "estimatedSeconds": {"base": 7.5, "perMegapixel": 5.5},
+    "pages": ["expand"]
   },
   "graph": {
     "1": { "class_type": "UNETLoader", "inputs": { "unet_name": "{{unet}}", "weight_dtype": "default" } },

@@ -21,7 +21,13 @@
       { "placeholder": "clip", "folder": "text_encoders", "default": "qwen3vl_4b_fp8_scaled.safetensors" },
       { "placeholder": "vae", "folder": "vae", "default": "qwen_image_vae.safetensors" }
     ],
-    "notes": "Node names and settings follow ComfyUI's official 'Text to Image (Krea-2 Turbo)' template (image_krea2_turbo_t2i.json): UNETLoader, CLIPLoader type krea2, CLIPTextEncode, ConditioningZeroOut as the negative (Turbo runs at CFG 1, so a negative prompt has no effect), EmptyLatentImage, KSampler euler/simple 8 steps denoise 1, VAEDecode. The template's optional prompt-enhance step (TextGenerate on the Qwen3-VL encoder) and style LoRA switch are left out; prompt enhancement belongs to the assistant work (proposal L2)."
+    "notes": "Node names and settings follow ComfyUI's official 'Text to Image (Krea-2 Turbo)' template (image_krea2_turbo_t2i.json): UNETLoader, CLIPLoader type krea2, CLIPTextEncode, ConditioningZeroOut as the negative (Turbo runs at CFG 1, so a negative prompt has no effect), EmptyLatentImage, KSampler euler/simple 8 steps denoise 1, VAEDecode. The template's optional prompt-enhance step (TextGenerate on the Qwen3-VL encoder) and style LoRA switch are left out; prompt enhancement belongs to the assistant work (proposal L2).",
+    "creator": "Krea",
+    "description": "Fast, photographic text to image",
+    "badges": ["fast"],
+    "sizes": {"aspects": ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"], "min": 512, "max": 2048, "step": 16},
+    "estimatedSeconds": {"base": 2, "perMegapixel": 5},
+    "pages": ["image"]
   },
   "graph": {
     "1": { "class_type": "UNETLoader", "inputs": { "unet_name": "{{unet}}", "weight_dtype": "default" } },

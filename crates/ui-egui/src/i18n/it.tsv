@@ -2290,3 +2290,33 @@ cameraRaw	Amount	Quantità
 	Server unreachable	Server non raggiungibile
 	Timed out	Tempo scaduto
 	Unpin	Rimuovi fissaggio
+	Active layer ({name})	Livello attivo ({name})
+	Add a reference image	Aggiungi un'immagine di riferimento
+	Clear all	Cancella tutto
+	Clear the prompt and remove the reference images?	Cancellare il prompt e rimuovere le immagini di riferimento?
+	Describe what continues the scene…	Descrivi come prosegue la scena…
+	Describe what to generate in the selection…	Descrivi cosa generare nella selezione…
+	Describe what you want in the image…	Descrivi cosa vuoi nell'immagine…
+	File: {name}	File: {name}
+	File…	File…
+	Fill needs a selection	Il riempimento richiede una selezione
+	From Generations	Da Generazioni
+	Generation: {name}	Generazione: {name}
+	Give the expand at least one side	Indica almeno un lato da estendere
+	Hide negative prompt	Nascondi prompt negativo
+	Layer: {name}	Livello: {name}
+	More than this model takes	Più di quante ne accetta questo modello
+	Move left	Sposta a sinistra
+	Move right	Sposta a destra
+	Negative prompt	Prompt negativo
+	New document	Nuovo documento
+	Only files with a path can be references here	Qui possono essere riferimenti solo i file con un percorso
+	Open a document first	Apri prima un documento
+	Open the prompt in a larger editor	Apri il prompt in un editor più grande
+	Reference images (optional)	Immagini di riferimento (facoltativo)
+	This model takes at most {n} reference images	Questo modello accetta al massimo {n} immagini di riferimento
+	Type a prompt first	Scrivi prima un prompt
+	Type what to generate first	Scrivi prima cosa generare
+	What to avoid…	Cosa evitare…
+	a layer that is gone	un livello che non esiste più
+	Enter to generate	Genera con Invio

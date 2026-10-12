@@ -3257,3 +3257,32 @@ cameraRaw	Roughness	Chropowatość
 	Server unreachable	Serwer nieosiągalny
 	Timed out	Przekroczono limit czasu
 	Unpin	Odepnij
+	Active layer ({name})	Aktywna warstwa ({name})
+	Add a reference image	Dodaj obraz referencyjny
+	Clear all	Wyczyść wszystko
+	Clear the prompt and remove the reference images?	Wyczyścić prompt i usunąć obrazy referencyjne?
+	Describe what continues the scene…	Opisz, jak scena się ciągnie…
+	Describe what to generate in the selection…	Opisz, co wygenerować w zaznaczeniu…
+	Describe what you want in the image…	Opisz, co ma być na obrazie…
+	File: {name}	Plik: {name}
+	File…	Plik…
+	Fill needs a selection	Wypełnienie wymaga zaznaczenia
+	From Generations	Z generacji
+	Generation: {name}	Generacja: {name}
+	Give the expand at least one side	Podaj co najmniej jedną stronę do rozszerzenia
+	Hide negative prompt	Ukryj prompt negatywny
+	Layer: {name}	Warstwa: {name}
+	More than this model takes	Więcej, niż przyjmuje ten model
+	Move left	Przesuń w lewo
+	Move right	Przesuń w prawo
+	Negative prompt	Prompt negatywny
+	Only files with a path can be references here	Referencjami mogą tu być tylko pliki ze ścieżką
+	Open a document first	Najpierw otwórz dokument
+	Open the prompt in a larger editor	Otwórz prompt w większym edytorze
+	Reference images (optional)	Obrazy referencyjne (opcjonalnie)
+	This model takes at most {n} reference images	Ten model przyjmuje najwyżej {n} obrazy referencyjne
+	Type a prompt first	Najpierw wpisz prompt
+	Type what to generate first	Najpierw wpisz, co wygenerować
+	What to avoid…	Czego unikać…
+	a layer that is gone	warstwa, której już nie ma
+	Enter to generate	Generuj klawiszem Enter

@@ -2491,3 +2491,33 @@ cameraRaw	Roughness	Неровность
 	Server unreachable	Сервер недоступен
 	Timed out	Время ожидания истекло
 	Unpin	Открепить
+	Active layer ({name})	Активный слой ({name})
+	Add a reference image	Добавить эталонное изображение
+	Clear all	Очистить всё
+	Clear the prompt and remove the reference images?	Очистить запрос и убрать эталонные изображения?
+	Describe what continues the scene…	Опишите, как продолжается сцена…
+	Describe what to generate in the selection…	Опишите, что создать в выделении…
+	Describe what you want in the image…	Опишите, что должно быть на изображении…
+	File: {name}	Файл: {name}
+	File…	Файл…
+	Fill needs a selection	Для заливки нужно выделение
+	From Generations	Из генераций
+	Generation: {name}	Генерация: {name}
+	Give the expand at least one side	Укажите хотя бы одну сторону для расширения
+	Hide negative prompt	Скрыть отрицательный запрос
+	Layer: {name}	Слой: {name}
+	More than this model takes	Больше, чем принимает эта модель
+	Move left	Сдвинуть влево
+	Move right	Сдвинуть вправо
+	Negative prompt	Отрицательный запрос
+	New document	Новый документ
+	Only files with a path can be references here	Здесь эталонами могут быть только файлы с путём
+	Open a document first	Сначала откройте документ
+	Open the prompt in a larger editor	Открыть запрос в большом редакторе
+	Reference images (optional)	Эталонные изображения (необязательно)
+	This model takes at most {n} reference images	Эта модель принимает не более {n} эталонных изображений
+	Type a prompt first	Сначала введите запрос
+	Type what to generate first	Сначала введите, что создать
+	What to avoid…	Чего избегать…
+	a layer that is gone	удалённый слой
+	Enter to generate	Генерировать клавишей Enter

@@ -1043,8 +1043,9 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             ui.painter().line_segment([r.left_top() - vec2(6.0, 8.0), r.left_bottom() + vec2(-6.0, 8.0)], Stroke::new(1.0, t.separator));
             ui.spacing_mut().item_spacing.y = 4.0;
             use crate::dock::Group;
-            let entries: [(&str, &str, Group); 6] = [
+            let entries: [(&str, &str, Group); 7] = [
                 ("sliders-horizontal", tl!("Properties"), Group::Properties),
+                ("sparkles", tl!("Generate"), Group::Generate),
                 ("grid-2x2", tl!("Generations"), Group::Generations),
                 ("navigation", tl!("Navigator"), Group::Navigator),
                 ("palette", tl!("Color & Swatches"), Group::Color),
@@ -1090,6 +1091,7 @@ fn dock_panels(app: &mut PhotocraftApp, ui: &mut egui::Ui, p: &crate::state::Pan
     let shown: Vec<Group> = [
         (Group::Color, p.color),
         (Group::Properties, t.pro && p.properties),
+        (Group::Generate, p.generate),
         (Group::Generations, p.generations),
         (Group::Character, p.character),
         (Group::Navigator, p.navigator),
@@ -1126,6 +1128,7 @@ fn dock_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, group: crate::dock::Gro
         (Group::Color, _) => color_picker(app, ui),
         (Group::Properties, 0) => properties_body(app, ui),
         (Group::Properties, _) => adjustments_grid(app, ui),
+        (Group::Generate, _) => crate::generate_panel::panel(app, ui),
         (Group::Generations, _) => crate::generations_panel::panel(app, ui),
         (Group::Character, tab) => crate::type_tool::character_panel(app, ui, tab == 1),
         (Group::Navigator, 0) => navigator(app, ui),

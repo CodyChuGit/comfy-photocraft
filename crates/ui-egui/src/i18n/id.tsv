@@ -2635,3 +2635,33 @@ cameraRaw	Blending	Pembauran
 	Server unreachable	Server tidak dapat dijangkau
 	Timed out	Waktu habis
 	Unpin	Lepas sematan
+	Active layer ({name})	Layer aktif ({name})
+	Add a reference image	Tambahkan gambar referensi
+	Clear all	Hapus semua
+	Clear the prompt and remove the reference images?	Hapus prompt dan buang gambar referensi?
+	Describe what continues the scene…	Jelaskan kelanjutan adegan…
+	Describe what to generate in the selection…	Jelaskan apa yang dihasilkan di seleksi…
+	Describe what you want in the image…	Jelaskan apa yang Anda inginkan dalam gambar…
+	File: {name}	File: {name}
+	File…	File…
+	Fill needs a selection	Isian memerlukan seleksi
+	From Generations	Dari Generasi
+	Generation: {name}	Generasi: {name}
+	Give the expand at least one side	Tentukan setidaknya satu sisi untuk diperluas
+	Hide negative prompt	Sembunyikan prompt negatif
+	Layer: {name}	Layer: {name}
+	More than this model takes	Lebih dari yang diterima model ini
+	Move left	Pindah ke kiri
+	Move right	Pindah ke kanan
+	Negative prompt	Prompt negatif
+	New document	Dokumen baru
+	Only files with a path can be references here	Hanya file dengan path yang bisa menjadi referensi di sini
+	Open a document first	Buka dokumen terlebih dahulu
+	Open the prompt in a larger editor	Buka prompt di editor yang lebih besar
+	Reference images (optional)	Gambar referensi (opsional)
+	This model takes at most {n} reference images	Model ini menerima paling banyak {n} gambar referensi
+	Type a prompt first	Ketik prompt terlebih dahulu
+	Type what to generate first	Ketik dulu apa yang akan dihasilkan
+	What to avoid…	Yang perlu dihindari…
+	a layer that is gone	layer yang sudah tidak ada
+	Enter to generate	Enter untuk menghasilkan

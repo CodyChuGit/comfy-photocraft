@@ -163,6 +163,9 @@ pub struct Request {
     /// Template-specific placeholder values (`threshold`, …). The standard bindings win on a
     /// name clash.
     pub params: std::collections::BTreeMap<String, serde_json::Value>,
+    /// Reference images, bound in order to the template's `references.placeholders` (at most
+    /// `references.max`, at least `references.min`).
+    pub references: Vec<Rgba8>,
 }
 
 impl Request {
@@ -180,6 +183,7 @@ impl Request {
             models: Vec::new(),
             size: None,
             params: std::collections::BTreeMap::new(),
+            references: Vec::new(),
         }
     }
 }

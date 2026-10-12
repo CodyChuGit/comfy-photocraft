@@ -730,8 +730,14 @@ pub struct Integrations {
     pub generative_timeout_secs: u32,
     /// Offer models whose licence allows research use only (never pre-selected).
     pub allow_research_models: bool,
-    /// Show the generative task bar under a selection (Generative Fill's prompt and variations).
-    pub show_generative_bar: bool,
+    /// When the generative task bar (the Generate panel's compact form) shows under a
+    /// selection: `auto` = while the Generate panel is collapsed or hidden, `always`, `never`.
+    /// A saved `true` / `false` (before PhotoshopEX's Generate panel) reads as `auto` / `never`.
+    #[serde(deserialize_with = "generative_bar_mode")]
+    pub show_generative_bar: String,
+    /// Enter in the Generate panel's prompt generates (Shift+Enter starts a new line);
+    /// otherwise Ctrl+Enter does and Enter is a new line.
+    pub enter_to_generate: bool,
     /// Rewrite every prompt with the vision-language model before a run (`generate.*`'s
     /// `enhance`): names what the picture shows instead of "this", adds the detail the image
     /// models want. The bar's Enhance button does it on demand when this is off.
@@ -755,11 +761,25 @@ impl Default for Integrations {
             default_image_template: "krea2-turbo/image".into(),
             generative_timeout_secs: 600,
             allow_research_models: false,
-            show_generative_bar: true,
+            show_generative_bar: "auto".into(),
+            enter_to_generate: false,
             enhance_prompts: false,
             model_precision: "auto".into(),
         }
     }
+}
+
+/// `integrations.showGenerativeBar`: see [`Integrations::show_generative_bar`].
+pub const GENERATIVE_BAR_MODES: &[&str] = &["auto", "always", "never"];
+
+/// Read `showGenerativeBar` as one of [`GENERATIVE_BAR_MODES`], accepting the boolean it used to
+/// be (and falling back to `auto` for anything else, so a hand-edited file never fails to load).
+fn generative_bar_mode<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<String, D::Error> {
+    Ok(match serde_json::Value::deserialize(d)? {
+        serde_json::Value::Bool(false) => "never".into(),
+        serde_json::Value::String(s) if GENERATIVE_BAR_MODES.contains(&s.as_str()) => s,
+        _ => "auto".into(),
+    })
 }
 
 /// Edit › Menus: hidden items and item colours, by command id.
@@ -956,6 +976,7 @@ pub fn choices(path: &str) -> Option<&'static [&'static str]> {
         "performance.gpuBackend" => GpuBackend::NAMES,
         "performance.renderingMode" => RenderingMode::NAMES,
         "integrations.modelPrecision" => MODEL_PRECISIONS,
+        "integrations.showGenerativeBar" => GENERATIVE_BAR_MODES,
         _ => return None,
     })
 }

@@ -24,7 +24,12 @@
     ],
     "promptFormat": "Extend this image beyond its current edges with {prompt}, continuing the scene naturally and matching its perspective, lighting and style.",
     "promptFormatImperative": "{prompt}. Extend the image beyond its current edges, continuing the scene naturally and matching its perspective, lighting and style.",
-    "notes": "The 40-step CFG 4 counterpart of `expand-lightning-8` (same graph without the LoRA): the text encoder's reference is the picture alone (ImageCrop at {{ref_x}},{{ref_y}} {{ref_w}}×{{ref_h}}), the sampling latent the padded canvas under the noise mask. `auto` takes the Lightning tier when its LoRA is installed and this one otherwise."
+    "notes": "The 40-step CFG 4 counterpart of `expand-lightning-8` (same graph without the LoRA): the text encoder's reference is the picture alone (ImageCrop at {{ref_x}},{{ref_y}} {{ref_w}}×{{ref_h}}), the sampling latent the padded canvas under the noise mask. `auto` takes the Lightning tier when its LoRA is installed and this one otherwise.",
+    "creator": "Alibaba Qwen",
+    "description": "Continues the scene with 40 steps: slow",
+    "badges": ["40 steps"],
+    "estimatedSeconds": {"base": 20, "perMegapixel": 160},
+    "pages": ["expand"]
   },
   "graph": {
     "1": { "class_type": "UNETLoader", "inputs": { "unet_name": "{{unet}}", "weight_dtype": "default" } },

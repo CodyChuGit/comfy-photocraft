@@ -18,6 +18,7 @@ running it elsewhere. The numbers they produced are in [`../../benchmarks.md`](.
 | `nvfp4-bench.ps1`, `nvfp4-live.ps1` | NVFP4 against fp8, and the policy live (§5f) |
 | `sheet.ps1`, `pixdiff.ps1` | Contact sheets and pixel differences of bench images |
 | `verify-*.ps1`, `snapshots*.ps1` | UI verification runs through the control protocol |
+| `generate-panel-live.ps1` | Plan Phase 2 acceptance (2026-10-11): the Generate panel driven through its own Generate path (`ui.set generatePanel` with `focus`, then Ctrl+Enter): a two-reference 2511 edit, an image from a layer reference, a fill timed against the button's estimate. Uses three bench images through `--automation-read-root` |
 | `generations-live.ps1` | Plan Phase 1 acceptance (2026-10-11): the release GUI with its own config folder in `%TEMP%`, fill/edit/image as background jobs, Place after close, a dead server URL, a restart; screenshots in the work folder. Relative paths, runs from any checkout |
 | `append-translations.ps1` + `pref-translations.tsv` | Append `lang<TAB>source<TAB>translation` rows to the 13 TSVs |
 | `enhance-edit-system.txt`, `enhance-t2i-system.txt` | ComfyUI's shipped enhancer prompts, for reference (too long for the 4B model) |

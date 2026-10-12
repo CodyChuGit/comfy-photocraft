@@ -339,6 +339,26 @@ int8 and w4a8 encoders instead, so neither has an alternative yet. Live through 
 (`nvfp4-live.ps1`): the server loaded `qwen_2.5_vl_7b_nvfp4` for an edit and
 `krea2_turbo_nvfp4` for an image with nothing but the default preference.
 
+## 5g. Reference images and the time estimate (PhotoshopEX, 2026-10-12)
+
+Warm runs through the release CLI, one process, ComfyUI on the 5090 (NVFP4 text encoder by
+the `auto` policy): `generate.edit` on the 1024² lighthouse picture (sent at 880×880 = 0.77 MP),
+Lightning 8, the same prompt, with 0, 1 and 2 file references (1024² each, scaled to ≤ 1 MP):
+
+| References | Run 1 | Run 2 |
+|---|---|---|
+| none | 11.9 s | 11.7 s |
+| one | 19.9 s | 20.0 s |
+| two | 30.1 s | 30.3 s |
+
+Each reference image adds about 9 s (another megapixel of tokens through the encoder and the
+reference latents). The templates' `estimatedSeconds` were fitted to these runs and the Generate
+panel's fills: the Lightning-8 family is `7.5 s + 5.5 s/MP + 9 s per extra reference` (a fill at
+~0.2 MP: 8.7 s measured, 8.6 s estimated; the edits above: 11.7 / 20.7 / 29.7 s estimated). A
+reference-driven text to image (`qwen-edit-2511/image-ref`) counts its first reference as the
+picture: 12.1 s measured for a 3:2 1K image from one reference, 11.3 s estimated. The 40-step
+tier's per-reference cost is scaled by its steps and CFG passes (90 s, not measured).
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP

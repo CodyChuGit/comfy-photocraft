@@ -203,6 +203,23 @@ alternative in the slot's `nvfp4` field; Preferences › AI Integrations › Mod
 (`auto` = Blackwell GPUs only, by the device name ComfyUI reports). Same output, less memory;
 only Krea 2 gets faster.
 
+### Reference images (PhotoshopEX's reference deck, checked 2026-10-11)
+
+Which templates take reference images (`meta.references`; `generate.models` reports them), each
+verified against the development PC's ComfyUI 0.39 `/object_info` on 2026-10-11:
+
+| Template | Licence | References | How they enter the graph | Run live |
+|---|---|---|---|---|
+| `qwen-edit-2511/edit-lightning-8`, `qwen-edit-2511/edit` | Apache-2.0 | 0–2 (image 2, image 3) | `image2` / `image3` of both `TextEncodeQwenImageEditPlus` encoders, straight from `LoadImage`, as ComfyUI's official 2511 graph wires its extra images (optional inputs; an unused slot is pruned) | yes: a two-reference edit (a fox and a compass into the lighthouse picture), 39.5 s with the model load |
+| `qwen-edit-2511/image-ref` (new) | Apache-2.0 | 1–3 | the references on `image1`…`image3`, an `EmptySD3LatentImage` of the asked size: the official 2511 nodes in the pattern of the official Krea 2 style-reference graph | yes: 12.1 s for a 3:2 image at 1K from one layer |
+| `krea2-turbo/image-style` (new) | Krea 2 Community | 1–2 | the official "Image Style Reference (Krea-2 Turbo)" subgraph: Ostris's `krea2_style_reference.safetensors` LoRA (Hugging Face `ostris/krea2_turbo_style_reference`, licence metadata `krea-2-community-license`, trained for one or two references) on the Turbo model, references through `TextEncodeQwenImageEditPlus` | no: the LoRA is not installed on the development PC (BYOB) |
+| `qwen-2.1/edit` (new) | Qwen Research (opt-in) | 0–9 (image 2…image 10) | `TextEncodeQwenImage21`'s grouped `images.image_N`, the official 2.1 edit template's limit of ten images | not yet |
+
+The engine's `references` param takes `{"layer": id}`, `{"path": "…"}` (refused to automation)
+or `{"job": id, "index": i}` (a stored generation); each is scaled to at most 1 MP before upload.
+`generate.image` with references and no template named switches from a default that takes none
+(Krea 2) to `qwen-edit-2511/image-ref`.
+
 ## 5. What the picker must show
 
 For each installed model the UI shows: name, task (generate / edit / matte / upscale), licence

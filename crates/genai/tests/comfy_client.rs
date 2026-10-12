@@ -87,6 +87,41 @@ fn a_run_uploads_queues_waits_and_downloads() {
 }
 
 #[test]
+fn references_upload_and_bind_in_order_and_their_limits_are_checked_first() {
+    let fake = FakeComfy::start().unwrap_or_else(|e| panic!("{e}"));
+    let b = backend(&fake.url);
+    let mut r = Request::new("qwen-edit-2511/edit-lightning-8", "put the hat from image 2 on him");
+    r.image = Some(Rgba8::solid(40, 24, [10, 20, 30, 255]).unwrap_or_else(|e| panic!("{e}")));
+    r.references =
+        vec![Rgba8::solid(16, 16, [1, 2, 3, 255]).unwrap_or_else(|e| panic!("{e}")), Rgba8::solid(8, 8, [4, 5, 6, 255]).unwrap_or_else(|e| panic!("{e}"))];
+    let resp = b.run(&r, &NoProgress).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!((resp.images[0].width, resp.images[0].height), (40, 24), "the picture's size, not a reference's");
+    {
+        let st = fake.state();
+        assert_eq!(st.uploads.len(), 3, "the picture and two references");
+        let graph = &st.prompts[0].1;
+        assert_eq!(graph["20"]["inputs"]["image"], st.uploads[1].0);
+        assert_eq!(graph["21"]["inputs"]["image"], st.uploads[2].0);
+        assert_eq!(graph["6"]["inputs"]["image3"], serde_json::json!(["21", 0]));
+    }
+    // Too many, or none for a reference-driven template: refused before any upload.
+    r.references.push(Rgba8::solid(8, 8, [7, 8, 9, 255]).unwrap_or_else(|e| panic!("{e}")));
+    assert!(matches!(b.run(&r, &NoProgress), Err(Error::Request(m)) if m.contains("at most 2")));
+    let mut t2i = Request::new("qwen-edit-2511/image-ref", "a cat");
+    t2i.size = Some((64, 48));
+    assert!(matches!(b.run(&t2i, &NoProgress), Err(Error::Request(m)) if m.contains("at least 1")));
+    assert_eq!(fake.state().uploads.len(), 3);
+    // A reference-driven text to image: the empty latent's size.
+    t2i.references = vec![Rgba8::solid(30, 30, [9, 9, 9, 255]).unwrap_or_else(|e| panic!("{e}"))];
+    let resp = b.run(&t2i, &NoProgress).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!((resp.images[0].width, resp.images[0].height), (64, 48));
+    let st = fake.state();
+    let graph = &st.prompts.last().unwrap_or_else(|| panic!("a prompt")).1;
+    assert!(graph.get("20").is_none() && graph.get("21").is_none(), "unused slots pruned");
+    assert_eq!(graph["10"]["inputs"]["width"], 64);
+}
+
+#[test]
 fn polling_alone_finishes_a_run_without_a_socket() {
     let fake = FakeComfy::start_with(Options { websocket: false, delay_ms: 300, ..Options::default() }).unwrap_or_else(|e| panic!("{e}"));
     let b = backend(&fake.url);

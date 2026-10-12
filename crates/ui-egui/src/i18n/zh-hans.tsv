@@ -2225,3 +2225,33 @@ cameraRaw	Blending	混合
 	Server unreachable	无法连接服务器
 	Timed out	已超时
 	Unpin	取消固定
+	Active layer ({name})	当前图层（{name}）
+	Add a reference image	添加参考图像
+	Clear all	全部清除
+	Clear the prompt and remove the reference images?	清除提示词并移除参考图像？
+	Describe what continues the scene…	描述场景如何延续…
+	Describe what to generate in the selection…	描述要在选区中生成的内容…
+	Describe what you want in the image…	描述你想要的图像内容…
+	File: {name}	文件：{name}
+	File…	文件…
+	Fill needs a selection	填充需要选区
+	From Generations	来自生成记录
+	Generation: {name}	生成：{name}
+	Give the expand at least one side	请至少为扩展指定一侧
+	Hide negative prompt	隐藏负面提示词
+	Layer: {name}	图层：{name}
+	More than this model takes	超出此模型可接受的数量
+	Move left	左移
+	Move right	右移
+	Negative prompt	负面提示词
+	New document	新建文档
+	Only files with a path can be references here	此处只有带路径的文件才能作为参考
+	Open a document first	请先打开文档
+	Open the prompt in a larger editor	在更大的编辑器中打开提示词
+	Reference images (optional)	参考图像（可选）
+	This model takes at most {n} reference images	此模型最多接受 {n} 张参考图像
+	Type a prompt first	请先输入提示词
+	Type what to generate first	请先输入要生成的内容
+	What to avoid…	要避免的内容…
+	a layer that is gone	已不存在的图层
+	Enter to generate	按 Enter 键生成

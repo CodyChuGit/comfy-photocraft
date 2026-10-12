@@ -151,6 +151,8 @@ fn on_event(app: &mut PhotocraftApp, e: JobEvent) {
     crate::generative_bar::on_event(app, &e);
     // Window › Generations: unread results, fresh thumbnails.
     crate::generations_panel::on_event(app, &e);
+    // Window › Generate: its own run and the wand.
+    crate::generate_panel::on_event(app, &e);
     // Camera Raw's open-time re-develop and its final step.
     if crate::camera_raw_ui::on_redevelop_event(app, &e) {
         return;

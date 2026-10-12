@@ -322,6 +322,9 @@ pub struct Panels {
     /// it existed gets it too).
     #[serde(default = "shown_by_default")]
     pub generations: bool,
+    /// Window › Generate: the Generate dock group (the prompt box; on in Essentials).
+    #[serde(default = "shown_by_default")]
+    pub generate: bool,
 }
 
 fn shown_by_default() -> bool {
@@ -343,6 +346,7 @@ impl Default for Panels {
             character: false,
             toolbar_double: false,
             generations: true,
+            generate: true,
         }
     }
 }
@@ -716,6 +720,8 @@ pub struct DockTabs {
     pub character: usize,
     /// Generations (one tab).
     pub generations: usize,
+    /// Generate (one tab).
+    pub generate: usize,
 }
 
 /// Color panel state.
@@ -766,6 +772,9 @@ pub struct UiState {
     /// Window › Generations: view mode, last viewed result, thumbnails (`generations_panel`).
     #[serde(default)]
     pub generations: crate::generations_panel::GenerationsUi,
+    /// Window › Generate: the prompt box's state, shared with the task bar (`generate_panel`).
+    #[serde(default)]
+    pub generate: crate::generate_panel::GeneratePanel,
     /// Smoothing is a per-tool option (Brush and Eraser each keep theirs): the tool whose
     /// smoothing the session brush holds, and the other tools' saved values.
     #[serde(default)]
@@ -888,6 +897,7 @@ impl Default for UiState {
             canvas_tool_menu: None,
             generative_bar: Default::default(),
             generations: Default::default(),
+            generate: Default::default(),
             smoothing_tool: None,
             tool_smoothing: Vec::new(),
             clone_source: None,

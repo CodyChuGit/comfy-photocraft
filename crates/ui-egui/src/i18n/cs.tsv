@@ -2217,3 +2217,33 @@ cameraRaw	Color	Barvy
 	Server unreachable	Server je nedostupný
 	Timed out	Vypršel časový limit
 	Unpin	Odepnout
+	Active layer ({name})	Aktivní vrstva ({name})
+	Add a reference image	Přidat referenční obrázek
+	Clear all	Vymazat vše
+	Clear the prompt and remove the reference images?	Vymazat výzvu a odebrat referenční obrázky?
+	Describe what continues the scene…	Popište, jak scéna pokračuje…
+	Describe what to generate in the selection…	Popište, co vygenerovat ve výběru…
+	Describe what you want in the image…	Popište, co chcete na obrázku…
+	File: {name}	Soubor: {name}
+	File…	Soubor…
+	Fill needs a selection	Výplň potřebuje výběr
+	From Generations	Z generování
+	Generation: {name}	Generování: {name}
+	Give the expand at least one side	Zadejte pro rozšíření alespoň jednu stranu
+	Hide negative prompt	Skrýt negativní výzvu
+	Layer: {name}	Vrstva: {name}
+	More than this model takes	Více, než tento model přijme
+	Move left	Posunout doleva
+	Move right	Posunout doprava
+	Negative prompt	Negativní výzva
+	New document	Nový dokument
+	Only files with a path can be references here	Referencí zde mohou být jen soubory s cestou
+	Open a document first	Nejprve otevřete dokument
+	Open the prompt in a larger editor	Otevřít výzvu ve větším editoru
+	Reference images (optional)	Referenční obrázky (volitelné)
+	This model takes at most {n} reference images	Tento model přijme nejvýše {n} referenčních obrázků
+	Type a prompt first	Nejprve napište výzvu
+	Type what to generate first	Nejprve napište, co vygenerovat
+	What to avoid…	Čemu se vyhnout…
+	a layer that is gone	vrstva, která už neexistuje
+	Enter to generate	Generovat klávesou Enter

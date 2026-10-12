@@ -2800,3 +2800,32 @@ cameraRaw	Color	색상
 	Server unreachable	서버에 연결할 수 없음
 	Timed out	시간 초과
 	Unpin	고정 해제
+	Active layer ({name})	활성 레이어({name})
+	Add a reference image	참조 이미지 추가
+	Clear all	모두 지우기
+	Clear the prompt and remove the reference images?	프롬프트를 지우고 참조 이미지를 제거할까요?
+	Describe what continues the scene…	장면이 이어지는 모습을 설명하세요…
+	Describe what to generate in the selection…	선택 영역에 생성할 내용을 설명하세요…
+	Describe what you want in the image…	이미지에 원하는 내용을 설명하세요…
+	File: {name}	파일: {name}
+	File…	파일…
+	Fill needs a selection	채우기에는 선택 영역이 필요합니다
+	From Generations	생성 기록에서
+	Generation: {name}	생성: {name}
+	Give the expand at least one side	확장할 면을 하나 이상 지정하세요
+	Hide negative prompt	부정 프롬프트 숨기기
+	Layer: {name}	레이어: {name}
+	More than this model takes	이 모델이 받는 수보다 많습니다
+	Move left	왼쪽으로 이동
+	Move right	오른쪽으로 이동
+	Negative prompt	부정 프롬프트
+	Only files with a path can be references here	여기서는 경로가 있는 파일만 참조로 쓸 수 있습니다
+	Open a document first	먼저 문서를 여세요
+	Open the prompt in a larger editor	프롬프트를 큰 편집기에서 열기
+	Reference images (optional)	참조 이미지(선택)
+	This model takes at most {n} reference images	이 모델은 참조 이미지를 최대 {n}개까지 받습니다
+	Type a prompt first	먼저 프롬프트를 입력하세요
+	Type what to generate first	먼저 생성할 내용을 입력하세요
+	What to avoid…	피할 내용…
+	a layer that is gone	없어진 레이어
+	Enter to generate	Enter 키로 생성

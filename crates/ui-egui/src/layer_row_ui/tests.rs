@@ -48,7 +48,7 @@ fn harness(session: photocraft_engine::Session, ppp: f32, theme: &str, dock_widt
     let ctx = h.ctx.clone();
     let (req, _rx) = crate::control::ControlRequest::new(
         "ui.set",
-        json!({"theme": theme, "dockWidth": dock_width, "dock": {"collapsed": ["color", "properties", "generations", "history", "navigator"]}}),
+        json!({"theme": theme, "dockWidth": dock_width, "dock": {"collapsed": ["color", "properties", "generate", "generations", "history", "navigator"]}}),
     );
     crate::control::handle(h.state_mut(), &ctx, &req);
     h.run_steps(8);

@@ -4,6 +4,62 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-12: plan Phase 2, the Generate panel and reference images
+
+Built [`plan-artcraft-experience.md`](plan-artcraft-experience.md) §4.
+
+- **Template capabilities** (genai `template.rs`): `creator`, `description`, `badges`, `pages`,
+  `references {max, min, placeholders, nodes}`, `sizes`, `counts`, `estimatedSeconds {base,
+  perMegapixel}` on every shipped template (values from `benchmarks.md`), `Meta::estimate_seconds`.
+  Reference placeholders a request leaves unbound are pruned with their nodes and the inputs that
+  linked to them, so one graph serves zero to N references.
+- **References**: `Request.references` (checked against min/max before any network call,
+  uploaded, bound in order). The 2511 edit templates take two (`image2`/`image3`, wired as the
+  official graph does). New templates, each checked against the live `/object_info`:
+  `qwen-edit-2511/image-ref` (permissive: 1–3 references into an empty latent of the asked size),
+  `krea2-turbo/image-style` (the official style-reference graph with Ostris's LoRA, Krea 2
+  Community licence per its Hugging Face metadata; not run, the LoRA is not installed),
+  `qwen-2.1/edit` (research opt-in, up to nine references). Engine: `references` on
+  `generate.edit` / `generate.image` as `{"layer"}` / `{"path"}` / `{"job","index"}`
+  (`generate_refs.rs`, ≤ 1 MP each), remembered on the layer for Generate Similar; `generate.image`
+  switches Krea 2 to the reference template when references come with no template named, and
+  gained `variations`. `generate.models {width, height, count}` reports capabilities and `eta`;
+  `generate_cmds::estimate_seconds` / `likely_auto` are the shared formula. Automation refuses
+  `{"path"}` references.
+- **Window › Generate** (`generate_panel.rs`): mode strip, reference deck (+ menu: active layer,
+  a layer, a file, a stored generation; drops onto the panel become references through a new
+  `DropTarget::References`), the growing prompt with counter / larger editor / wand / negative
+  disclosure, model / aspect / size / count / destination / expand pads, Clear all (confirmed with
+  references), and **Generate · ~16 s** (Cancel with the percent while running). Ctrl+Enter
+  generates; Enter too with the new preference `enterToGenerate`. One-row form under 150 pt.
+- **The task bar is the panel's compact form**: prompt, per-mode template and count live in
+  `UiState::generate`; `ui.set generative*` stay as aliases and `ui.inspect.generativeBar` still
+  reports them. `showGenerativeBar` became `auto` / `always` / `never` (a saved boolean reads as
+  `auto` / `never`); in `auto` the bar steps aside while the panel is on screen and Edit ›
+  Generative Fill… focuses the panel's Fill mode.
+- **Dock**: Generate sits above Generations. With both open Layers asks for 320 pt instead of 500,
+  the other groups give way first, and the generative groups fold to their tab strips when Layers
+  would drop under 260 pt. Measured: full prompt box on a 1250-pt window; one-row forms and five
+  Layers rows at 900 pt (ten without them); folded and three rows at 720 pt (four without).
+- **Live** (`docs/comfy/bench/scripts/generate-panel-live.ps1`, release GUI on the RTX 5090,
+  through the panel's own Generate path): a 2511 edit with two layer references ("put the fox
+  from image 2 on the rocks … holding the compass from image 3") placed both, 39.5 s including
+  the model load; an image from one layer reference into a new document 12.1 s against 14.9 s
+  estimated; a fill 9.3 s cold and 8.7 s warm against 8.7 s estimated (the plan asked for
+  within 50 %). Then warm CLI runs measured what a reference costs (`benchmarks.md` §5g): 11.8 /
+  19.9 / 30.2 s with 0 / 1 / 2 references, so `estimatedSeconds` gained `perReference` (9 s on
+  the Lightning tier) and the Lightning-8 family was refitted to `7.5 s + 5.5 s/MP`: the edits now
+  estimate 11.7 / 20.7 / 29.7 s, the reference image 11.3 s, the fill 8.6 s.
+- **Tests**: genai 19 + 12 client (pruning, estimate, bad reference metadata, references bound in
+  order and limits checked first); engine `generate_refs_tests.rs` (5: edit references and
+  Similar, limits and malformed specs, the image template switch and document variations, file
+  and stored-generation references, the one formula); UI `generate_panel_tests.rs` (6) and the
+  updated bar tests; dock tests for the new budget. Workspace gates: clippy, fmt, layers, wasm,
+  `panic_hunt`; parity 637 / 637; scorecard 57 of 150 unread (the new preference is read).
+- **Open**: `qwen-2.1/edit` and the Krea style template are not run live (their per-reference
+  costs are guesses); the model picker is still a dropdown (plan Phase 3); the first run after a
+  model switch takes 20–30 s longer than the estimate, which knows only warm servers.
+
 ## 2026-10-11 (night): plan Phase 1, the Generations library and panel
 
 Built [`plan-artcraft-experience.md`](plan-artcraft-experience.md) §3 after the owner answered

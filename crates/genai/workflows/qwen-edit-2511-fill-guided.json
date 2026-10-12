@@ -24,7 +24,12 @@
     ],
     "promptFormat": "Image 2 is a mask of image 1: the white area marks the only part of image 1 to change. Edit image 1 so that the white area of image 2 shows {prompt}, fitting the scene's perspective, lighting and surroundings naturally. Keep everything outside that area exactly as it is.",
     "promptFormatImperative": "Image 2 is a mask of image 1: the white area marks the only part of image 1 to change. Inside that area: {prompt}. Fit the result to the scene naturally and keep everything outside that area exactly as it is.",
-    "notes": "`fill-lightning-8` plus the selection mask as `image2` of both TextEncodeQwenImageEditPlus nodes (scaled like image 1) and an instruction that names it, so the model knows where the edit goes: the latent noise mask alone confines the change but does not tell the model about it. Measured 2026-10-09 (docs/comfy/benchmarks.md §3): the best placement of the 2511 variants, at 1.5–3× the time of `fill-lightning-8` because the second reference image adds another ~1 MP of tokens. Opt-in from the picker; `auto` does not choose it."
+    "notes": "`fill-lightning-8` plus the selection mask as `image2` of both TextEncodeQwenImageEditPlus nodes (scaled like image 1) and an instruction that names it, so the model knows where the edit goes: the latent noise mask alone confines the change but does not tell the model about it. Measured 2026-10-09 (docs/comfy/benchmarks.md §3): the best placement of the 2511 variants, at 1.5–3× the time of `fill-lightning-8` because the second reference image adds another ~1 MP of tokens. Opt-in from the picker; `auto` does not choose it.",
+    "creator": "Alibaba Qwen",
+    "description": "Shows the model where the selection is: best placement, slower",
+    "badges": ["guided"],
+    "estimatedSeconds": {"base": 16, "perMegapixel": 6},
+    "pages": ["fill"]
   },
   "graph": {
     "1": { "class_type": "UNETLoader", "inputs": { "unet_name": "{{unet}}", "weight_dtype": "default" } },

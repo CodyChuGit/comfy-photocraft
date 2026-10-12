@@ -2256,3 +2256,33 @@
 	Server unreachable	Server nicht erreichbar
 	Timed out	Zeitüberschreitung
 	Unpin	Lösen
+	Active layer ({name})	Aktive Ebene ({name})
+	Add a reference image	Referenzbild hinzufügen
+	Clear all	Alles löschen
+	Clear the prompt and remove the reference images?	Prompt löschen und Referenzbilder entfernen?
+	Describe what continues the scene…	Beschreiben Sie, wie die Szene weitergeht…
+	Describe what to generate in the selection…	Beschreiben Sie, was in der Auswahl entstehen soll…
+	Describe what you want in the image…	Beschreiben Sie, was das Bild zeigen soll…
+	File: {name}	Datei: {name}
+	File…	Datei…
+	Fill needs a selection	Füllung braucht eine Auswahl
+	From Generations	Aus Generierungen
+	Generation: {name}	Generierung: {name}
+	Give the expand at least one side	Geben Sie für die Erweiterung mindestens eine Seite an
+	Hide negative prompt	Negativen Prompt ausblenden
+	Layer: {name}	Ebene: {name}
+	More than this model takes	Mehr, als dieses Modell annimmt
+	Move left	Nach links
+	Move right	Nach rechts
+	Negative prompt	Negativer Prompt
+	New document	Neues Dokument
+	Only files with a path can be references here	Hier können nur Dateien mit Pfad Referenzen sein
+	Open a document first	Öffnen Sie zuerst ein Dokument
+	Open the prompt in a larger editor	Prompt in einem größeren Editor öffnen
+	Reference images (optional)	Referenzbilder (optional)
+	This model takes at most {n} reference images	Dieses Modell nimmt höchstens {n} Referenzbilder an
+	Type a prompt first	Geben Sie zuerst einen Prompt ein
+	Type what to generate first	Geben Sie zuerst ein, was entstehen soll
+	What to avoid…	Was vermieden werden soll…
+	a layer that is gone	eine nicht mehr vorhandene Ebene
+	Enter to generate	Mit Eingabetaste generieren

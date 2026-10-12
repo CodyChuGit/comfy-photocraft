@@ -184,10 +184,17 @@ pub fn authorize_engine_command(id: &str, params: &Value) -> Result<(), Automati
         || profile_command_may_read_ambient(id, params)
         || preferences_may_grant_ambient_paths(id, params)
         || params_contain_ambient_path(id, params)
+        || references_name_a_path(id, params)
     {
         return Err(command_error(id));
     }
     Ok(())
+}
+
+/// `generate.image` / `generate.edit` reference images given as `{"path": …}` read ambient
+/// files; layer and stored-generation references are fine.
+fn references_name_a_path(id: &str, params: &Value) -> bool {
+    id.starts_with("generate.") && params.get("references").and_then(Value::as_array).is_some_and(|refs| refs.iter().any(|r| r.get("path").is_some()))
 }
 
 /// Desktop sessions may already contain user-configured ambient colour-profile
@@ -452,6 +459,12 @@ mod tests {
         for id in ["generate.jobs", "generate.jobs.dismiss", "generate.place", "generate.recreate"] {
             assert!(authorize_engine_command(id, &serde_json::json!({})).is_ok(), "{id}");
         }
+        // Reference images: layers and stored results yes, files no.
+        let refs = |r: serde_json::Value| serde_json::json!({"prompt": "x", "references": [r]});
+        assert!(authorize_engine_command("generate.edit", &refs(serde_json::json!({"layer": 3}))).is_ok());
+        assert!(authorize_engine_command("generate.image", &refs(serde_json::json!({"job": 3, "index": 0}))).is_ok());
+        assert!(authorize_engine_command("generate.image", &refs(serde_json::json!({"path": "C:/secret.png"}))).is_err());
+        assert!(authorize_engine_command("generate.edit", &refs(serde_json::json!({"path": "x.png"}))).is_err());
         assert!(authorize_engine_command("file.new", &serde_json::json!({})).is_ok());
         // The UI-level examples in docs/control-protocol.md.
         for id in ["view.zoomIn", "window.theme.pro", "edit.search"] {
@@ -558,6 +571,7 @@ mod tests {
             "input": "/outside/photocraft-input",
             "output": "/outside/photocraft-output",
             "paths": ["/outside/photocraft-probe.psd"],
+            "references": [{"path": "/outside/photocraft-probe.png"}],
         });
         let preference_probe = serde_json::json!({"path": ".scriptEvents", "value": {}});
         let unclassified: Vec<_> = photocraft_engine::command_specs()

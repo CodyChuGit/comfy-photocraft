@@ -2288,3 +2288,33 @@ cameraRaw	Amount	Cantidad
 	Server unreachable	Servidor inaccesible
 	Timed out	Tiempo de espera agotado
 	Unpin	Dejar de fijar
+	Active layer ({name})	Capa activa ({name})
+	Add a reference image	Añadir una imagen de referencia
+	Clear all	Borrar todo
+	Clear the prompt and remove the reference images?	¿Borrar la indicación y quitar las imágenes de referencia?
+	Describe what continues the scene…	Describe cómo continúa la escena…
+	Describe what to generate in the selection…	Describe qué generar en la selección…
+	Describe what you want in the image…	Describe lo que quieres en la imagen…
+	File: {name}	Archivo: {name}
+	File…	Archivo…
+	Fill needs a selection	El relleno necesita una selección
+	From Generations	Desde Generaciones
+	Generation: {name}	Generación: {name}
+	Give the expand at least one side	Indica al menos un lado para ampliar
+	Hide negative prompt	Ocultar indicación negativa
+	Layer: {name}	Capa: {name}
+	More than this model takes	Más de las que admite este modelo
+	Move left	Mover a la izquierda
+	Move right	Mover a la derecha
+	Negative prompt	Indicación negativa
+	New document	Documento nuevo
+	Only files with a path can be references here	Aquí solo pueden ser referencias los archivos con ruta
+	Open a document first	Abre primero un documento
+	Open the prompt in a larger editor	Abrir la indicación en un editor más grande
+	Reference images (optional)	Imágenes de referencia (opcional)
+	This model takes at most {n} reference images	Este modelo admite como máximo {n} imágenes de referencia
+	Type a prompt first	Escribe primero una indicación
+	Type what to generate first	Escribe primero qué generar
+	What to avoid…	Qué evitar…
+	a layer that is gone	una capa que ya no existe
+	Enter to generate	Generar con Intro
