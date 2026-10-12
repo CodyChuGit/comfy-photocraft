@@ -4,6 +4,23 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-11: the ArtCraft study, refocused on the experience
+
+The owner clarified: not the business model, the **UI and experience**, with the credits removed
+(local compute). [`artcraft-study.md`](artcraft-study.md) was rewritten from the frontend
+source: the one-window shell with Home + app tabs and the Task Queue button; the Create pages'
+editorial empty state, feed and floating prompt box; the prompt box piece by piece (reference
+deck, growing prompt with counter and fullscreen, model pill and family-grouped picker with wait
+badges, aspect/resolution/quality/count pickers that follow the model's capabilities, Generate);
+pending tiles, failed rows and completed cards with hover actions (Recreate, Make Video, Share,
+Download); the Task Queue popover; the lightbox's prompt panel; the Library's folders, tags and
+drag-to-canvas; the 2D editor's side toolbar, inpaint toolbar, History Stack of candidate bundles
+and prompt editor; Angles' orbit sphere; settings (Enter to generate, sounds, themes, keybinds,
+download naming). Then the PhotoshopEX translation: a **Generate panel**, a **Generations
+panel** (feed + queue with real progress and time estimates), a **Variations strip** over the
+candidate layers, a Generate hub, sounds and preferences, with wireframes and a five-step build
+order. Write-up only.
+
 ## 2026-10-10: the ArtCraft study (write-up only)
 
 The owner asked to look into ArtCraft's paid features and to make the implementation "more

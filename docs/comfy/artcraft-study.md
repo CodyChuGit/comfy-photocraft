@@ -1,251 +1,307 @@
-# ArtCraft's paid features, and how they do things: a study for PhotoshopEX
+# How ArtCraft delivers generation, and how PhotoshopEX should
 
-Written 2026-10-10 from getartcraft.com (home, pricing, apps, FAQ, support, tutorials), the
-public `storytold/artcraft` repository at its 2026-10 head (a shallow clone read locally), the
-team's Hacker News and Reddit posts, and the Omni API guide in the repo. A write-up only; nothing
-in the app changed. The last section says what to adopt and in which order.
+Written 2026-10-10/11 from getartcraft.com and a local read of the public `storytold/artcraft`
+repository (2026-10 head: the React frontend under `frontend/`, the Tauri/Rust desktop under
+`crates/desktop/artcraft`). This is about the **UI and the experience**: what the user sees,
+touches and gets back. ArtCraft's billing (credits) is left out on purpose; PhotoshopEX runs on
+local compute, so where they print a credit cost we print a time. A write-up only; nothing in the
+app changed. §6 says what to build, in order, with wireframes.
 
-## 1. What ArtCraft is, in one paragraph
+## 1. The shape of the app
 
-ArtCraft is the storytold team's "IDE for artists": a Tauri desktop app (Rust core, React
-frontend, SQLite task database) and a web app that **aggregate cloud generation models** behind
-one prompt box, plus a 2D canvas editor (draw, inpaint, background removal) and a 3D stage
-(posing, blocking, image-to-mesh, Gaussian-splat worlds). It is open source (MIT or Apache-2.0),
-free to run, and makes money from **credits** spent on the models ArtCraft hosts. PhotoCraft and
-the other Crafting Apps are their offline, local editors; today they contain no ArtCraft
-generation and no account, credits or cloud calls.
+ArtCraft is **one window, one top bar, one page at a time**. The top bar (56 px, dark) holds:
 
-## 2. The paid features
+- **Home** (house icon) plus one tab per app: Create Image, Create Video, Create Audio, Image
+  Editor (2D), 3D Stage. Hovering Home opens a two-column quick menu, *Create* and *Edit*, listing
+  every app with an icon tile, a one-line description and a badge (NEW, BEST, SOON, BETA).
+- In the middle: the scene title (editable) when a scene is open.
+- On the right: **Upload images**, **Library** (the gallery modal), the **Task Queue** button with
+  a count badge, Settings, the profile menu. (Their credits coin sits here too; skip it.)
 
-### What costs money
+The **Home page** is a card grid, "What will you craft today?", in two sections: Create (Image,
+Video, Audio, Image to 3D, 3D World) and Edit (Image Editor, Remove Background, Angles,
+Background Change, Storyboard, Moodboard, Video Editor, frame extractor, watermark removers…).
+Cards are quiet: a tinted icon tile per app, uppercase mono label, badge, a sentence, an arrow.
 
-Only **generation through ArtCraft's own provider** ("ArtCraft" in their provider enum). The
-editing tools, the canvas, the 3D stage, the task queue and the gallery are free. Every
-ArtCraft-provided model has a credit price; the Generate button shows it.
+Pages are lazy and independent; the 3D engine mounts only on its tab. Everything that must keep
+running (job polling, completion events, sounds, toasts) is mounted in the shell, so a generation
+finishes and announces itself whatever page you are on.
 
-| Plan (2026-10) | Price | Credits a month | What the page says it buys |
-|---|---|---|---|
-| Free | $0 | daily free generations | "~10 GPT-Image-1 images, ~1 minute Kling video", limited tools |
-| Basic | $8/mo ($96 a year) | 1,000 | ~250 Nano Banana, ~67 Nano Banana Pro, ~33 Pro 4K, ~200 GPT-Image-1.5, ~63 s Seedance 2.0, ~45 s Kling 3.0 Pro |
-| Pro | $28/mo ($336 a year) | 3,750 | 3.75× Basic |
-| Max | $48/mo ($576 a year) | 6,600 | 6.6× Basic |
-| Enterprise | custom | bespoke | "secure models", SLAs, custom integrations |
+## 2. The Create pages (Image, Video, Audio)
 
-Credit packs are one-off top-ups that never expire. **1 credit = $0.01** (their cost modal says
-so). Implied per-model prices, from the plan maths: about 4 credits a Nano Banana image, 15 a
-Nano Banana Pro, 30 at 4K, 5 a GPT-Image-1.5, about 16 a second of Seedance 2.0 and 22 a second
-of Kling 3.0 Pro. **Credits are refunded when a generation fails**; the desktop app refetches the
-balance two seconds after a failure event so the refund shows.
+One shared shell, `DesktopCreatePageShell`:
 
-The team says the flagship models run at "zero-margin defaults" on the web app to build volume;
-the Hacker News post claims a third of customers spend thousands a month. The roadmap's first
-architecture goal is "remove dependence on ArtCraft-hosted services".
+- An **empty state** that reads like a magazine spread: a big display heading ("Create Image"),
+  a subtitle ("Add a prompt, then generate"), four thin corner registration marks. It stays up
+  as a splash while the library loads and fades out (700 ms) the moment the feed has content.
+- The **generation feed** fills the page and scrolls: in-progress tiles first, then failed rows,
+  then completed items, newest first, merged with the library's history so the page is also the
+  history. A **grid / list** toggle and an **autoplay** toggle for videos live in the top bar; a
+  **select** toggle turns tiles into checkboxes with a floating "3 selected · Download" pill that
+  saves each file to a chosen folder with the naming convention from Settings.
+- The **prompt box floats at the bottom centre**, max width about 1000 px, a glass panel, with a
+  gradient fade behind it so the feed stays legible underneath. The feed pads itself past the
+  measured prompt-box height, so the box never covers a result.
+- Bottom right: a Help button (tutorials, news, Discord, GitHub, YouTube) and a cost calculator
+  (skip).
 
-### What is free: bring your own
+### 2.1 The prompt box, piece by piece
 
-The desktop app lets a user attach **their own accounts and keys**, which then bypass credits:
+Every page's prompt box is the same object, configured by the **selected model's capabilities**
+(`ImageModel`: `canUseImagePrompt` + `maxImagePromptCount`, `aspectRatios`, `resolutions`,
+`qualityOptions`, `maxGenerationCount` / `defaultGenerationCount`, `maxPromptLength`, tags that
+say which editors the model appears in). Reading left to right, top to bottom:
 
-- **API keys**: Fal, Replicate, Google and others, stored by the desktop credential cache
-  (`provider_set_api_key_command`, `ProviderCredentialPayload::ApiKey`).
-- **Logins** to consumer services through an embedded browser session with cookie access (their
-  forked `tauri-plugin-http`): Midjourney and Grok today; Runway, Higgsfield, OpenArt, Magnific,
-  Freepik, Leonardo, Picsart, PixVerse, Krea listed in the provider enum as coming.
-- A Midjourney job costs 0 ArtCraft credits and is marked `is_rate_limited` instead: paid by the
-  user's own subscription.
+1. **Reference deck** (left of the text): a fanned stack of up to three tilted thumbnails with a
+   "+N" badge, which expands on hover into a panel: drag to reorder, hover to remove, click to
+   preview, "Clear all", and a "+" menu with *Upload* and *Pick from library*, each showing its
+   limit ("2/9"). Drag-and-drop or paste anywhere on the box adds references; the overlay says
+   what it accepts. The deck is hidden entirely for a model that takes no references.
+2. **The prompt**: a one-row textarea that grows, placeholder "Describe what you want in the
+   image...", a character counter against the model's limit (turns red past it), a fullscreen
+   button that opens the same editor as a modal with the deck always expanded, and a collapse
+   chevron under the box. `@` opens a **mention menu** of saved characters and media; a pick
+   becomes an inline chip with a thumbnail. Enter submits only if "Enter to generate" is on
+   (Shift+Enter is always a newline).
+3. **Options row**: the **model pill** (creator icon + name) opening a rich picker, then **aspect
+   ratio**, **resolution** (1K / 2K / 4K), **quality** (GPT models), each a popover with an icon
+   and a title, and each present only when the model supports it.
+4. **Right end**: the **count** picker (1–4, or the model's fixed counts), **Clear all** (asks
+   first when references are attached), and the **Generate** button (icon button on the create
+   pages, a labelled button in the editors) that carries the cost. Generate blocks itself for up
+   to ten seconds after a click and the page adds a pending tile at once.
 
-The 62-model catalogue (16 image, 25 video, 5 audio, 11 mesh, 5 splat; Nano Banana, GPT Image,
-FLUX, Seedream, Seedance, Kling, Veo, Sora, Vidu, MiniMax, Suno, Hunyuan 3D, Tripo, Meshy, Rodin,
-Marble…) is reachable through ArtCraft credits, through a user's Fal key for most image models,
-through "Kinovi" for a few, and through the consumer logins. Local models: none yet; the team
-"plans to make ArtCraft work with local models" and a variant, ArtCraft-X, is meant to drive
-"other subscriptions (Runway, Higgs, OpenArt, Comfy…)". Their reasoning for cloud first: top
-models "need more VRAM" than desktops have.
+The **model picker** groups models by family when there are eight or more ("Seedance", "Veo",
+"Nano Banana"…; a setting flattens it), newest version first inside a family, each row with a
+creator icon, a name, a one-line description ("Stunning style and quality") and badges such as
+"10 sec." or "45 sec." (their expected wait). A row with several providers shows a provider
+submenu with icons. The pill in the box shows only the creator icon and the name.
 
-### The Omni API: ArtCraft as a provider for other apps
+### 2.2 What comes back
 
-`_docs/artcraft_omni_api.md` documents an API-key surface on `api.storyteller.ai`:
-`POST /v1/omni_api/generate/image` and `/video` with `model`, `prompt`, `aspect_ratio`,
-`resolution`, reference image/video/audio URLs or media tokens, a required `idempotency_token`
-(UUID), then `GET /v1/omni_api/job_status/job/{token}` polled until a terminal state
-(`complete_success`, `complete_failure`, `dead`, `cancelled_by_user`, `cancelled_by_system`),
-with the result at `maybe_result.media_links.cdn_url`. `402` means no credits. Keys are prefixed
-`artcraft_api_` and **API access is enabled per account by their staff**. This is the one way
-PhotoshopEX could use a user's paid ArtCraft credits directly.
+- A **pending tile** the size of a result: shimmer background, spinner, "35 %" and "~ 20s left"
+  (a fake progress bar timed from the model's `progressBarTime`), the prompt clamped to three
+  lines, the creator icon and model name, a thin progress bar, and for batches a banner
+  "Generating 4 images · Results may appear one at a time". Hover: **Recreate**.
+- A **failed row**: a red status chip ("Failed", "Cancelled by provider"), a dashed-underlined
+  reason with the message in a tooltip ("Images with faces are not allowed", "Text prompt
+  violates content policy", "Generation failed"), the prompt, the time, Dismiss, Recreate.
+- A **completed card**: the image at its own aspect ratio (capped at 5:7 so portraits do not
+  dominate the masonry), a media-kind badge, the creator icon and model name, a persistent
+  "Last viewed" badge on the item last opened, and on hover a pill of quick actions:
+  **Recreate** (re-seed the page from the prompt record), **Make Video** (seed the video page
+  with this image), **Share** (copy link), **Download**. Click opens the lightbox.
 
-## 3. How they do things: the patterns
+A result is always **a batch**, four images by default, rendered as four cards.
 
-Read the source for these; each is a design decision we can copy without copying code.
+### 2.3 The Task Queue
 
-### 3.1 Models are data, with capabilities, not code paths
+A top-bar button (spinner while anything runs, a list-check icon otherwise) with a badge =
+in-progress + unread completed. The popover is 400 px wide and has three sections:
 
-`frontend/libs/model-list` holds a `Model` class (id, `tauriId`, full name, creator, selector
-name/description/badges such as "10 sec.", tags, providers, `progressBarTime`, max prompt
-length) and an `ImageModel` subclass of **capability flags the UI reads**: `canTextToImage`,
-`canEditImages`, `usesInpaintingMask`, `editingIsInpainting`, `canUseImagePrompt` +
-`maxImagePromptCount`, `canEditAngles`, `canChangeAspectRatio` + the list, `canChangeResolution`
-+ the list (1K/2K/4K), `qualityOptions`, `maxGenerationCount` / `defaultGenerationCount` /
-`predefinedGenerationCounts`. Tags: `instructiveEdit`, `maskedInpainting`,
-`nonMaskedInpainting`, which decide **which editor pages a model appears on**.
+- **In Progress**: 72 px thumbnail (the first reference image, dimmed, with "+2" when there are
+  more), "Generating Image...", "Model — Provider", percent, a bar, "~ 45s left" or "Almost
+  done...", the prompt in a marquee with a copy button. Dismiss appears after five minutes (a
+  stale task).
+- **Failed**: the same card in red with the typed reason; "Clear failed".
+- **Completed**: thumbnail, kind, model, time ("Oct 10, 9:14 PM"), prompt, copy; click opens the
+  lightbox; "Clear completed".
+- Footer: **Show all** opens a modal with the same lists and Clear completed / Clear stale /
+  Clear failed / **Remove all** (a confirmation each).
 
-The backend's listing is the source of truth for capabilities; the static list only adds
-presentation and page flags (`buildModelsFromListing.ts`: "API capability fields ALWAYS win
-over the overlay"). Membership in the picker comes from what providers currently *offer*
-(the backend's publish switch), so a model can be catalogued yet hidden, and models the app has
-never heard of still appear. Admin-only variants are filtered client-side.
+Every enqueue, completion and failure can play a **sound** (five separately choosable sounds in
+Settings › Alerts, with preview), and errors raise a toast at the top right.
 
-### 3.2 One request shape per modality, provider chosen late
+### 2.4 The lightbox and the Library
 
-`OmniRequest` is `{provider?, frontend_caller?, frontend_subscriber_id?,
-frontend_subscriber_payload?, …fields}`: the desktop keeps only its own metadata typed and
-passes every API field through untouched ("including model IDs and option strings introduced
-after this version of the app"), with a small rename layer per modality (`batch_size` →
-`image_batch_count`). Provider dispatch happens in the Rust command: ArtCraft → the Omni
-endpoint, Midjourney → the login client, everything else → `artcraft_router`, which has one
-module per **(provider, model)** pair (`providers/fal/nano_banana_pro`, `providers/artcraft/…`).
-A persisted **provider priority** list (`[Artcraft, Sora, Fal]` by default) is the fallback
-order; a missing credential yields a typed error (`NeedsFalApiKey`, `NeedsMidjourneyCredentials`)
-that the frontend turns into the "Set up Midjourney" modal.
+The **lightbox** shows the media large with prev/next through the feed order, and a side panel:
+the author, the **Prompt** block (clamped to four lines, "See all", **Copy**), tags you can edit,
+and actions: Recreate, Make Video, **Edit** (open in the Image Editor), **Image to 3D**, Share
+link, Info, Delete.
 
-### 3.3 Everything is a task in a local queue
+The **Library** (gallery modal) is the whole account: filter chips All Assets / Image / Video /
+Audio / Mesh / Splat / Uploaded, **folders** with colours and stars, tags, multiselect, refresh,
+"New folder". Items **drag out of the Library onto a canvas** (a drag ghost follows the pointer
+and the modal hides itself during the drag). The tile menu (hover ellipsis or right-click) is:
+View image, Edit image, Add to Folder ▸, Remove from folder, Delete.
 
-Every enqueue inserts a row in a desktop SQLite `tasks` table: status (`pending`, `started`,
-`complete_success`, `attempt_failed`, `dead`, `cancelled_by_user`, `cancelled_by_provider`,
-`cancelled_by_us`), task type, model, provider, provider job id, the prompt token, the caller
-page and an opaque **subscriber id/payload** the frontend set, dismissal, and on completion the
-batch token, primary media token/class, CDN URL and thumbnail template; on failure a typed
-reason and message. Background threads poll providers and emit Tauri events
-(`generation-complete-event`, `generation-failed-event`, `credits_balance_changed`). Pages
-**filter completions by their own subscriber id**, so a canvas resolves only the placeholders it
-enqueued.
+## 3. The Image Editor (the 2D canvas)
 
-The **Task Queue** popover in the top bar (badge = in-progress + unread completed) lists In
-Progress / Failed / Completed cards with thumbnails (the first reference image dimmed while
-running), a fake progress bar driven by the model's `progressBarTime`, "~ 45s left", the prompt
-in a marquee with a copy button, typed failure labels ("Images with faces are not allowed",
-"Text prompt violates content policy"…), dismiss, clear stale/failed/completed, nuke all.
+A Konva stage in the middle, and around it:
 
-### 3.4 The prompt box
+- **Left side toolbar**: Select (1), Shape (2: rectangle / circle / triangle, a colour picker for
+  the selected shape), Brush (3: colour, size, opacity), **Mask** (4: the inpaint brush, shown
+  only when the model supports masks), Eraser (5), Upload image, Canvas background colour,
+  Undo / Redo, Delete. Key numbers are printed as corner badges on the buttons and update when
+  the user remaps them. Ctrl + / Ctrl − change the brush size.
+- **Inpaint toolbar** at the top centre when the mask tool is active: Add / Erase and a size
+  slider with − and +.
+- **History Stack** on the right: every generation is an **image bundle** of candidate tiles;
+  clicking one makes it the new base image (the drawing state is remembered per base image, so
+  going back restores your strokes); pending bundles show placeholder tiles with a count; tiles
+  can be removed; "Clear".
+- **Prompt editor** at the bottom: the same prompt box with an **Edit / Inpaint mode** switch
+  (decided by the model's tags), aspect **Auto / Wide / Tall / Square**, resolution, **Fit** (frame
+  the canvas), count, references, Undo / Redo, and a system-prompt toggle for models that need
+  it. Generate composites the canvas (and the mask when inpainting) in a worker, enqueues, and
+  the result arrives in the History Stack filtered by the request's own subscriber id.
+- A **3D model overlay**: drop a mesh on the canvas, pose it, render it to pixels.
+- A **blank canvas modal** with size presets; a **base image selector** (upload or library).
+- Holding Ctrl for a moment shows a **shortcut cheatsheet**; a right-click **context menu** on
+  nodes.
 
-One component per modality (`PromptBoxImage`, `PromptBoxEdit`, `PromptBoxVideo`,
-`PromptBox3D`, `PromptBoxAudio`), each built from the selected model's capabilities: a growing
-textarea with a character counter against the model's limit and a fullscreen mode; a
-**reference deck** (drag-and-drop, paste, upload or "pick from library", reorder, cap from
-`maxImagePromptCount`, hidden when the model cannot take references); a model pill (creator
-icon + name) opening a rich picker grouped by family with badges, descriptions and a provider
-submenu; aspect ratio, resolution and quality pickers shown only when the model supports them;
-a generation count picker limited by the model; Clear all; and a **Generate button that carries
-the credit cost** (coin icon + number, a tooltip "15 credits cost", 0 for a user-paid
-Midjourney). Enter to generate is a preference. Cost comes from a cost-estimate command run
-with the same request fields (`cost_in_credits`, `cost_in_usd_cents`, `is_free`,
-`is_unlimited`, `is_rate_limited`, `has_watermark`). A Cost Breakdown modal converts credits to
-the user's currency.
+Other editors reuse the pattern: **Angles** (upload or pick an image, drag a camera around an
+**orbit sphere** that snaps to 45° rotations, tilts of −30/0/30/60 and zoom 0/5/10, with sliders,
+Generate, results in a History Stack, Download); **Remove Background** (an entry card for upload
+or library, a reveal animation, hold-to-compare the original, a processed list, Download);
+Storyboard (shots on a timeline with a metadata editor); Moodboard (a Figma-like board with
+rating keys 0–5 and a grid).
 
-### 3.5 The canvas editor and history
+## 4. Settings and small things that make it feel finished
 
-The 2D editor (`pagedraw`) is a Konva scene store: draw nodes (shapes and strokes), a separate
-**inpaint mask layer** of strokes with Add/Erase and a size slider, a base image, and a
-`historyImageNodeMap` that remembers the drawing state per generated image. A generation returns
-an **image bundle** (one tile per batch image) that goes into a **History Stack** beside the
-canvas: pick a tile to make it the new base image, remove tiles, remove pending placeholders.
-The edit prompt box adds a mode switch (edit vs masked inpaint, from the model's tags), "Fit",
-undo/redo and a system-prompt toggle. Background removal is a separate enqueue whose
-completion event replaces the node's image.
+- **General**: Enter to generate; group models by family; keep the shortcut cheatsheet open.
+- **Downloads**: auto-download results; a download directory; a filename convention
+  (`{model}_{date}` or the ArtCraft default).
+- **Appearance**: five themes (Default gray, Light, Black, Aurora, Sunset).
+- **Keybinds**: presets (Gamer, Blender-like), remap any action with a capture field, search.
+- **Alerts**: sounds on and off, one sound each for enqueue ok / enqueue failed / generation
+  ok / generation failed / file deleted, with preview.
+- Copy and type: uppercase mono "HUD" labels for section titles, 3 px radii, glass panels,
+  display serif for headings, dim secondary text, hover-revealed actions, confirmations only for
+  destructive clears, toasts for errors, progress always visible somewhere (tile, queue badge,
+  spinner in the top bar).
 
-### 3.6 Credits, billing and providers in the UI
+## 5. The principles behind it
 
-A `credits` store holds free, monthly and banked credits and a status badge for slow or failed
-fetches; the balance refreshes on enqueue and on failure. Billing lives in a settings modal pane
-with Stripe checkout and a customer portal; the pricing modal is the plan table above. Provider
-setup is a modal reached from the typed credential errors.
+1. **Everything is a job you can walk away from.** Enqueue returns at once, a pending tile appears
+   where the result will land, the queue badge counts it, a sound announces it, and the result is
+   there when you come back, on any page.
+2. **One prompt box, everywhere, shaped by the model.** Controls appear and disappear with the
+   model's capabilities; nothing is greyed out "because this model cannot".
+3. **Results accumulate; nothing is lost.** The create page is the history; the editor keeps a
+   stack of candidates per step; the Library keeps everything with folders and tags; every result
+   knows its prompt and can be **recreated** in one click.
+4. **A result is a batch.** Four by default; you pick.
+5. **Hover reveals, click commits.** Cards are clean until you hover; destructive actions confirm.
+6. **The model is a named thing with a face.** Creator icon, family, a wait-time badge, a
+   one-line character ("Fast af", "Stunning style and quality").
 
-### 3.7 Engineering conventions that show
+## 6. PhotoshopEX: the same experience inside a Photoshop-style editor, on local compute
 
-Two-space Rust, `maybe_` prefixes for optionals, one Tauri command per file, constants → types →
-Request/Response/Error → impls, callers above callees; enums that are stored as strings get
-`to_str`/`from_str` with round-trip and length tests; a NOTICE for third-party material; a short
-ROADMAP ("better than model aggregation websites", "remove dependence on ArtCraft-hosted
-services", "don't be evil").
+PhotoshopEX is an editor with documents, layers, a dock and a title bar, not a page-per-app
+studio. The ArtCraft experience maps onto it as **three surfaces** plus a few touches, and the
+"credit" everywhere becomes **a time estimate from our own measurements**.
 
-## 4. Where PhotoshopEX stands against that
+### 6.1 The Generate panel (the prompt box)
 
-| ArtCraft pattern | PhotoshopEX today | Gap |
+A dockable panel (Window › Generate; also the home of today's task bar when nothing is selected),
+and the task bar under a selection becomes a compact form of it.
+
+```
+┌ Generate ─────────────────────────────────────────────────────┐
+│ [▣▣▣+2]  Describe what you want in the image…                 │
+│          …                                            87/4000 ⤢ │
+│ ─────────────────────────────────────────────────────────────── │
+│ [◆ Krea 2 Turbo ▾] [▭ 3:2 ▾] [1K ▾]        [4 ▾] [✕] [✨] [Generate ~24 s] │
+│ Mode  ( Image | Fill | Edit | Expand )     into: ( new document | layer ) │
+└───────────────────────────────────────────────────────────────┘
+```
+
+- **Reference deck**: layers of the open document, files, or Library items; the cap comes from
+  the template (Qwen-Image-2.1 up to 10, Krea 2's style reference 1, the 2511 edit templates 0).
+- **Model pill → picker grouped by family** (Qwen-Image-Edit 2511 · Qwen-Image 2.1 · Krea 2 ·
+  Flux…), each row with the family icon, the template name, a one-line character and a badge of
+  **measured seconds on this machine** ("~16 s", from `benchmarks.md`, scaled by request size and
+  count), an "installed" or "files missing" mark, and the licence tag (research models only with
+  the opt-in).
+- **Aspect and size** for Image, hidden for Fill/Edit (the selection decides). **Count** 1–4.
+  **✨ Enhance** (shipped). **Generate** shows the ETA, not a coin.
+- **Mode** is the command: Image, Fill (needs a selection), Edit, Expand; **into** says where the
+  result lands (a new document, or layers above the active one). Enter to generate is a
+  preference.
+
+### 6.2 The Generations panel (the feed and the queue)
+
+A dockable panel listing every generation of this session and, from the persistent job store,
+earlier ones; a grid / list toggle; a badge in the title bar that counts running jobs.
+
+```
+┌ Generations ───────────────── [⊞ grid | ☰ list] [select] ┐
+│ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐             │
+│ │▒▒▒▒▒▒▒▒│ │        │ │        │ │        │  ← pending   │
+│ │ 38 %   │ │  ✓     │ │  ✓     │ │  ✓     │    tiles,    │
+│ │~10 s   │ │        │ │        │ │        │    real %    │
+│ └────────┘ └────────┘ └────────┘ └────────┘             │
+│  Generating 4 images · Qwen-Image-Edit 2511 Lightning     │
+│  "a red kite over the harbour"                            │
+│ ✗ Server unreachable · "stormy sky" · Edit · 9:14 PM  [↻][×]│
+│ ┌────────┐ ┌────────┐ …  hover: [Place] [↻ Similar] [⤓] [⎘] │
+└──────────────────────────────────────────────────────────┘
+```
+
+- **Pending tiles** with **real progress** (ComfyUI's WebSocket) and an ETA from the template's
+  measured time; the prompt, the template name, "Generating 4 · results appear one at a time".
+- **Failed rows** with typed reasons we already produce (server unreachable, model files missing,
+  out of memory, cancelled, the server's error), Dismiss, **Recreate**.
+- **Completed cards**: the result layer's thumbnail; hover actions **Place** (as a layer in the
+  active document, or open as a document), **Similar** (Generate Similar, which already exists),
+  **Save to disk** (the Downloads convention `{model}_{date}`), **Copy prompt**; click opens the
+  layer and the Properties panel's generative section (prompt as typed, the enhanced prompt, seed,
+  template, time: our `generate.info`). A **Last viewed** mark.
+- Clear completed / failed, and a **Remove all** with a confirmation.
+
+### 6.3 The Variations strip (the History Stack)
+
+Fill, Edit and Image with count > 1 already make candidate layers and a 1/3 switcher. Show them
+as ArtCraft shows a bundle: a strip of thumbnails at the edge of the canvas (right or bottom,
+a preference), the shown one highlighted, pending placeholders with a count, click to show, ×
+to drop a candidate, "Keep" to flatten the choice. Generate Similar appends a new bundle to the
+strip. The strip is the thing a user looks at while deciding; the Layers panel is the truth.
+
+### 6.4 Smaller touches, same order of value
+
+- **Generate hub**: a Home-style card page (a modal or the welcome screen) with Create (Image)
+  and Edit (Fill, Edit, Expand, Remove Background, Split into Layers, Angles) cards, badges NEW
+  and SOON, one sentence each. Also reachable as Help › Generative features.
+- **Angles**: a dialog with ArtCraft's orbit sphere (snap to 45°, tilt, zoom) over the 2511
+  angles LoRA when its files are installed (the model exists in their catalogue as
+  `qwen_edit_2511_angles`; a permissive LoRA to verify in `models.md` first).
+- **Sounds and toasts**: a sound on completion and on failure (Preferences › AI Integrations ›
+  Alerts, off by default), the status-bar toast we have.
+- **Enter to generate**, **group models by family**, **auto-save results** with a naming
+  convention, in Preferences › AI Integrations.
+- **Keyboard**: Ctrl+Enter generates from the panel; Esc cancels the running job (exists).
+- **Library**: not a separate store. The document's layers and the OS file system are the
+  library; the Generations panel's history plus "Save to disk" cover the rest.
+
+### 6.5 Build order
+
+| Step | What | Why first |
 |---|---|---|
-| Model catalogue as data with capability flags | Templates are JSON with task, licence, `needsImage`/`needsMask`, model slots, defaults, prompt formats; `generate.models` lists them | No capability flags for references, aspect ratios, resolutions, counts; no "which pages" tags; no provider field |
-| One request shape, provider chosen late | `Request {template, prompt, negative, seed, steps, guidance, image, mask, models, size, params}` to one `GenerativeBackend` (ComfyUI) | No provider concept; everything is the local server |
-| Local task queue with typed statuses and failure reasons | Engine background jobs (one per command), the status bar, the task bar's progress; nothing persists | No queue panel, no history of runs, no typed failures, nothing survives a restart |
-| Prompt box from capabilities, cost on the button | The task bar: Fill/Edit mode, prompt, template picker with installed badges, variations, Enhance, Generate | No references, no aspect/size pickers, no time or cost estimate on the button |
-| History stack of candidates beside the canvas | Variations become hidden layers with a 1/3 switcher; `GenerativeInfo` on layers; Generate Similar | No persistent gallery of past results; candidates are layers, which is right for an editor |
-| Inpaint mask with Add/Erase | Photoshop's selection tools (far richer) feed Fill; soft dithered edges | None here; we are ahead |
-| BYO accounts and keys, credits | Nothing; BYOB means bring your own ComfyUI | No cloud path at all |
-| Enhance prompts | Shipped yesterday (Qwen3-VL 4B rewriter) | ArtCraft has a system-prompt toggle but no visible rewriter in the desktop app |
+| 1 | The persistent job store and the **Generations panel** with pending, failed and completed items, Place, Similar, Save, Copy prompt | It is the experience's backbone: jobs you can walk away from, results that accumulate |
+| 2 | The **Generate panel** (deck, prompt, pill, aspect/size, count, ETA on the button, modes, "into") and the task bar as its compact form | One prompt box everywhere, shaped by the template |
+| 3 | Template **capability flags** and the **family-grouped picker** with measured-time badges and installed marks | The panel reads them; the picker gets its face |
+| 4 | The **Variations strip** over the candidate layers | Choosing is the moment that matters |
+| 5 | Generate hub, sounds, Enter to generate, auto-save convention, Angles | Finish |
 
-## 5. What to adopt, in order
+Each step keeps the fork's rules: commands first (`generate.jobs`, `generate.place`, panel state
+over `ui.set` / `ui.inspect`), tests against the fake server, no shipped weights, research models
+behind the opt-in.
 
-The aim the owner stated: "the implementation more like how they do things overall". The pieces
-below keep the fork's rules (no shipped weights, local first, research models gated) and add
-ArtCraft's shape. Numbers are rough effort in sessions of this size.
+## Appendix: what ArtCraft charges for
 
-1. **A model catalogue with capabilities** (1 session). Extend each template's `meta` with the
-   flags the UI needs: `references {max}`, `aspectRatios`, `resolutions`, `counts {max,
-   default}`, `pages` (fill, edit, image, expand, matte, split), `estimatedSeconds` (their
-   `progressBarTime`), `creator`, `badges`, `description`. `generate.models` returns them; the
-   task bar and the dialogs read them instead of hard-coding. This is the foundation for
-   everything else and matches the fork's "models as data" roadmap phase.
-2. **A persistent task queue and history** (2 sessions). An engine `generate.jobs` store (SQLite
-   or a JSON file under the app data dir, as upstream's prefs are stored) with ArtCraft's
-   statuses and failure categories, the prompt, the template, the provider, timings and the
-   result layer ids; a Task Queue popover in the title bar with in-progress, failed and
-   completed, dismiss and clear; "Recreate" on any row (we already have Generate Similar). The
-   job events exist; this records them.
-3. **The prompt box, ArtCraft-shaped** (1–2 sessions). Grow the task bar into a prompt panel:
-   a multi-line prompt with the model's character limit, a reference deck (drag in images or
-   pick layers: Qwen-Image-2.1 takes up to 10 references, Krea 2's style reference LoRA one),
-   aspect/size pickers for Generate Image, count, and a Generate button showing the estimated
-   time from the template's `estimatedSeconds` and the request size (we measured these). Local
-   generation has no credit cost; show seconds where they show coins.
-4. **Providers** (2–3 sessions). Introduce `GenerationProvider` in genai with the local ComfyUI
-   as the first and default, then optional cloud providers behind **the user's own keys**: a
-   Fal provider first (their router covers most image models through Fal: Nano Banana, GPT
-   Image, FLUX Pro, Seedream), then the **ArtCraft Omni API** as a provider so a user with an
-   ArtCraft subscription spends their credits from inside PhotoshopEX (needs API access enabled
-   on their account; the job-status protocol is documented and simple). Each provider has a
-   capability-flagged catalogue entry per model, a credential store (the OS keychain, never the
-   prefs file), a typed "needs key" error that opens a setup dialog, and the cost estimate on
-   the button when a provider charges. Provider priority with fallback, as theirs. This is the
-   "paid features" part: nothing is paid to us, the user pays whom they already pay.
-5. **Failure categories and refunds** (part of 2 and 4). Content-policy and provider failures
-   mapped to plain labels; for cloud providers, refetch the balance after a failure.
-6. **A results gallery** (1 session, later). A panel of past generations (thumbnails from the
-   job store, click to re-open the layer or to place the image again), ArtCraft's grid/list
-   views with "recreate", "download", "copy prompt".
-
-Not worth copying: the fake progress bar (we have real progress from ComfyUI), the 3D stage
-(FilmCraft/EffectCraft territory), consumer-login scraping of Midjourney and Grok (fragile, and
-against those services' terms), telemetry.
-
-## 6. Open questions for the owner
-
-- Cloud providers at all? The fork's principle so far was "fully local". Fal keys and the
-  ArtCraft Omni API are both BYO-key and optional; the default stays the local server.
-- Which first: the task queue (visible every day) or the provider layer (the paid part)?
-- ArtCraft API access is staff-gated per account; ask them on Discord whether a PhotoCraft
-  fork can get it, since the Crafting Apps are their own family.
+Only generation through ArtCraft's own hosted provider, in credits (plans from $8 to $48 a
+month; refunded on failure; bring-your-own Fal, Replicate and Google keys or Midjourney and Grok
+logins bypass them). Everything in this document is free in ArtCraft and free here.
 
 ## Sources
 
-- getartcraft.com: home, `/pricing`, `/apps`, `/apps/photocraft`, `/faq`, `/support`,
-  `/tutorials` (read 2026-10-10)
-- github.com/storytold/artcraft: README (62-model catalogue), ROADMAP.md, AGENTS.md,
-  crates/AGENTS.md, `_docs/artcraft_omni_api.md`, `_docs/dev_setup.md`,
-  `_database/sql/artcraft_migrations/…create_tasks_table.sql`,
-  `crates/schema/public/enums/src/common/generation_provider.rs`,
-  `crates/desktop/artcraft/src/core/commands/{generate,cost_estimate,providers,task_queue,app_preferences}`,
-  `crates/desktop/artcraft/src/core/state/provider_priority.rs`,
-  `frontend/libs/model-list` (`Model.ts`, `ImageModel.ts`, `ModelTag.ts`, `ImageModels.ts`,
-  `buildModelsFromListing.ts`), `frontend/libs/components/{promptbox,button,generation-list,
-  pagedraw,model-selector,provider-setup-modal}`, `frontend/libs/state/{credits,subscription}`,
-  `frontend/apps/artcraft/app/src/components/signaled/TopBar/TaskQueue.tsx`,
-  `frontend/apps/artcraft/app/src/components/reusable/CostModal.tsx`
-- Hacker News thread 49500019 (the founder on the open-source server, OpenSourceRouter, local
-  models) and the r/… launch post of 2026-05 (BYOK: "You can add Fal, Replicate, Google, and
-  other API keys"; Midjourney and Grok logins; cheapest-provider routing in progress)
+- getartcraft.com: home, `/apps`, `/apps/photocraft`, `/faq`, `/support`, `/tutorials`,
+  `/pricing` (2026-10-10)
+- github.com/storytold/artcraft: `frontend/apps/artcraft/app/src` (`pages/MainApp.tsx`,
+  `components/signaled/TopBar/*`, `components/generation-feed/*`, `pages/PageImage`,
+  `pages/PageDraw`, `pages/PageAngles`, `pages/PageRemoveBackground`, `pages/PageApps`,
+  `config/appMenu.tsx`), `frontend/libs/components/{promptbox,model-selector,generation-list,
+  gallery-modal,lightbox-modal,pagedraw,settings-modal,keybinds,help-menu,popover}`,
+  `frontend/libs/model-list`, `crates/desktop/artcraft/src/core/commands/{generate,task_queue,
+  app_preferences}`, `_database/sql/artcraft_migrations/…create_tasks_table.sql`
