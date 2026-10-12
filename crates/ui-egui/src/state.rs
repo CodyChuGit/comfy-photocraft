@@ -778,6 +778,12 @@ pub struct UiState {
     /// The Variations strip's caches (`variations_strip`); never saved.
     #[serde(skip)]
     pub variations: crate::variations_strip::VariationsUi,
+    /// The Generate hub: Help › Generative Features… and a card waiting for a file (`generate_hub`).
+    #[serde(skip)]
+    pub hub: crate::generate_hub::HubUi,
+    /// Edit › Generative Angles…'s window (`angles_ui`).
+    #[serde(skip)]
+    pub angles: crate::angles_ui::AnglesUi,
     /// Smoothing is a per-tool option (Brush and Eraser each keep theirs): the tool whose
     /// smoothing the session brush holds, and the other tools' saved values.
     #[serde(default)]
@@ -902,6 +908,8 @@ impl Default for UiState {
             generations: Default::default(),
             generate: Default::default(),
             variations: Default::default(),
+            hub: Default::default(),
+            angles: Default::default(),
             smoothing_tool: None,
             tool_smoothing: Vec::new(),
             clone_source: None,

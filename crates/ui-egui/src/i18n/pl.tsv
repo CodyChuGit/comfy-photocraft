@@ -3298,3 +3298,47 @@ cameraRaw	Roughness	Chropowatość
 	Click to retry	Kliknij, aby ponowić
 	Retry	Ponów
 	Variations strip	Pasek wariantów
+	{n} selected	Wybrano: {n}
+	Save selected	Zapisz wybrane
+	Save results dir	Folder zapisanych wyników
+	Save results naming	Nazwy zapisanych wyników
+	Alerts	Powiadomienia dźwiękowe
+	Done and failed	Gotowe i nieudane
+	Not in this build yet	Jeszcze nie w tej wersji
+	Open a picture first	Najpierw otwórz obraz
+	Generative Features	Funkcje generatywne
+	Runs on your own ComfyUI server with the models you installed.	Działa na Twoim własnym serwerze ComfyUI z zainstalowanymi przez Ciebie modelami.
+	SOON	WKRÓTCE
+	Split into Layers	Podziel na warstwy
+	Angles	Ujęcia
+	A new picture from a prompt, with up to three references	Nowy obraz z promptu, z maksymalnie trzema odniesieniami
+	Paint the selection from a prompt	Wypełnia zaznaczenie według promptu
+	Change the picture by instruction	Zmienia obraz według polecenia
+	Grow the canvas and continue the scene	Powiększa obszar roboczy i kontynuuje scenę
+	Cut the subject out onto transparency	Wycina obiekt na przezroczyste tło
+	Separate the picture into editable layers	Rozdziela obraz na edytowalne warstwy
+	Select what you name in a few words	Zaznacza to, co nazwiesz kilkoma słowami
+	See the subject from another camera angle	Pokazuje obiekt z innego ujęcia kamery
+	Generative Features…	Funkcje generatywne…
+	Generative Angles…	Ujęcia generatywne…
+	front	przód
+	Camera	Kamera
+	Generative Angles	Ujęcia generatywne
+	Needs qwen-image-edit-2511-multiple-angles-lora.safetensors in ComfyUI/models/loras (fal, Apache-2.0)	Wymaga qwen-image-edit-2511-multiple-angles-lora.safetensors w ComfyUI/models/loras (fal, Apache-2.0)
+	front view	widok z przodu
+	front-right quarter view	widok trzy czwarte z przodu z prawej
+	right side view	widok z prawego boku
+	back-right quarter view	widok trzy czwarte z tyłu z prawej
+	back view	widok z tyłu
+	back-left quarter view	widok trzy czwarte z tyłu z lewej
+	left side view	widok z lewego boku
+	front-left quarter view	widok trzy czwarte z przodu z lewej
+	low-angle shot	żabia perspektywa
+	eye-level shot	na wysokości oczu
+	elevated shot	lekko z góry
+	high-angle shot	z lotu ptaka
+	wide shot	plan ogólny
+	medium shot	plan średni
+	close-up	zbliżenie
+	CREATE	UTWÓRZ
+	EDIT	EDYTUJ

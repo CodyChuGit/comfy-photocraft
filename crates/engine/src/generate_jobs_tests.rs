@@ -366,10 +366,24 @@ fn export_names_files_from_the_pattern_and_never_replaces_one() {
     let r = s.execute(EXPORT, json!({"id": id, "index": 1, "dir": out.to_string_lossy()})).unwrap();
     let name = Path::new(r["files"][0].as_str().unwrap()).file_name().unwrap().to_string_lossy().into_owned();
     assert!(name.starts_with(&format!("{template}_")) && name.ends_with("_42.png"), "{name}");
-    assert!(matches!(s.execute(EXPORT, json!({"id": id})), Err(EngineError::BadParams { .. })));
+    assert!(matches!(s.execute(EXPORT, json!({"id": id})), Err(EngineError::BadParams { .. })), "no folder anywhere");
     assert!(matches!(s.execute(EXPORT, json!({"id": id, "dir": out.to_string_lossy(), "name": "../x"})), Err(EngineError::BadParams { .. })));
+    // The preferences: the folder and the naming when the call leaves them out.
+    let pref_out = temp_dir("export-pref");
+    s.execute("prefs.set", json!({"path": "integrations.saveResultsDir", "value": pref_out.to_string_lossy()})).unwrap();
+    s.execute("prefs.set", json!({"path": "integrations.saveResultsNaming", "value": "kite-{seed}-{n}"})).unwrap();
+    let r = s.execute(EXPORT, json!({"id": id})).unwrap();
+    let names: Vec<String> =
+        r["files"].as_array().unwrap().iter().map(|v| Path::new(v.as_str().unwrap()).file_name().unwrap().to_string_lossy().into_owned()).collect();
+    assert_eq!(names, ["kite-42-1.png", "kite-42-2.png"]);
+    assert!(Path::new(r["files"][0].as_str().unwrap()).starts_with(&pref_out));
+    for bad in ["no-token", "a/{seed}", "..{seed}", ""] {
+        assert!(s.execute("prefs.set", json!({"path": "integrations.saveResultsNaming", "value": bad})).is_err(), "{bad}");
+    }
+    assert!(s.execute("prefs.set", json!({"path": "integrations.saveResultsDir", "value": "a\u{0}b"})).is_err());
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&out);
+    let _ = std::fs::remove_dir_all(&pref_out);
 }
 
 #[test]

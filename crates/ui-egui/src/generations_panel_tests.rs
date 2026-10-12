@@ -84,6 +84,49 @@ fn a_fill_shows_as_completed_with_its_thumbnail_and_opens_again_after_its_docume
 }
 
 #[test]
+fn select_mode_saves_the_picked_results_into_the_preferred_folder_under_its_naming() {
+    use egui_kittest::kittest::Queryable;
+    let fake = FakeComfy::start().unwrap();
+    let dir = temp_dir("select");
+    let out = temp_dir("select-out");
+    let mut a = app(&fake.url, &dir);
+    for seed in [5, 6, 7] {
+        a.run("generate.fill", json!({"prompt": "a kite", "seed": seed})).unwrap();
+    }
+    a.session.edit_prefs(|p| {
+        p.integrations.save_results_dir = out.to_string_lossy().into_owned();
+        p.integrations.save_results_naming = "kite_{seed}".into();
+    });
+    let mut h = draw(a);
+    // Select mode: clicks pick instead of opening.
+    h.get_by_label("Select").click();
+    h.run_steps(2);
+    assert_eq!(inspect(h.state())["selecting"], true);
+    let ids: Vec<u64> = inspect(h.state())["ids"].as_array().unwrap().iter().filter_map(Value::as_u64).collect();
+    let ctx = h.ctx.clone();
+    apply(h.state_mut(), &ctx, Action::Toggle(ids[0]));
+    apply(h.state_mut(), &ctx, Action::Toggle(ids[2]));
+    apply(h.state_mut(), &ctx, Action::Toggle(ids[2]));
+    apply(h.state_mut(), &ctx, Action::Toggle(ids[1]));
+    h.run_steps(2);
+    assert_eq!(inspect(h.state())["selected"], json!([ids[1], ids[0]]), "a set, toggled");
+    assert!(h.query_by_label("2 selected").is_some());
+    // Save selected: no dialog (the folder is set), the naming pattern, select mode ends.
+    h.get_by_label("Save selected").click();
+    h.run_steps(2);
+    let mut names: Vec<String> = std::fs::read_dir(&out).unwrap().filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect();
+    names.sort();
+    assert_eq!(names, ["kite_6.png", "kite_7.png"], "the two newest");
+    assert_eq!((inspect(h.state())["selecting"].as_bool(), h.state().ui.status.as_str()), (Some(false), "Saved 2 file(s)"));
+    // Without a folder and without a save dialog (tests, web): it says so.
+    h.state_mut().session.edit_prefs(|p| p.integrations.save_results_dir.clear());
+    apply(h.state_mut(), &ctx, Action::Save(ids[0]));
+    assert!(h.state().ui.status_error, "{}", h.state().ui.status);
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&out);
+}
+
+#[test]
 fn failed_runs_show_their_reason_and_dismiss_hides_them() {
     let dir = temp_dir("failed");
     let mut app = app("http://127.0.0.1:9", &dir);
@@ -152,6 +195,32 @@ fn a_background_result_that_lands_while_the_panel_is_hidden_is_unread_until_it_i
     assert_eq!(inspect(h.state())["unread"], 0, "drawn: read");
     assert_eq!(inspect(h.state())["completed"], 1);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_alerts_preference_picks_the_blip_for_each_ending() {
+    let run = |url: &str, pref: &str, prompt: &str| -> Option<&'static str> {
+        let dir = temp_dir(&format!("alert-{pref}-{}", prompt.len()));
+        let mut app = app(url, &dir);
+        app.background_jobs = true;
+        app.session.edit_prefs(|p| p.integrations.alerts = pref.into());
+        let _ = app.run("generate.fill", json!({"prompt": prompt}));
+        let ctx = egui::Context::default();
+        let t0 = std::time::Instant::now();
+        while app.session.has_jobs() && t0.elapsed() < std::time::Duration::from_secs(20) {
+            crate::jobs_ui::tick(&mut app, &ctx);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        app.ui.generations.last_alert
+    };
+    let ok = FakeComfy::start().unwrap();
+    let bad = FakeComfy::start_with(photocraft_genai::fake::Options { fail: Some("CUDA out of memory".into()), ..Default::default() }).unwrap();
+    assert_eq!(run(&ok.url, "off", "a boat"), None, "off by default");
+    assert_eq!(run(&ok.url, "done", "a boat"), Some("done"));
+    assert_eq!(run(&bad.url, "done", "a boat!"), None, "failures stay quiet under done");
+    assert_eq!(run(&bad.url, "doneAndFailed", "a boat!!"), Some("failed"));
+    assert_eq!(photocraft_engine::Session::new().prefs().integrations.alerts, "off");
 }
 
 #[test]

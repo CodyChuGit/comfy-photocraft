@@ -55,6 +55,7 @@ pub const UI_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("window.theme.studioLight", "Studio Light Theme", &["Window", "Theme"], None),
     ("window.theme.classic", "Classic Theme", &["Window", "Theme"], None),
     ("edit.search", "Search…", &["Edit"], Some("Cmd+K")),
+    ("help.generativeFeatures", "Generative Features…", &["Help"], None),
     ("help.discord", "Join the ArtCraft Discord…", &["Help"], None),
     ("help.website", "PhotoCraft Website", &["Help"], None),
     ("help.artcraftWebsite", "ArtCraft Website", &["Help"], None),
@@ -155,6 +156,10 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     }
     // Edit › Generative Fill… opens the generative task bar under the selection.
     if let Some(r) = crate::generative_bar::menu(app, id, &params) {
+        return r;
+    }
+    // Edit › Generative Angles… opens its orbit window.
+    if let Some(r) = crate::angles_ui::menu(app, id, &params) {
         return r;
     }
     if id == "window.panel.brushes" {
@@ -314,6 +319,11 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             Ok(Value::Null)
         }
         "help.about" => Ok(json!({"dialog": app.ui.open_dialog(DialogKind::About, Default::default())})),
+        // PhotoshopEX: the Generate hub's cards in a window (`generate_hub`).
+        "help.generativeFeatures" => {
+            app.ui.hub.open = true;
+            Ok(json!({"hub": true}))
+        }
         "help.systemInfo" => {
             let mut fields = serde_json::Map::new();
             fields.insert("systemInfo".into(), json!(true));
@@ -462,6 +472,8 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             if let Some(g) = crate::dock::Group::from_key(&t["window.toggle.".len()..]).filter(|g| g.shown(&app.ui.panels)) {
                 crate::dock::reveal(app, g);
             }
+            // Window › Generate shown: the keyboard goes to its prompt.
+            app.ui.generate.focus |= t == "window.toggle.generate" && app.ui.panels.generate;
             Ok(Value::Null)
         }
         // Layer › Layer Style › <effect>… opens the Layer Style dialog on that effect.
@@ -503,7 +515,7 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
         return e;
     }
     match id {
-        "file.open" | "file.exit" | "file.clearRecent" | "help.about" | "help.systemInfo" | "edit.search" => true,
+        "file.open" | "file.exit" | "file.clearRecent" | "help.about" | "help.systemInfo" | "help.generativeFeatures" | "edit.search" => true,
         i if i.starts_with("file.openRecent.") => true,
         i if crate::links::url_for(i).is_some() => true,
         i if i.starts_with("window.theme.") => true,

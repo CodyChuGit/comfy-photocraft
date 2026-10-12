@@ -2259,3 +2259,47 @@ cameraRaw	Color	Barvy
 	Click to retry	Kliknutím zkusíte znovu
 	Retry	Zkusit znovu
 	Variations strip	Pruh variant
+	{n} selected	{n} vybráno
+	Save selected	Uložit vybrané
+	Save results dir	Složka pro uložené výsledky
+	Save results naming	Pojmenování uložených výsledků
+	Alerts	Upozornění
+	Done and failed	Hotovo a selhání
+	Not in this build yet	V této verzi zatím není
+	Open a picture first	Nejprve otevřete obrázek
+	Generative Features	Generativní funkce
+	Runs on your own ComfyUI server with the models you installed.	Běží na vašem vlastním serveru ComfyUI s modely, které jste nainstalovali.
+	SOON	BRZY
+	Split into Layers	Rozdělit do vrstev
+	Angles	Úhly
+	A new picture from a prompt, with up to three references	Nový obrázek z promptu, až se třemi referencemi
+	Paint the selection from a prompt	Vyplní výběr podle promptu
+	Change the picture by instruction	Změní obrázek podle pokynu
+	Grow the canvas and continue the scene	Zvětší plátno a dokreslí scénu
+	Cut the subject out onto transparency	Vyřízne objekt na průhledné pozadí
+	Separate the picture into editable layers	Rozdělí obrázek do upravitelných vrstev
+	Select what you name in a few words	Vybere, co pojmenujete několika slovy
+	See the subject from another camera angle	Ukáže objekt z jiného úhlu kamery
+	Generative Features…	Generativní funkce…
+	Generative Angles…	Generativní úhly…
+	front	zepředu
+	Camera	Kamera
+	Generative Angles	Generativní úhly
+	Needs qwen-image-edit-2511-multiple-angles-lora.safetensors in ComfyUI/models/loras (fal, Apache-2.0)	Vyžaduje qwen-image-edit-2511-multiple-angles-lora.safetensors v ComfyUI/models/loras (fal, Apache-2.0)
+	front view	pohled zepředu
+	front-right quarter view	čtvrtpohled zepředu zprava
+	right side view	pohled z pravé strany
+	back-right quarter view	čtvrtpohled zezadu zprava
+	back view	pohled zezadu
+	back-left quarter view	čtvrtpohled zezadu zleva
+	left side view	pohled z levé strany
+	front-left quarter view	čtvrtpohled zepředu zleva
+	low-angle shot	podhled
+	eye-level shot	záběr v úrovni očí
+	elevated shot	zvýšený záběr
+	high-angle shot	nadhled
+	wide shot	celkový záběr
+	medium shot	polocelek
+	close-up	detail
+	CREATE	VYTVOŘIT
+	EDIT	UPRAVIT

@@ -744,6 +744,14 @@ pub struct Integrations {
     /// Where the Variations strip (the candidates of the active document's recent generative
     /// runs) sits over the canvas: `right`, `bottom` or `off`.
     pub variations_strip: String,
+    /// The folder the Generations panel's Save writes results into (`generate.export` without
+    /// `dir`); empty = ask each time.
+    pub save_results_dir: String,
+    /// The file names of saved results: a pattern of [`EXPORT_NAME_TOKENS`] (`generate.export`
+    /// without `name`).
+    pub save_results_naming: String,
+    /// A sound when a generation ends: `off`, `done` (results), `doneAndFailed`.
+    pub alerts: String,
     /// Rewrite every prompt with the vision-language model before a run (`generate.*`'s
     /// `enhance`): names what the picture shows instead of "this", adds the detail the image
     /// models want. The bar's Enhance button does it on demand when this is off.
@@ -771,6 +779,9 @@ impl Default for Integrations {
             enter_to_generate: false,
             group_models_by_family: true,
             variations_strip: "right".into(),
+            save_results_dir: String::new(),
+            save_results_naming: "{model}_{date}_{seed}".into(),
+            alerts: "off".into(),
             enhance_prompts: false,
             model_precision: "auto".into(),
         }
@@ -779,6 +790,14 @@ impl Default for Integrations {
 
 /// `integrations.showGenerativeBar`: see [`Integrations::show_generative_bar`].
 pub const GENERATIVE_BAR_MODES: &[&str] = &["auto", "always", "never"];
+
+/// The tokens of `integrations.saveResultsNaming` (and `generate.export`'s `name`): the template
+/// id, the same, the UTC date as `YYYY-MM-DD_HHMMSS`, the seed, the prompt (40 safe characters),
+/// the result's number.
+pub const EXPORT_NAME_TOKENS: &[&str] = &["{model}", "{template}", "{date}", "{seed}", "{prompt}", "{n}"];
+
+/// `integrations.alerts`: see [`Integrations::alerts`].
+pub const ALERT_MODES: &[&str] = &["off", "done", "doneAndFailed"];
 
 /// `integrations.variationsStrip`: see [`Integrations::variations_strip`].
 pub const VARIATIONS_STRIP_PLACES: &[&str] = &["right", "bottom", "off"];
@@ -989,6 +1008,7 @@ pub fn choices(path: &str) -> Option<&'static [&'static str]> {
         "integrations.modelPrecision" => MODEL_PRECISIONS,
         "integrations.showGenerativeBar" => GENERATIVE_BAR_MODES,
         "integrations.variationsStrip" => VARIATIONS_STRIP_PLACES,
+        "integrations.alerts" => ALERT_MODES,
         _ => return None,
     })
 }
@@ -1123,6 +1143,25 @@ fn check_value(path: &str, v: &Value) -> std::result::Result<(), String> {
         let ok = v.as_str().is_some_and(|s| s.len() <= 512 && !s.contains(['/', '\\', '\0']) && !s.contains(".."));
         if !ok {
             return Err(format!("`{path}` must be a plain model file name (no folders)"));
+        }
+    }
+    if path == "integrations.saveResultsNaming" {
+        let ok = v.as_str().is_some_and(|s| {
+            let s = s.trim();
+            s.len() <= 200
+                && !s.contains(['/', '\\'])
+                && !s.contains("..")
+                && !s.chars().any(char::is_control)
+                && EXPORT_NAME_TOKENS.iter().any(|t| s.contains(t))
+        });
+        if !ok {
+            return Err(format!("`{path}` must be a file name pattern with at least one of {} (no folders)", EXPORT_NAME_TOKENS.join(" ")));
+        }
+    }
+    if path == "integrations.saveResultsDir" {
+        let ok = v.as_str().is_some_and(|s| s.len() <= 4096 && !s.chars().any(char::is_control));
+        if !ok {
+            return Err(format!("`{path}` must be a folder path (empty = ask each time)"));
         }
     }
     if path == "integrations.defaultFillTemplate" || path == "integrations.defaultImageTemplate" {

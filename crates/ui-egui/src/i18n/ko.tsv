@@ -2841,3 +2841,47 @@ cameraRaw	Color	색상
 	Click to retry	클릭하여 다시 시도
 	Retry	다시 시도
 	Variations strip	변형 스트립
+	{n} selected	{n}개 선택됨
+	Save selected	선택 항목 저장
+	Save results dir	결과 저장 폴더
+	Save results naming	저장 결과 이름 규칙
+	Alerts	알림음
+	Done and failed	완료 및 실패
+	Not in this build yet	이 빌드에는 아직 없음
+	Open a picture first	먼저 이미지를 여세요
+	Generative Features	생성 기능
+	Runs on your own ComfyUI server with the models you installed.	설치한 모델로 사용자의 ComfyUI 서버에서 실행됩니다.
+	SOON	곧 제공
+	Split into Layers	레이어로 분리
+	Angles	앵글
+	A new picture from a prompt, with up to three references	프롬프트로 새 이미지 만들기(참조 최대 3개)
+	Paint the selection from a prompt	프롬프트로 선택 영역 채우기
+	Change the picture by instruction	지시로 이미지 변경
+	Grow the canvas and continue the scene	캔버스를 넓히고 장면 이어 그리기
+	Cut the subject out onto transparency	피사체를 투명 배경으로 잘라내기
+	Separate the picture into editable layers	이미지를 편집 가능한 레이어로 분리
+	Select what you name in a few words	몇 단어로 말한 것을 선택
+	See the subject from another camera angle	다른 카메라 앵글에서 피사체 보기
+	Generative Features…	생성 기능…
+	Generative Angles…	생성 앵글…
+	front	정면
+	Camera	카메라
+	Generative Angles	생성 앵글
+	Needs qwen-image-edit-2511-multiple-angles-lora.safetensors in ComfyUI/models/loras (fal, Apache-2.0)	ComfyUI/models/loras에 qwen-image-edit-2511-multiple-angles-lora.safetensors가 필요합니다(fal, Apache-2.0)
+	front view	정면 뷰
+	front-right quarter view	오른쪽 앞 사분 뷰
+	right side view	오른쪽 측면 뷰
+	back-right quarter view	오른쪽 뒤 사분 뷰
+	back view	후면 뷰
+	back-left quarter view	왼쪽 뒤 사분 뷰
+	left side view	왼쪽 측면 뷰
+	front-left quarter view	왼쪽 앞 사분 뷰
+	low-angle shot	로우 앵글
+	eye-level shot	눈높이
+	elevated shot	약간 높은 앵글
+	high-angle shot	하이 앵글
+	wide shot	와이드 샷
+	medium shot	미디엄 샷
+	close-up	클로즈업
+	CREATE	만들기
+	EDIT	편집

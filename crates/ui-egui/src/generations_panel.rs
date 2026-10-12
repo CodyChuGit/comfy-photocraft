@@ -76,6 +76,14 @@ pub struct GenerationsUi {
     /// Drawn as the compact strip last frame (the group was too short for the feed).
     #[serde(skip)]
     pub compact: bool,
+    /// Select mode: clicks pick results for Save selected instead of opening them.
+    #[serde(skip)]
+    pub selecting: bool,
+    #[serde(skip)]
+    pub selected: BTreeSet<u64>,
+    /// The last completion alert this session played (`done` / `failed`), for inspect and tests.
+    #[serde(skip)]
+    pub last_alert: Option<&'static str>,
 }
 
 /// Thumbnail textures by row id (`None` = the file could not be read). A cache: never compared,
@@ -136,6 +144,11 @@ enum Action {
     DismissFailed,
     AskClear(&'static str),
     View(GenView),
+    /// Select mode on (with this result picked) or off.
+    StartSelect(Option<u64>),
+    EndSelect,
+    Toggle(u64),
+    SaveSelected,
 }
 
 fn rows(app: &PhotocraftApp) -> Vec<Row> {
@@ -377,6 +390,21 @@ fn header(app: &mut PhotocraftApp, ui: &mut egui::Ui, rows: &[Row], t: &Tokens, 
     let done = rows.iter().filter(|r| r.status == GenStatus::Done).count();
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
+        if app.ui.generations.selecting {
+            let n = app.ui.generations.selected.len();
+            ui.label(egui::RichText::new(crate::i18n::fmt(tl!("{n} selected"), &[("n", &n.to_string())])).small().color(t.text));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if labeled(icons::button(ui, "x", 22.0, false, tl!("Done")), tl!("Done")).clicked() {
+                    *action = Some(Action::EndSelect);
+                }
+                let save =
+                    ui.add_enabled_ui(n > 0, |ui| labeled(icons::button(ui, "folder-open", 22.0, false, tl!("Save selected")), tl!("Save selected"))).inner;
+                if save.clicked() {
+                    *action = Some(Action::SaveSelected);
+                }
+            });
+            return;
+        }
         let summary = if running > 0 {
             crate::i18n::fmt(tl!("{running} running · {done} results"), &[("running", &running.to_string()), ("done", &done.to_string())])
         } else {
@@ -385,6 +413,9 @@ fn header(app: &mut PhotocraftApp, ui: &mut egui::Ui, rows: &[Row], t: &Tokens, 
         ui.label(egui::RichText::new(summary).small().color(t.text_dim));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             more_menu(ui, action);
+            if done > 0 && labeled(icons::button(ui, "check", 22.0, false, tl!("Select")), tl!("Select")).clicked() {
+                *action = Some(Action::StartSelect(None));
+            }
             let view = app.ui.generations.view;
             if icons::button(ui, "align-justify", 22.0, view == GenView::List, tl!("List")).clicked() {
                 *action = Some(Action::View(GenView::List));
@@ -394,6 +425,12 @@ fn header(app: &mut PhotocraftApp, ui: &mut egui::Ui, rows: &[Row], t: &Tokens, 
             }
         });
     });
+}
+
+/// An icon button with its name for screen readers (and tests).
+fn labeled(resp: egui::Response, label: &str) -> egui::Response {
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, resp.enabled(), label));
+    resp
 }
 
 fn running_row(ui: &mut egui::Ui, r: &Row, t: &Tokens, action: &mut Option<Action>) {
@@ -530,9 +567,22 @@ fn card(app: &mut PhotocraftApp, ui: &mut egui::Ui, cell: Rect, r: &Row, t: &Tok
             icons::paint(ui, cell, icon, (cell.width() * 0.3).clamp(12.0, 28.0), t.text_faint);
         }
     }
-    let selected = app.ui.generations.last_viewed == Some(r.id);
+    let selecting = app.ui.generations.selecting;
+    let picked = selecting && app.ui.generations.selected.contains(&r.id);
+    let selected = picked || (!selecting && app.ui.generations.last_viewed == Some(r.id));
     let border = if selected { Stroke::new(2.0, t.accent) } else { Stroke::new(1.0, t.separator) };
     p.rect_stroke(cell, 2.0, border, StrokeKind::Inside);
+    if selecting {
+        // The pick mark: a filled check when picked, an empty ring otherwise.
+        let c = pos2(cell.left() + 10.0, cell.top() + 10.0);
+        if picked {
+            p.circle_filled(c, 7.0, t.accent);
+            icons::paint(ui, Rect::from_center_size(c, vec2(12.0, 12.0)), "check", 9.0, Color32::WHITE);
+        } else {
+            p.circle_filled(c, 7.0, Color32::from_black_alpha(120));
+            p.circle_stroke(c, 7.0, Stroke::new(1.5, Color32::WHITE));
+        }
+    }
     if r.results > 1 {
         let badge = Rect::from_min_size(pos2(cell.right() - 20.0, cell.top() + 4.0), vec2(16.0, 14.0));
         p.rect_filled(badge, 3.0, t.chrome.gamma_multiply(0.85));
@@ -542,7 +592,7 @@ fn card(app: &mut PhotocraftApp, ui: &mut egui::Ui, cell: Rect, r: &Row, t: &Tok
         p.circle_filled(pos2(cell.left() + 8.0, cell.top() + 8.0), 3.5, t.accent);
     }
     let hovered = resp.hovered() || ui.rect_contains_pointer(cell);
-    if overlay && hovered && cell.width() >= 70.0 && !r.selection {
+    if overlay && hovered && cell.width() >= 70.0 && !r.selection && !selecting {
         let bar = Rect::from_min_max(pos2(cell.left(), cell.bottom() - 24.0), cell.max);
         p.rect_filled(bar, 0.0, t.chrome.gamma_multiply(0.82));
         let buttons: [(&str, &str, Action); 4] = [
@@ -565,7 +615,7 @@ fn card(app: &mut PhotocraftApp, ui: &mut egui::Ui, cell: Rect, r: &Row, t: &Tok
     let tip = if r.size.0 > 0 { format!("{}\n{} · {}×{}", r.title, r.template, r.size.0, r.size.1) } else { r.title.clone() };
     let resp = resp.on_hover_text(tip);
     if resp.clicked() && action.is_none() {
-        *action = Some(Action::Open(r.id));
+        *action = Some(if selecting { Action::Toggle(r.id) } else { Action::Open(r.id) });
     }
     let id = r.id;
     let can_place = !r.selection;
@@ -583,6 +633,9 @@ fn card(app: &mut PhotocraftApp, ui: &mut egui::Ui, cell: Rect, r: &Row, t: &Tok
             }
             if ui.button(tl!("Save…")).clicked() {
                 *action = Some(Action::Save(id));
+            }
+            if !selecting && ui.button(tl!("Select")).clicked() {
+                *action = Some(Action::StartSelect(Some(id)));
             }
         }
         if ui.button(tl!("Copy prompt")).clicked() {
@@ -735,6 +788,31 @@ fn apply(app: &mut PhotocraftApp, ctx: &egui::Context, a: Action) {
         Action::DismissFailed => run_report(app, "generate.jobs.dismiss", json!({"which": "failed"})),
         Action::AskClear(which) => app.ui.generations.confirm = Some(which.to_string()),
         Action::View(v) => app.ui.generations.view = v,
+        Action::StartSelect(id) => {
+            let g = &mut app.ui.generations;
+            g.selecting = true;
+            g.selected.clear();
+            g.selected.extend(id);
+        }
+        Action::EndSelect => {
+            app.ui.generations.selecting = false;
+            app.ui.generations.selected.clear();
+        }
+        Action::Toggle(id) => {
+            let s = &mut app.ui.generations.selected;
+            if !s.remove(&id) {
+                s.insert(id);
+            }
+        }
+        Action::SaveSelected => {
+            // Newest first, as the panel shows them.
+            let picked = &app.ui.generations.selected;
+            let ids: Vec<u64> = app.session.generations.records().iter().rev().map(|r| r.id).filter(|id| picked.contains(id)).collect();
+            if save_many(app, &ids) {
+                app.ui.generations.selecting = false;
+                app.ui.generations.selected.clear();
+            }
+        }
     }
 }
 
@@ -751,34 +829,56 @@ pub fn open(app: &mut PhotocraftApp, id: u64) {
     }
 }
 
-/// Save a result through the platform's save dialog (`generate.export` into the folder picked,
-/// under the name typed).
+/// Save one result (Save… on a card).
 fn save(app: &mut PhotocraftApp, id: u64) {
-    let Some(rec) = app.session.generations.get(id) else { return };
-    let suggested = format!("{}.png", photocraft_engine::generate_jobs::suggested_name(rec));
-    let many = rec.result.as_ref().is_some_and(|r| r.files.len() > 1);
-    let Some(path) = app.services.pick_save.as_mut().and_then(|pick| pick(&suggested)) else {
-        if app.services.pick_save.is_none() {
-            app.ui.status = tl!("Saving files is not available here").to_string();
-            app.ui.status_error = true;
-        }
-        return;
+    save_many(app, &[id]);
+}
+
+/// Save results with `generate.export`: into Preferences › AI Integrations › Save results dir
+/// under its naming pattern, or, with no folder set, where the save dialog says (one result:
+/// under the name typed; several: the pattern in that folder). True when something was saved.
+fn save_many(app: &mut PhotocraftApp, ids: &[u64]) -> bool {
+    let Some(first) = ids.first().and_then(|id| app.session.generations.get(*id)) else { return false };
+    let prefs = &app.session.prefs().integrations;
+    let naming = prefs.save_results_naming.trim();
+    let pattern = if naming.is_empty() { photocraft_engine::generate_jobs::DEFAULT_EXPORT_NAME.to_string() } else { naming.to_string() };
+    let folder = prefs.save_results_dir.trim().to_string();
+    let (dir, name) = if folder.is_empty() {
+        let suggested = format!("{}.png", photocraft_engine::generate_jobs::export_name(&pattern, first, 1, false));
+        let Some(path) = app.services.pick_save.as_mut().and_then(|pick| pick(&suggested)) else {
+            if app.services.pick_save.is_none() {
+                app.ui.status = tl!("Saving files is not available here").to_string();
+                app.ui.status_error = true;
+            }
+            return false;
+        };
+        let path = std::path::PathBuf::from(path);
+        let dir = path.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+        let name = (ids.len() == 1).then(|| path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()).filter(|n| !n.is_empty());
+        (dir, name)
+    } else {
+        (folder, None)
     };
-    let path = std::path::PathBuf::from(path);
-    let dir = path.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
-    let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    let mut params = json!({"id": id, "dir": dir, "name": name});
-    if !many {
-        params["index"] = json!(0);
+    let mut saved = 0usize;
+    let mut failed = Vec::new();
+    for id in ids {
+        let mut params = json!({"id": id, "dir": dir});
+        if let Some(n) = &name {
+            params["name"] = json!(n);
+        }
+        match app.run("generate.export", params) {
+            Ok(v) => saved += v["files"].as_array().map_or(0, Vec::len),
+            Err(e) => failed.push(e),
+        }
     }
-    match app.run("generate.export", params) {
-        Ok(v) => {
-            let n = v["files"].as_array().map_or(0, Vec::len);
-            app.ui.status = crate::i18n::fmt(tl!("Saved {n} file(s)"), &[("n", &n.to_string())]);
+    match failed.first() {
+        Some(e) => report(app, Err(e.clone())),
+        None => {
+            app.ui.status = crate::i18n::fmt(tl!("Saved {n} file(s)"), &[("n", &saved.to_string())]);
             app.ui.status_error = false;
         }
-        Err(e) => report(app, Err(e)),
     }
+    saved > 0
 }
 
 /// The rail button's badge: running jobs, else results that finished while the panel was hidden.
@@ -796,10 +896,16 @@ pub fn rail_badge(app: &PhotocraftApp, ui: &egui::Ui, rect: Rect, t: &Tokens) {
 }
 
 /// A job ended (`jobs_ui::on_event`): a result that finished while the panel was hidden counts
-/// as unread; a thumbnail cached for the row is dropped so the new one loads.
+/// as unread; a thumbnail cached for the row is dropped so the new one loads; the completion
+/// alert plays as Preferences › AI Integrations › Alerts says.
 pub fn on_event(app: &mut PhotocraftApp, e: &JobEvent) {
     let Some(id) = app.session.generations.record_for_job(e.id) else { return };
     app.ui.generations.thumbs.0.remove(&id);
+    let pref = app.session.prefs().integrations.alerts.clone();
+    if let Some(a) = crate::alerts::for_outcome(&pref, matches!(e.outcome, JobOutcome::Done(_)), matches!(e.outcome, JobOutcome::Failed(_))) {
+        crate::alerts::play(a);
+        app.ui.generations.last_alert = Some(a.key());
+    }
     let hidden = app.frame > app.ui.generations.visible_frame + 1;
     if hidden && matches!(e.outcome, JobOutcome::Done(_)) {
         app.ui.generations.unread.insert(id);
@@ -819,6 +925,9 @@ pub fn inspect(app: &PhotocraftApp) -> Value {
         "lastViewed": app.ui.generations.last_viewed,
         "unread": app.ui.generations.unread.len(),
         "thumbnails": app.ui.generations.thumbs.len(),
+        "selecting": app.ui.generations.selecting,
+        "selected": app.ui.generations.selected,
+        "lastAlert": app.ui.generations.last_alert,
     })
 }
 

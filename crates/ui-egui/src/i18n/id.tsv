@@ -2677,3 +2677,47 @@ cameraRaw	Blending	Pembauran
 	Click to retry	Klik untuk mencoba lagi
 	Retry	Coba lagi
 	Variations strip	Strip variasi
+	{n} selected	{n} dipilih
+	Save selected	Simpan yang dipilih
+	Save results dir	Folder hasil yang disimpan
+	Save results naming	Penamaan hasil yang disimpan
+	Alerts	Peringatan
+	Done and failed	Selesai dan gagal
+	Not in this build yet	Belum ada di build ini
+	Open a picture first	Buka gambar terlebih dahulu
+	Generative Features	Fitur generatif
+	Runs on your own ComfyUI server with the models you installed.	Berjalan di server ComfyUI Anda sendiri dengan model yang Anda pasang.
+	SOON	SEGERA
+	Split into Layers	Pisahkan ke layer
+	Angles	Sudut
+	A new picture from a prompt, with up to three references	Gambar baru dari prompt, dengan hingga tiga referensi
+	Paint the selection from a prompt	Mengisi seleksi dari prompt
+	Change the picture by instruction	Mengubah gambar dengan instruksi
+	Grow the canvas and continue the scene	Memperbesar kanvas dan melanjutkan adegan
+	Cut the subject out onto transparency	Memotong subjek ke latar transparan
+	Separate the picture into editable layers	Memisahkan gambar ke layer yang bisa diedit
+	Select what you name in a few words	Memilih apa yang Anda sebut dengan beberapa kata
+	See the subject from another camera angle	Melihat subjek dari sudut kamera lain
+	Generative Features…	Fitur generatif…
+	Generative Angles…	Sudut generatif…
+	front	depan
+	Camera	Kamera
+	Generative Angles	Sudut generatif
+	Needs qwen-image-edit-2511-multiple-angles-lora.safetensors in ComfyUI/models/loras (fal, Apache-2.0)	Memerlukan qwen-image-edit-2511-multiple-angles-lora.safetensors di ComfyUI/models/loras (fal, Apache-2.0)
+	front view	tampak depan
+	front-right quarter view	tampak tiga perempat depan kanan
+	right side view	tampak samping kanan
+	back-right quarter view	tampak tiga perempat belakang kanan
+	back view	tampak belakang
+	back-left quarter view	tampak tiga perempat belakang kiri
+	left side view	tampak samping kiri
+	front-left quarter view	tampak tiga perempat depan kiri
+	low-angle shot	sudut rendah
+	eye-level shot	setinggi mata
+	elevated shot	sudut agak tinggi
+	high-angle shot	sudut tinggi
+	wide shot	bidikan lebar
+	medium shot	bidikan sedang
+	close-up	close-up
+	CREATE	BUAT
+	EDIT	EDIT

@@ -102,6 +102,39 @@ fn a_selection_confines_what_of_the_edit_shows() {
 }
 
 #[test]
+fn angles_runs_the_multiple_angles_graph_with_the_loras_words_over_the_whole_picture() {
+    let fake = FakeComfy::start().unwrap();
+    let mut s = session(&fake.url);
+    // A selection is there, but a camera move is not confined by it.
+    let r = s.execute(ANGLES, json!({"rotation": 135, "tilt": 60, "zoom": 5, "seed": 9, "variations": 2})).unwrap();
+    assert_eq!(r["template"], ANGLES_TEMPLATE);
+    let ids: Vec<LayerId> = r["layers"].as_array().unwrap().iter().filter_map(|v| v.as_u64()).map(LayerId).collect();
+    assert_eq!(ids.len(), 2);
+    assert_eq!(mask_at(&s, ids[0], 62, 46), 1.0, "outside the selection too");
+    let name = s.active().unwrap().doc.layer(ids[0]).unwrap().name.clone();
+    assert!(name.starts_with("Angles: back-right quarter view high-angle shot medium shot"), "{name}");
+    let st = fake.state();
+    let g = &st.prompts[0].1;
+    assert_eq!(g["6"]["inputs"]["prompt"], "<sks> back-right quarter view high-angle shot medium shot", "the LoRA's words, no format");
+    assert_eq!(g["19"]["inputs"]["lora_name"], "qwen-image-edit-2511-multiple-angles-lora.safetensors");
+    assert_eq!(g["20"]["inputs"]["lora_name"], "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors");
+    assert_eq!((g["14"]["inputs"]["steps"].as_u64(), g["14"]["inputs"]["cfg"].as_f64()), (Some(4), Some(1.0)));
+    drop(st);
+    // The layer remembers an edit, so Generate Similar and Recreate run it again.
+    let info = generative_info(s.active().unwrap().doc.layer(ids[0]).unwrap()).unwrap();
+    assert_eq!((info.command.as_str(), info.template.as_str()), (EDIT, ANGLES_TEMPLATE));
+    assert_eq!(angle_prompt(0, 0, 10).as_deref(), Some("<sks> front view eye-level shot close-up"));
+    assert_eq!(angle_prompt(315, -30, 0).as_deref(), Some("<sks> front-left quarter view low-angle shot wide shot"));
+    for p in [json!({"rotation": 30}), json!({"rotation": 360}), json!({"tilt": 45}), json!({"zoom": 7}), json!({"zoom": 2.5}), json!({"variations": 9})] {
+        assert!(matches!(s.execute(ANGLES, p.clone()), Err(EngineError::BadParams { .. })), "{p}");
+    }
+    // Every camera has words: 8 × 4 × 3.
+    let all =
+        ANGLE_ROTATIONS.iter().flat_map(|(r, _)| ANGLE_TILTS.iter().flat_map(move |(t, _)| ANGLE_ZOOMS.iter().map(move |(z, _)| angle_prompt(*r, *t, *z))));
+    assert_eq!(all.flatten().collect::<std::collections::BTreeSet<_>>().len(), 96);
+}
+
+#[test]
 fn auto_falls_back_to_the_base_edit_template_and_params_are_validated() {
     let bare =
         FakeComfy::start_with(Options { missing_files: vec!["Qwen-Image-Edit-2511-Lightning-8steps-V1.0-bf16.safetensors".into()], ..Options::default() })

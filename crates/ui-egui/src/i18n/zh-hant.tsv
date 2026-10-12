@@ -2236,3 +2236,47 @@ cameraRaw	Blending	混合
 	Click to retry	按一下重試
 	Retry	重試
 	Variations strip	變體列
+	{n} selected	已選取 {n} 個
+	Save selected	儲存所選
+	Save results dir	結果儲存資料夾
+	Save results naming	儲存結果的命名
+	Alerts	提示音
+	Done and failed	完成與失敗
+	Not in this build yet	此版本尚未提供
+	Open a picture first	請先開啟一張圖片
+	Generative Features	生成式功能
+	Runs on your own ComfyUI server with the models you installed.	在你自己的 ComfyUI 伺服器上執行，使用你安裝的模型。
+	SOON	即將推出
+	Split into Layers	分割為圖層
+	Angles	視角
+	A new picture from a prompt, with up to three references	依提示詞產生新圖片，最多三張參考圖
+	Paint the selection from a prompt	依提示詞填滿選取範圍
+	Change the picture by instruction	依指令修改圖片
+	Grow the canvas and continue the scene	擴展版面並延續場景
+	Cut the subject out onto transparency	將主體去背到透明背景
+	Separate the picture into editable layers	將圖片分離為可編輯的圖層
+	Select what you name in a few words	選取你用幾個詞說出的內容
+	See the subject from another camera angle	從另一個相機角度檢視主體
+	Generative Features…	生成式功能…
+	Generative Angles…	生成式視角…
+	front	正面
+	Camera	相機
+	Generative Angles	生成式視角
+	Needs qwen-image-edit-2511-multiple-angles-lora.safetensors in ComfyUI/models/loras (fal, Apache-2.0)	需要將 qwen-image-edit-2511-multiple-angles-lora.safetensors 放入 ComfyUI/models/loras（fal，Apache-2.0）
+	front view	正視圖
+	front-right quarter view	右前四分之三視圖
+	right side view	右側視圖
+	back-right quarter view	右後四分之三視圖
+	back view	後視圖
+	back-left quarter view	左後四分之三視圖
+	left side view	左側視圖
+	front-left quarter view	左前四分之三視圖
+	low-angle shot	低角度
+	eye-level shot	平視
+	elevated shot	略高角度
+	high-angle shot	高角度
+	wide shot	遠景
+	medium shot	中景
+	close-up	特寫
+	CREATE	建立
+	EDIT	編輯

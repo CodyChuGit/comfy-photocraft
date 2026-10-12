@@ -4,6 +4,62 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-12 (night): plan Phase 5, the finish (hub, alerts, saving, Angles) and the walkthrough
+
+Built [`plan-artcraft-experience.md`](plan-artcraft-experience.md) §7 and ran its §9 walkthrough.
+
+- **Generate hub** (`generate_hub.rs`): eight cards (Create: Image; Edit: Fill, Edit, Expand,
+  Remove Background, Split into Layers, Select by Text, Angles) under the Home screen's recent
+  files and in **Help › Generative Features…** (`help.generativeFeatures`, first in Help). A card
+  opens the Generate panel in its mode or runs its menu command; an Edit card with nothing open
+  shows the open dialog and carries on once the picture is open (a cancel leaves nothing waiting).
+  The Home card scrolls on a short window. Window › Generate now also focuses the prompt.
+  `ui.inspect.hub` lists the cards with their drawn rects.
+- **Alerts** (`alerts.rs`): `integrations.alerts` (`off` default, `done`, `doneAndFailed`) picks a
+  synthesized blip in `generations_panel::on_event` (880 → 1320 Hz done, 220 Hz failed, no sound
+  files). Playback is the `alerts` cargo feature (rodio 0.20.1, a new dependency; one blip at a time
+  on its own thread). It is not a default feature, because CI builds the workspace on Linux without
+  the ALSA headers, so "on in release" means the Windows and macOS packaging scripts build with
+  `--features heif,photocraft/alerts`; the Linux tarball, Flatpak (offline vendored crates) and
+  FreeBSD packages leave it off for now (ALSA would be a new build and runtime dependency there).
+- **Saving results**: `integrations.saveResultsDir` (empty = ask) and `saveResultsNaming`
+  (`{model}_{date}_{seed}`, validated: at least one token, no folders) are what `generate.export`
+  uses without `dir` / `name`; automation may not set the folder (`workspace.rs`, however the path
+  is written). Window › Generations gained a select mode (✓ in the header, or Select in a card's
+  menu) with **Save selected**.
+- **Generative Angles**: the research step found fal's Multiple Angles LoRA for
+  Qwen-Image-Edit-2511, Apache-2.0, with the authors' own ComfyUI graph (stock nodes only, checked
+  against our server's `/object_info`). Template `qwen-edit-2511/angles` (angles LoRA, then the
+  4-step Lightning LoRA, ModelSamplingAuraFlow 3.1, CFGNorm, 4 steps CFG 1; page `angles` so no
+  other picker lists it); `generate.angles {rotation, tilt, zoom, seed, variations}` builds the
+  LoRA's `<sks> [azimuth] [elevation] [distance]` prompt and runs Generative Edit with the new
+  `wholePicture` option (a selection does not mask a camera move); Edit › Generative Angles… opens
+  `angles_ui.rs`: an orbit widget (the subject, the ground ring with 8 stops, the camera dragged
+  around and up, snapping to the LoRA's 96 cameras), Direction / Height / Distance / Variations,
+  Generate with its estimate, and a warning naming the LoRA when the server lacks it. **Not run
+  live**: the LoRA is not on the dev server and the app downloads no weights; tested against the
+  fake (the graph, the words, the layers in the Variations strip).
+- **Live walkthrough** (`docs/comfy/bench/scripts/walkthrough-live.ps1`, release GUI with
+  `alerts`, ComfyUI up), all ten steps of §9: Essentials shows both panels; Image × 4 with Krea 2
+  Turbo into a new document in 17.5 s (estimate ~22 s), four tiles, a tile click and Keep leave one
+  layer; Fill "a red kite" 15.7 s with the task bar away; Edit "make the sky stormy, keep the kite"
+  with the kite layer as reference 18.5 s; a dead server URL gives a `serverUnreachable` row and
+  Recreate succeeds; Place after close; the CLI's export writes
+  `krea2-turbo-image_2026-10-12_061608_<seed>.png`; after a relaunch 4 completed and 1 failed rows
+  with 4 thumbnails; the Home Image card and Help's Expand card set the panel's mode; Enter to
+  generate, `lastAlert = done`, the strip at the bottom; CLI and GUI both list 6 records.
+  Screenshots (and the Phase 3/4 ones) in `C:\Users\5090\Documents\PhotoshopEX-walkthrough-2026-10-12`.
+- **Fixes on the way**: hub card sentences were clipped mid-line (now two lines with an ellipsis,
+  cards 64 pt); "CREATE"/"EDIT" and Russian "Direction"/"Distance" were missing from catalogues
+  (`every_tl_literal_is_translated` caught them).
+- **Tests**: `generate_hub_tests.rs` (4), `angles_ui_tests.rs` (3), `alerts.rs` (2), the
+  Generations select mode and alert choice (2), engine export preferences and Angles (graph,
+  words, validation, 96 cameras), automation's save-folder refusal. Gates: clippy (also with
+  `alerts`), fmt, layers, wasm, parity (the two menu items), scorecard 57 of 155 unread.
+- **Open**: Angles needs a live run once the LoRA is installed (and its estimate a measurement);
+  Linux packages without alert sounds; the hub's Edit cards cannot be driven by scripts with
+  nothing open (they show the native open dialog).
+
 ## 2026-10-12 (evening): plan Phase 4, the Variations strip
 
 Built [`plan-artcraft-experience.md`](plan-artcraft-experience.md) §6.

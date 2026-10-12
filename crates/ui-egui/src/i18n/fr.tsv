@@ -2690,3 +2690,47 @@ cameraRaw	Blending	Fusion
 	Click to retry	Cliquez pour réessayer
 	Retry	Réessayer
 	Variations strip	Bande des variantes
+	{n} selected	{n} sélectionné(s)
+	Save selected	Enregistrer la sélection
+	Save results dir	Dossier des résultats enregistrés
+	Save results naming	Nommage des résultats enregistrés
+	Alerts	Alertes
+	Done and failed	Terminés et échecs
+	Not in this build yet	Pas encore dans cette version
+	Open a picture first	Ouvrez d'abord une image
+	Generative Features	Fonctions génératives
+	Runs on your own ComfyUI server with the models you installed.	Fonctionne sur votre propre serveur ComfyUI avec les modèles que vous avez installés.
+	SOON	BIENTÔT
+	Split into Layers	Séparer en calques
+	Angles	Angles
+	A new picture from a prompt, with up to three references	Une nouvelle image à partir d'un prompt, avec jusqu'à trois références
+	Paint the selection from a prompt	Remplit la sélection d'après un prompt
+	Change the picture by instruction	Modifie l'image par instruction
+	Grow the canvas and continue the scene	Agrandit la zone de travail et prolonge la scène
+	Cut the subject out onto transparency	Détoure le sujet sur fond transparent
+	Separate the picture into editable layers	Sépare l'image en calques modifiables
+	Select what you name in a few words	Sélectionne ce que vous nommez en quelques mots
+	See the subject from another camera angle	Montre le sujet sous un autre angle de caméra
+	Generative Features…	Fonctions génératives…
+	Generative Angles…	Angles génératifs…
+	front	face
+	Camera	Caméra
+	Generative Angles	Angles génératifs
+	Needs qwen-image-edit-2511-multiple-angles-lora.safetensors in ComfyUI/models/loras (fal, Apache-2.0)	Nécessite qwen-image-edit-2511-multiple-angles-lora.safetensors dans ComfyUI/models/loras (fal, Apache-2.0)
+	front view	vue de face
+	front-right quarter view	vue de trois-quarts avant droite
+	right side view	vue de profil droit
+	back-right quarter view	vue de trois-quarts arrière droite
+	back view	vue de dos
+	back-left quarter view	vue de trois-quarts arrière gauche
+	left side view	vue de profil gauche
+	front-left quarter view	vue de trois-quarts avant gauche
+	low-angle shot	contre-plongée
+	eye-level shot	à hauteur des yeux
+	elevated shot	vue surélevée
+	high-angle shot	plongée
+	wide shot	plan large
+	medium shot	plan moyen
+	close-up	gros plan
+	CREATE	CRÉER
+	EDIT	MODIFIER

@@ -2242,3 +2242,47 @@ cameraRaw	Color	カラー
 	Click to retry	クリックして再試行
 	Retry	再試行
 	Variations strip	バリエーションストリップ
+	{n} selected	{n} 件を選択
+	Save selected	選択項目を保存
+	Save results dir	結果の保存先フォルダー
+	Save results naming	保存する結果の名前
+	Alerts	通知音
+	Done and failed	完了と失敗
+	Not in this build yet	このビルドにはまだありません
+	Open a picture first	まず画像を開いてください
+	Generative Features	生成機能
+	Runs on your own ComfyUI server with the models you installed.	インストールしたモデルを使い、あなた自身の ComfyUI サーバーで動作します。
+	SOON	近日
+	Split into Layers	レイヤーに分割
+	Angles	アングル
+	A new picture from a prompt, with up to three references	プロンプトから新しい画像を作成（参照画像は 3 枚まで）
+	Paint the selection from a prompt	選択範囲をプロンプトで塗りつぶします
+	Change the picture by instruction	指示で画像を変更します
+	Grow the canvas and continue the scene	カンバスを広げてシーンを続けます
+	Cut the subject out onto transparency	被写体を透明の背景に切り抜きます
+	Separate the picture into editable layers	画像を編集可能なレイヤーに分けます
+	Select what you name in a few words	数語で指定したものを選択します
+	See the subject from another camera angle	被写体を別のカメラアングルから見せます
+	Generative Features…	生成機能…
+	Generative Angles…	生成アングル…
+	front	正面
+	Camera	カメラ
+	Generative Angles	生成アングル
+	Needs qwen-image-edit-2511-multiple-angles-lora.safetensors in ComfyUI/models/loras (fal, Apache-2.0)	ComfyUI/models/loras に qwen-image-edit-2511-multiple-angles-lora.safetensors が必要です（fal、Apache-2.0）
+	front view	正面ビュー
+	front-right quarter view	右前方斜めビュー
+	right side view	右側面ビュー
+	back-right quarter view	右後方斜めビュー
+	back view	背面ビュー
+	back-left quarter view	左後方斜めビュー
+	left side view	左側面ビュー
+	front-left quarter view	左前方斜めビュー
+	low-angle shot	ローアングル
+	eye-level shot	アイレベル
+	elevated shot	やや俯瞰
+	high-angle shot	ハイアングル
+	wide shot	ワイドショット
+	medium shot	ミディアムショット
+	close-up	クローズアップ
+	CREATE	作成
+	EDIT	編集

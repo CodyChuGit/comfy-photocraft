@@ -30,7 +30,7 @@ pub const TILE: f32 = 56.0;
 /// Thumbnails built per frame at most (each samples its layer once).
 const BUILDS_PER_FRAME: usize = 4;
 /// The commands whose results are variations of one request (a split or a matte is not).
-const COMMANDS: [&str; 5] = ["generate.fill", "generate.edit", "generate.expand", "generate.image", "generate.similar"];
+const COMMANDS: [&str; 6] = ["generate.fill", "generate.edit", "generate.expand", "generate.image", "generate.similar", "generate.angles"];
 
 /// One run of the active document.
 #[derive(Clone, Debug, PartialEq)]

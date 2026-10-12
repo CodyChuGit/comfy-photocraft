@@ -229,9 +229,24 @@ ArtCraft Omni API) with the local server as the default and a fallback order.
   last five runs of the document as tiles from the Generations library, click to show, × to
   drop, ✓ to keep, ✦ for more, placeholders while running, Retry when failed;
   `generate.dropVariation`, `generate.keepVariation`, `ui.inspect.variations`.
-- ⬜ Plan Phase 5: hub, completion alerts, export naming preference, Angles.
+- ✅ Plan Phase 5: the Generate hub (Home-screen cards, Help › Generative Features…), completion
+  alerts (`integrations.alerts`, the `alerts` cargo feature, rodio; on in the Windows and macOS
+  packages), saving results (`saveResultsDir` / `saveResultsNaming`, select mode with Save
+  selected in Window › Generations), and Generative Angles (fal's Multiple Angles LoRA, Apache-2.0:
+  `qwen-edit-2511/angles`, `generate.angles`, an orbit window).
+
+**Phase 4 status after the PhotoshopEX build (2026-10-12):** ✅ capability flags the UI reads
+(kept in the templates' metadata rather than a separate `models.toml`), ✅ LoRA and style
+reference selection (Krea 2 style reference, the Multiple Angles LoRA) and reference images
+(two on 2511 edits, nine plus the picture on Qwen-Image-2.1), ✅ one-click purge
+(Edit › Purge › Generative Models); ⬜ template import from a user's ComfyUI export, ⬜ the
+model download helper (deliberately not started: the app ships and fetches no weights), ⬜ a
+health panel beyond Test connection.
 
 ## Phase 5: Quality and depth
+
+**Status (2026-10-12):** ✅ Generate Similar (and Recreate from the Generations library);
+⬜ everything else below.
 
 - Harmonize, Generative Upscale, Generate Similar.
 - Generative smart objects: the generation becomes a smart object whose source records the

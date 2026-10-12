@@ -2697,3 +2697,47 @@ cameraRaw	Whites	Brancos
 	Click to retry	Clique para tentar de novo
 	Retry	Tentar de novo
 	Variations strip	Faixa de variações
+	{n} selected	{n} selecionados
+	Save selected	Salvar selecionados
+	Save results dir	Pasta dos resultados salvos
+	Save results naming	Nomes dos resultados salvos
+	Alerts	Alertas
+	Done and failed	Concluídos e com falha
+	Not in this build yet	Ainda não está nesta versão
+	Open a picture first	Abra uma imagem primeiro
+	Generative Features	Recursos generativos
+	Runs on your own ComfyUI server with the models you installed.	Funciona no seu próprio servidor ComfyUI com os modelos que você instalou.
+	SOON	EM BREVE
+	Split into Layers	Dividir em camadas
+	Angles	Ângulos
+	A new picture from a prompt, with up to three references	Uma imagem nova a partir de um prompt, com até três referências
+	Paint the selection from a prompt	Preenche a seleção a partir de um prompt
+	Change the picture by instruction	Muda a imagem por instrução
+	Grow the canvas and continue the scene	Aumenta a tela e continua a cena
+	Cut the subject out onto transparency	Recorta o assunto sobre transparência
+	Separate the picture into editable layers	Separa a imagem em camadas editáveis
+	Select what you name in a few words	Seleciona o que você nomear em poucas palavras
+	See the subject from another camera angle	Mostra o assunto de outro ângulo de câmera
+	Generative Features…	Recursos generativos…
+	Generative Angles…	Ângulos generativos…
+	front	frente
+	Camera	Câmera
+	Generative Angles	Ângulos generativos
+	Needs qwen-image-edit-2511-multiple-angles-lora.safetensors in ComfyUI/models/loras (fal, Apache-2.0)	Requer qwen-image-edit-2511-multiple-angles-lora.safetensors em ComfyUI/models/loras (fal, Apache-2.0)
+	front view	vista frontal
+	front-right quarter view	vista três quartos frontal direita
+	right side view	vista lateral direita
+	back-right quarter view	vista três quartos traseira direita
+	back view	vista traseira
+	back-left quarter view	vista três quartos traseira esquerda
+	left side view	vista lateral esquerda
+	front-left quarter view	vista três quartos frontal esquerda
+	low-angle shot	contra-plongée
+	eye-level shot	na altura dos olhos
+	elevated shot	plano elevado
+	high-angle shot	plongée
+	wide shot	plano geral
+	medium shot	plano médio
+	close-up	close-up
+	CREATE	CRIAR
+	EDIT	EDITAR

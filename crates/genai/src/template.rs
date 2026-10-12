@@ -263,6 +263,7 @@ const BUILTIN: &[&str] = &[
     include_str!("../workflows/qwen-edit-2511-image-ref.json"),
     include_str!("../workflows/krea2-turbo-image-style.json"),
     include_str!("../workflows/qwen-2.1-edit.json"),
+    include_str!("../workflows/qwen-edit-2511-angles.json"),
 ];
 
 /// Verbs a prompt can open with when it is already an edit instruction ("remove the car",

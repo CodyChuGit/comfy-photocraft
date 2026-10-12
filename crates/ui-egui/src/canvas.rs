@@ -1566,54 +1566,77 @@ fn start_screen(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     // File › Open Recent, newest first (on the web there are no paths to reopen).
     let recent: Vec<String> = if cfg!(target_arch = "wasm32") { Vec::new() } else { app.ui.recent_files.iter().take(HOME_RECENT).cloned().collect() };
     let recent_h = if recent.is_empty() { 0.0 } else { 34.0 + recent.len() as f32 * HOME_RECENT_ROW };
-    let card = Rect::from_center_size(area.center(), egui::vec2(460.0, 330.0 + recent_h));
+    // PhotoshopEX: the Generate hub's cards under the recent files (not on the web, which has no
+    // generative commands); a window too short for everything scrolls.
+    let hub = !cfg!(target_arch = "wasm32");
+    let hub_h = if hub { 22.0 + crate::generate_hub::height(460.0) } else { 0.0 };
+    let total_h = 330.0 + recent_h + hub_h;
+    let card = Rect::from_center_size(area.center(), egui::vec2(460.0, total_h));
+    let card = if total_h <= area.height() - 16.0 {
+        card
+    } else {
+        Rect::from_min_size(egui::pos2(card.left(), area.top() + 8.0), egui::vec2(470.0, area.height() - 16.0))
+    };
     let new_label = crate::shortcuts::command_label(app, "New document…", "file.new");
     let open_label = crate::shortcuts::command_label(app, "Open…", "file.open");
+    let mut hub_card = None;
     ui.scope_builder(egui::UiBuilder::new().max_rect(card), |ui| {
-        ui.vertical_centered(|ui| {
-            ui.horizontal(|ui| {
-                let title = ui.painter().layout_no_wrap(tl!("PhotoCraft").into(), crate::theme::semibold(38.0), t.text);
-                let by = ui.painter().layout_no_wrap("open source".into(), egui::FontId::proportional(13.0), t.text_faint);
-                let total = title.size().x + by.size().x + 10.0;
-                ui.add_space(((card.width() - total) / 2.0).max(0.0));
-                let (r, _) = ui.allocate_exact_size(title.size(), Sense::hover());
-                ui.painter().galley(r.min, title, t.text);
-                let (r2, _) = ui.allocate_exact_size(egui::vec2(by.size().x + 10.0, r.height()), Sense::hover());
-                ui.painter().galley(egui::pos2(r2.left() + 10.0, r.bottom() - by.size().y - 8.0), by, t.text_faint);
-            });
-            ui.add_space(6.0);
-            ui.label(egui::RichText::new(tl!("Create a new document or open an existing file.")).color(t.text_dim).size(14.0));
-            ui.add_space(22.0);
-            ui.horizontal(|ui| {
-                ui.add_space(((card.width() - 2.0 * 190.0 - 12.0) / 2.0).max(0.0));
-                ui.spacing_mut().item_spacing.x = 12.0;
-                if crate::widgets::primary_button(ui, &new_label, 190.0).clicked() {
-                    let fields = app.new_document_fields();
-                    app.ui.open_dialog(crate::state::DialogKind::NewDocument, fields);
-                }
-                if crate::widgets::secondary_button(ui, &open_label, 190.0).clicked() {
-                    app.open_dialog_file();
-                }
-            });
-            ui.add_space(22.0);
-            ui.horizontal(|ui| {
-                let msg = start_screen_drop_hint(app.services.is_wayland);
-                let g = ui.painter().layout_no_wrap(msg.into(), egui::FontId::proportional(12.5), t.text_faint);
-                ui.add_space(((card.width() - g.size().x - 24.0) / 2.0).max(0.0));
-                let (r, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), Sense::hover());
-                crate::icons::paint(ui, r, "image", 15.0, t.text_faint);
-                ui.label(egui::RichText::new(msg).color(t.text_faint));
-            });
-            if !recent.is_empty() {
+        egui::ScrollArea::vertical().id_salt("home-screen").auto_shrink([false, true]).show(ui, |ui| {
+            ui.set_width(460.0);
+            ui.vertical_centered(|ui| {
+                ui.horizontal(|ui| {
+                    let title = ui.painter().layout_no_wrap(tl!("PhotoCraft").into(), crate::theme::semibold(38.0), t.text);
+                    let by = ui.painter().layout_no_wrap("open source".into(), egui::FontId::proportional(13.0), t.text_faint);
+                    let total = title.size().x + by.size().x + 10.0;
+                    ui.add_space(((card.width() - total) / 2.0).max(0.0));
+                    let (r, _) = ui.allocate_exact_size(title.size(), Sense::hover());
+                    ui.painter().galley(r.min, title, t.text);
+                    let (r2, _) = ui.allocate_exact_size(egui::vec2(by.size().x + 10.0, r.height()), Sense::hover());
+                    ui.painter().galley(egui::pos2(r2.left() + 10.0, r.bottom() - by.size().y - 8.0), by, t.text_faint);
+                });
+                ui.add_space(6.0);
+                ui.label(egui::RichText::new(tl!("Create a new document or open an existing file.")).color(t.text_dim).size(14.0));
                 ui.add_space(22.0);
-                home_recent(app, ui, &recent);
-            }
-            ui.add_space(26.0);
-            crate::links::discord_button(app, ui, 190.0);
-            ui.add_space(10.0);
-            crate::links::link_row(app, ui);
+                ui.horizontal(|ui| {
+                    ui.add_space(((card.width() - 2.0 * 190.0 - 12.0) / 2.0).max(0.0));
+                    ui.spacing_mut().item_spacing.x = 12.0;
+                    if crate::widgets::primary_button(ui, &new_label, 190.0).clicked() {
+                        let fields = app.new_document_fields();
+                        app.ui.open_dialog(crate::state::DialogKind::NewDocument, fields);
+                    }
+                    if crate::widgets::secondary_button(ui, &open_label, 190.0).clicked() {
+                        app.open_dialog_file();
+                    }
+                });
+                ui.add_space(22.0);
+                ui.horizontal(|ui| {
+                    let msg = start_screen_drop_hint(app.services.is_wayland);
+                    let g = ui.painter().layout_no_wrap(msg.into(), egui::FontId::proportional(12.5), t.text_faint);
+                    ui.add_space(((card.width() - g.size().x - 24.0) / 2.0).max(0.0));
+                    let (r, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), Sense::hover());
+                    crate::icons::paint(ui, r, "image", 15.0, t.text_faint);
+                    ui.label(egui::RichText::new(msg).color(t.text_faint));
+                });
+                if !recent.is_empty() {
+                    ui.add_space(22.0);
+                    home_recent(app, ui, &recent);
+                }
+                if hub {
+                    ui.add_space(22.0);
+                    hub_card = crate::generate_hub::section(ui, 460.0);
+                }
+                ui.add_space(26.0);
+                crate::links::discord_button(app, ui, 190.0);
+                ui.add_space(10.0);
+                crate::links::link_row(app, ui);
+            });
         });
     });
+    if let Some(c) = hub_card
+        && let Err(e) = crate::generate_hub::activate(app, ui.ctx(), &c)
+    {
+        crate::notices::error(app, e);
+    }
 }
 
 fn start_screen_drop_hint(is_wayland: bool) -> &'static str {

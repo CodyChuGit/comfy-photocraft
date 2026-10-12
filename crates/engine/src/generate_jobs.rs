@@ -73,6 +73,7 @@ pub fn is_generative(id: &str) -> bool {
             | "generate.expand"
             | "generate.edit"
             | "generate.similar"
+            | "generate.angles"
             | "generate.splitLayers"
             | "generate.removeBackground"
             | "select.byText"
@@ -810,8 +811,9 @@ pub fn suggested_name(rec: &GenerationRecord) -> String {
     export_name(DEFAULT_EXPORT_NAME, rec, 1, false)
 }
 
-/// Expand a `generate.export` name pattern for result `n` (1-based) of `rec`.
-fn export_name(pattern: &str, rec: &GenerationRecord, n: usize, many: bool) -> String {
+/// Expand a `generate.export` name pattern for result `n` (1-based) of `rec` (`many`: several
+/// results are saved, so a pattern without `{n}` gets `_n`).
+pub fn export_name(pattern: &str, rec: &GenerationRecord, n: usize, many: bool) -> String {
     let model = if rec.template.is_empty() { "generation".to_string() } else { rec.template.replace('/', "-") };
     let prompt: String = rec
         .prompt
@@ -1197,9 +1199,21 @@ fn run_place(s: &mut Session, p: &Value) -> Result<Value> {
 fn run_export(s: &mut Session, p: &Value) -> Result<Value> {
     let id = record_id(EXPORT, p)?;
     let index = opt_num(EXPORT, p, "index", 0.0, 63.0)?.map(|v| v as usize);
-    let dir =
-        opt_str(EXPORT, p, "dir", 4096)?.map(str::trim).filter(|d| !d.is_empty()).ok_or_else(|| bad(EXPORT, "`dir` is required: the folder to save into"))?;
-    let pattern = opt_str(EXPORT, p, "name", 200)?.map(str::trim).filter(|n| !n.is_empty()).unwrap_or(DEFAULT_EXPORT_NAME);
+    // The folder and the name pattern: the call's, else the preferences' (Preferences › AI
+    // Integrations › Save results dir / naming).
+    let prefs = &s.prefs().integrations;
+    let (dir_pref, naming) = (prefs.save_results_dir.trim().to_string(), prefs.save_results_naming.trim().to_string());
+    let dir = match opt_str(EXPORT, p, "dir", 4096)?.map(str::trim).filter(|d| !d.is_empty()) {
+        Some(d) => d.to_string(),
+        None if !dir_pref.is_empty() => dir_pref,
+        None => return Err(bad(EXPORT, "`dir` is required when Preferences › AI Integrations › Save results dir is empty: the folder to save into")),
+    };
+    let pattern = match opt_str(EXPORT, p, "name", 200)?.map(str::trim).filter(|n| !n.is_empty()) {
+        Some(n) => n.to_string(),
+        None if !naming.is_empty() => naming,
+        None => DEFAULT_EXPORT_NAME.to_string(),
+    };
+    let pattern = pattern.as_str();
     if pattern.contains(['/', '\\']) || pattern.contains("..") {
         return Err(bad(EXPORT, "`name` is a file name pattern, not a path"));
     }
@@ -1301,7 +1315,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Export Generation",
             menu: &[],
             shortcut: None,
-            params: r#"{"id":u64,"dir":path,"index":{int?=all},"name":{str?="{model}_{date}_{seed}"}} → {"files":[path]} (saves stored results as PNG files; name tokens {model}, {template}, {date} (UTC, YYYY-MM-DD_HHMMSS), {seed}, {prompt}, {n}; several results get _n; existing files are not replaced)"#,
+            params: r#"{"id":u64,"dir":{path?=Preferences › AI Integrations › Save results dir},"index":{int?=all},"name":{str?=Save results naming, "{model}_{date}_{seed}"}} → {"files":[path]} (saves stored results as PNG files; without dir and with the preference empty it is an error (the app asks for a folder); name tokens {model}, {template}, {date} (UTC, YYYY-MM-DD_HHMMSS), {seed}, {prompt}, {n}; several results get _n; existing files are not replaced)"#,
             enabled: |_| web_unavailable(),
             run: run_export,
             journal: false,

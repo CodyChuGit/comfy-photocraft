@@ -37,6 +37,13 @@ base64 = "0.22"
 rayon = { workspace = true }
 # Safe native UI-language APIs (Windows/macOS); no subprocess or web dependency.
 sys-locale = "=0.3.2"
+# Completion sounds (`alerts.rs`, feature `alerts`): playback only, no decoders.
+rodio = { version = "0.20", default-features = false, optional = true }
+
+[features]
+# Generation completion sounds (Preferences › AI Integrations › Alerts). The release packages
+# turn it on; CI and the web build leave it off (Linux needs the ALSA headers to build it).
+alerts = ["dep:rodio"]
 
 [dev-dependencies]
 # Synthetic raw files for the open-time Camera Raw dialog tests.

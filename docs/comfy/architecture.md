@@ -417,6 +417,32 @@ Each one is read by code in the same change that adds it, so the audit count doe
   A running job shows placeholders with a sheen and its percent; a failed one a red tile with the
   reason, Retry (`generate.recreate`) and Dismiss. While the strip, the task bar or the Generate
   panel shows a job, the modal progress dialog stays away. The task bar's 1/n switcher is gone.
+- **Generate hub** (PhotoshopEX, `generate_hub.rs`): one card per feature (Create: Image; Edit:
+  Fill, Edit, Expand, Remove Background, Split into Layers, Select by Text, Angles) under the
+  Home screen's recent files (the Home card scrolls when the window is short) and in Help ›
+  Generative Features…. A card opens the Generate panel in its mode (`generate_panel::focus_mode`)
+  or invokes its menu command; an Edit card with no document open shows the open dialog first and
+  carries on from `generate_hub::tick` once a picture is open (a cancelled dialog leaves nothing
+  waiting). Window › Generate also puts the keyboard in the panel's prompt.
+- **Alerts** (`alerts.rs`): `integrations.alerts` (`off`, `done`, `doneAndFailed`) decides in
+  `generations_panel::on_event` whether a run's end plays a blip, two synthesized sines (880 then
+  1320 Hz for done, 220 Hz for failed, no asset files). Playback needs the `alerts` cargo feature
+  (`photocraft-ui-egui/alerts` → rodio, one blip at a time on its own thread); CI and the web build
+  leave it off, the Windows and macOS packages turn it on (Linux would need the ALSA headers and
+  runtime library, not added to the packages).
+- **Saving results**: `generate.export` without `dir` / `name` uses `integrations.saveResultsDir`
+  and `saveResultsNaming` (tokens `{model}`, `{template}`, `{date}`, `{seed}`, `{prompt}`, `{n}`,
+  validated in `prefs::check_value`); with no folder set the panel asks with the save dialog.
+  Window › Generations has a select mode (✓ in its header, or Select in a card's menu) whose Save
+  selected exports every picked result. Automation may not set the save folder (an ambient path).
+- **Generative Angles** (`angles_ui.rs`, `generate.angles`): fal's Multiple Angles LoRA for
+  Qwen-Image-Edit-2511 (template `qwen-edit-2511/angles`, page `angles`, so no other picker lists
+  it). The command turns `rotation` (0…315 by 45), `tilt` (-30, 0, 30, 60) and `zoom` (0, 5, 10)
+  into the LoRA's prompt (`<sks> back-right quarter view high-angle shot medium shot`) and runs
+  Generative Edit with `wholePicture` (the selection does not confine a camera move); the layers
+  remember an edit, so Similar and Recreate work and the runs show in the Variations strip. The
+  window's orbit widget draws the subject, the ground ring with its 8 stops and the camera, and
+  snaps drags to the LoRA's directions and heights; it warns when the server lacks the LoRA.
 - **Dock budget**: with the two generative groups open the filler (Layers) asks for 320 pt instead
   of 500, the other groups give way to their compact heights before the generative ones, and the
   generative groups fold to their tab strips when Layers would drop under 260 pt

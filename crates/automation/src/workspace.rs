@@ -252,9 +252,24 @@ fn preferences_may_grant_ambient_paths(id: &str, params: &Value) -> bool {
     if id != "prefs.set" {
         return false;
     }
-    let direct = params.get("path").and_then(Value::as_str).is_some_and(preference_uses_ambient_filesystem);
-    let batch = params.get("values").and_then(Value::as_object).is_some_and(|values| values.keys().any(|path| preference_uses_ambient_filesystem(path)));
+    let path = params.get("path").and_then(Value::as_str);
+    let direct = path.is_some_and(preference_uses_ambient_filesystem) || path.is_some_and(|p| sets_save_folder(p, params.get("value")));
+    let batch = params
+        .get("values")
+        .and_then(Value::as_object)
+        .is_some_and(|values| values.iter().any(|(path, v)| preference_uses_ambient_filesystem(path) || sets_save_folder(path, Some(v))));
     direct || batch
+}
+
+/// Does setting `path` to `value` choose the folder the Generations panel saves into
+/// (`integrations.saveResultsDir`, directly or inside the whole `integrations` section)?
+fn sets_save_folder(path: &str, value: Option<&Value>) -> bool {
+    let norm: Vec<&str> = path.split('.').filter(|s| !s.is_empty()).collect();
+    match norm.as_slice() {
+        ["integrations", "saveResultsDir"] => true,
+        ["integrations"] => value.and_then(|v| v.get("saveResultsDir")).is_some(),
+        _ => false,
+    }
 }
 
 fn preference_uses_ambient_filesystem(path: &str) -> bool {
@@ -477,6 +492,17 @@ mod tests {
         assert!(authorize_engine_command("filter.distort.displace", &serde_json::json!({"mapPath": "outside.png"})).is_err());
         assert!(authorize_engine_command("layer.setAdjustment", &serde_json::json!({"file": "outside.cube"})).is_err());
         assert!(authorize_engine_command("prefs.set", &serde_json::json!({"path": "colorSettings.workingRgb", "value": "outside.icc"})).is_err());
+        // The Generations panel's save folder is an ambient path too, however it is reached.
+        for p in [
+            serde_json::json!({"path": "integrations.saveResultsDir", "value": "/outside"}),
+            serde_json::json!({"path": ".integrations..saveResultsDir", "value": "/outside"}),
+            serde_json::json!({"path": "integrations", "value": {"saveResultsDir": "/outside"}}),
+            serde_json::json!({"values": {"integrations.saveResultsDir": "/outside"}}),
+        ] {
+            assert!(authorize_engine_command("prefs.set", &p).is_err(), "{p}");
+        }
+        assert!(authorize_engine_command("prefs.set", &serde_json::json!({"path": "integrations.saveResultsNaming", "value": "{seed}"})).is_ok());
+        assert!(authorize_engine_command("prefs.set", &serde_json::json!({"path": "integrations", "value": {"enterToGenerate": true}})).is_ok());
         assert!(authorize_engine_step("file.open", &serde_json::json!({})).is_err());
         assert!(authorize_engine_step("actions.play", &serde_json::json!({})).is_ok());
         // An allowed command can't reach a denied one by running it on its own behalf.

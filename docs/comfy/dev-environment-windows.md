@@ -48,6 +48,7 @@ debug build is not much faster; use `--release` for anything interactive, as ups
 
 ```powershell
 cargo build --release -p photocraft           # desktop app
+cargo build --release -p photocraft --features alerts   # with the completion sounds (as the packages)
 cargo build --release -p photocraft-cli       # headless CLI + MCP server
 .\target\release\photocraft.exe --version     # prints "photocraft 0.5.0 (dev build)"
 .\target\release\photocraft.exe image.psd     # open a file

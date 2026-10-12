@@ -2298,3 +2298,47 @@
 	Click to retry	Zum Wiederholen klicken
 	Retry	Wiederholen
 	Variations strip	Variantenleiste
+	{n} selected	{n} ausgewählt
+	Save selected	Auswahl speichern
+	Save results dir	Ordner für gespeicherte Ergebnisse
+	Save results naming	Benennung gespeicherter Ergebnisse
+	Alerts	Hinweistöne
+	Done and failed	Fertig und fehlgeschlagen
+	Not in this build yet	In diesem Build noch nicht enthalten
+	Open a picture first	Öffnen Sie zuerst ein Bild
+	Generative Features	Generative Funktionen
+	Runs on your own ComfyUI server with the models you installed.	Läuft auf Ihrem eigenen ComfyUI-Server mit den Modellen, die Sie installiert haben.
+	SOON	BALD
+	Split into Layers	In Ebenen aufteilen
+	Angles	Blickwinkel
+	A new picture from a prompt, with up to three references	Ein neues Bild aus einem Prompt, mit bis zu drei Referenzen
+	Paint the selection from a prompt	Füllt die Auswahl nach einem Prompt
+	Change the picture by instruction	Ändert das Bild per Anweisung
+	Grow the canvas and continue the scene	Vergrößert die Arbeitsfläche und setzt die Szene fort
+	Cut the subject out onto transparency	Stellt das Motiv auf Transparenz frei
+	Separate the picture into editable layers	Zerlegt das Bild in bearbeitbare Ebenen
+	Select what you name in a few words	Wählt aus, was Sie mit wenigen Worten benennen
+	See the subject from another camera angle	Zeigt das Motiv aus einem anderen Kamerawinkel
+	Generative Features…	Generative Funktionen…
+	Generative Angles…	Generative Blickwinkel…
+	front	vorne
+	Camera	Kamera
+	Generative Angles	Generative Blickwinkel
+	Needs qwen-image-edit-2511-multiple-angles-lora.safetensors in ComfyUI/models/loras (fal, Apache-2.0)	Benötigt qwen-image-edit-2511-multiple-angles-lora.safetensors in ComfyUI/models/loras (fal, Apache-2.0)
+	front view	Vorderansicht
+	front-right quarter view	Dreiviertelansicht vorne rechts
+	right side view	rechte Seitenansicht
+	back-right quarter view	Dreiviertelansicht hinten rechts
+	back view	Rückansicht
+	back-left quarter view	Dreiviertelansicht hinten links
+	left side view	linke Seitenansicht
+	front-left quarter view	Dreiviertelansicht vorne links
+	low-angle shot	Froschperspektive
+	eye-level shot	Augenhöhe
+	elevated shot	erhöhte Perspektive
+	high-angle shot	Vogelperspektive
+	wide shot	Totale
+	medium shot	Halbtotale
+	close-up	Nahaufnahme
+	CREATE	ERSTELLEN
+	EDIT	BEARBEITEN

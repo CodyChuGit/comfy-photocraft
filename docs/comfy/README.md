@@ -84,6 +84,33 @@ The target list is Photoshop 2026 (v27.x) as documented by Adobe and the communi
 | Partner models in the picker | Choose a model per generation | model picker in the task bar, fed by the catalogue + server `object_info` | all installed | 2 |
 | Generative Workspace / AI Assistant | Ideation canvas, conversational panel | out of scope for now; MCP already lets any agent drive the app | — | — |
 
+## How to use (PhotoshopEX)
+
+Everything runs on your own ComfyUI server (Edit › Preferences › AI Integrations › ComfyUI
+server) with the models you installed there; the app ships no weights.
+
+- **Window › Generate** (the prompt box in the dock): pick Image, Fill, Edit or Expand, type,
+  add reference images to the deck (+, or drop files on the panel), choose a model in the picker
+  (Auto names the model it will use; `research` models need Preferences › Allow research-only
+  models; `not installed` means the server lacks a file), and press **Generate · ~9 s**
+  (Ctrl+Enter). On a short window the panel is one row: mode, model glyph, prompt, Generate.
+- **The task bar under a selection**: the same prompt in Fill or Edit mode when the Generate panel
+  is not on screen (Preferences › Show generative bar: auto / always / never).
+- **Window › Generations**: every run of this and earlier sessions, kept on disk. Running runs
+  show their percent and Cancel; failed ones the reason with Recreate; results Place, Generate
+  Similar, Save… and Copy prompt on hover. ✓ (Select) picks several for **Save selected** into
+  Preferences › Save results dir, named by Save results naming (`{model}_{date}_{seed}`).
+- **The Variations strip** at the canvas edge: the document's last five runs as tiles. Click one
+  to show it, × to delete it, ✓ to keep it and delete the others, ✦ for more like it.
+  Preferences › Variations strip: right, bottom or off.
+- **Edit › Generative Angles…**: drag the camera around the subject in the orbit widget (8
+  directions, 4 heights, 3 distances) and Generate; needs fal's Multiple Angles LoRA in
+  ComfyUI/models/loras.
+- **The Home screen and Help › Generative Features…**: one card per feature; an Edit card asks
+  for a picture first when none is open.
+- **Preferences › Alerts**: a short sound when a run finishes (`done`) or also when it fails
+  (`doneAndFailed`); the Windows and macOS packages are built with the `alerts` feature.
+
 ## Status
 
 - 2026-10-08: Phase 0 (this documentation, the Windows environment, the `comfy-photocraft`

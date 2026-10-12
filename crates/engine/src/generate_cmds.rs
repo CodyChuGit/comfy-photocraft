@@ -288,6 +288,35 @@ pub fn generative_info(layer: &Layer) -> Option<GenerativeInfo> {
 }
 
 pub(crate) const EDIT: &str = "generate.edit";
+/// The picture seen from another camera (the Multiple Angles LoRA), as an edit.
+pub const ANGLES: &str = "generate.angles";
+/// The template `generate.angles` runs.
+pub const ANGLES_TEMPLATE: &str = "qwen-edit-2511/angles";
+/// `generate.angles` `rotation` (degrees around the subject, 0 = from the front) and the Multiple
+/// Angles LoRA's word for it.
+pub const ANGLE_ROTATIONS: [(u32, &str); 8] = [
+    (0, "front view"),
+    (45, "front-right quarter view"),
+    (90, "right side view"),
+    (135, "back-right quarter view"),
+    (180, "back view"),
+    (225, "back-left quarter view"),
+    (270, "left side view"),
+    (315, "front-left quarter view"),
+];
+/// `tilt` (the camera's height in degrees) and its words.
+pub const ANGLE_TILTS: [(i32, &str); 4] = [(-30, "low-angle shot"), (0, "eye-level shot"), (30, "elevated shot"), (60, "high-angle shot")];
+/// `zoom` (0 = wide, 10 = closest) and its words.
+pub const ANGLE_ZOOMS: [(u32, &str); 3] = [(0, "wide shot"), (5, "medium shot"), (10, "close-up")];
+
+/// The Multiple Angles LoRA's prompt for a camera, `<sks> [azimuth] [elevation] [distance]`, or
+/// None for a value it has no words for.
+pub fn angle_prompt(rotation: u32, tilt: i32, zoom: u32) -> Option<String> {
+    let r = ANGLE_ROTATIONS.iter().find(|(d, _)| *d == rotation)?.1;
+    let t = ANGLE_TILTS.iter().find(|(d, _)| *d == tilt)?.1;
+    let z = ANGLE_ZOOMS.iter().find(|(d, _)| *d == zoom)?.1;
+    Some(format!("<sks> {r} {t} {z}"))
+}
 pub(crate) const DEFAULT_EDIT_TEMPLATE: &str = "qwen-edit-2511/edit";
 /// What `auto` tries for an edit, fastest permissive tier first.
 pub(crate) const AUTO_EDIT_ORDER: &[&str] = &["qwen-edit-2511/edit-lightning-8", DEFAULT_EDIT_TEMPLATE];
@@ -1893,6 +1922,8 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
     let backend = backend(s)?;
     let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs } = plan;
     let label = name.clone();
+    // `wholePicture` (Generative Angles): the selection does not confine the result.
+    let whole = opt_bool(EDIT, p, "wholePicture", false)?;
     let job = FillJob {
         backend,
         server: server_key(s),
@@ -1918,7 +1949,7 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
         move |doc, active, ctx| {
             // The whole canvas is re-rendered; a selection, when there is one, confines what
             // of it shows (the edit template takes no mask, see `fill_region`).
-            let coverage: Vec<f32> = match doc.selection.as_ref() {
+            let coverage: Vec<f32> = match doc.selection.as_ref().filter(|_| !whole) {
                 Some(sel) => {
                     let k = sel.channels().max(1);
                     sel.read_region(rect).chunks_exact(k).map(|c| c.first().copied().unwrap_or(0.0).clamp(0.0, 1.0)).collect()
@@ -1929,6 +1960,31 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
         },
         move |(made, w, h, request, template_id)| made_json(&made, w, h, request, &template_id),
     )
+}
+
+/// `generate.angles`: the whole picture from another camera position, as Generative Edit runs it
+/// with the Multiple Angles template and the LoRA's words for `rotation`, `tilt` and `zoom`.
+fn run_angles(s: &mut Session, p: &Value) -> Result<Value> {
+    let whole = |key: &str, lo: f64, hi: f64, default: f64| -> Result<f64> {
+        match opt_num(ANGLES, p, key, lo, hi)? {
+            None => Ok(default),
+            Some(x) if x.fract() == 0.0 => Ok(x),
+            Some(_) => Err(bad(ANGLES, format!("`{key}` must be a whole number"))),
+        }
+    };
+    let rotation = whole("rotation", 0.0, 315.0, 0.0)? as u32;
+    let tilt = whole("tilt", -30.0, 60.0, 0.0)? as i32;
+    let zoom = whole("zoom", 0.0, 10.0, 5.0)? as u32;
+    let words = angle_prompt(rotation, tilt, zoom)
+        .ok_or_else(|| bad(ANGLES, "`rotation` must be 0, 45, … 315; `tilt` -30, 0, 30 or 60; `zoom` 0 (wide), 5 (medium) or 10 (close-up)"))?;
+    let camera = words.trim_start_matches("<sks> ").to_string();
+    let mut q = json!({"prompt": words, "template": ANGLES_TEMPLATE, "wholePicture": true, "name": format!("Angles: {camera}")});
+    for key in ["seed", "variations"] {
+        if let Some(v) = p.get(key) {
+            q[key] = v.clone();
+        }
+    }
+    run_edit(s, &q)
 }
 
 fn doc_enabled(s: &Session) -> std::result::Result<(), String> {
@@ -2655,9 +2711,20 @@ pub fn specs() -> Vec<CommandSpec> {
             // Placed by the menu catalogue under Edit, with the other generative items.
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?="auto": the Lightning edit tier when its LoRA is installed, else the 40-step one},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"name":{str?},"references":[{"layer":id}|{"path":file}|{"job":id,"index":int=0}]?} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings"} (edits the whole picture by instruction; enhance = rewrite the instruction first with the vision-language model, the picture in view, so it names what is there instead of "this" (generate.enhancePrompt): "make the sky stormy", "turn the boat blue", "remove the person"; a description such as "a stormy sky" is wrapped as "change this image so that it shows …"; the composite goes to the model and the result is a new layer above the active one; with a selection the layer is masked to it (edge soft = a dithered fade around it, hard = exactly) so only that part of the edit shows; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; pictures over 0.75 megapixels are sent downscaled and come back resampled; references = extra images the instruction can name as image 2, image 3 (the 2511 templates take two, qwen-2.1/edit nine; see references.max in generate.models): a pixel layer, an image file or a stored generation; a background job; needs a ComfyUI server)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?="auto": the Lightning edit tier when its LoRA is installed, else the 40-step one},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"name":{str?},"wholePicture":bool=false,"references":[{"layer":id}|{"path":file}|{"job":id,"index":int=0}]?} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings"} (edits the whole picture by instruction; enhance = rewrite the instruction first with the vision-language model, the picture in view, so it names what is there instead of "this" (generate.enhancePrompt): "make the sky stormy", "turn the boat blue", "remove the person"; a description such as "a stormy sky" is wrapped as "change this image so that it shows …"; the composite goes to the model and the result is a new layer above the active one; with a selection the layer is masked to it (edge soft = a dithered fade around it, hard = exactly) so only that part of the edit shows; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; pictures over 0.75 megapixels are sent downscaled and come back resampled; references = extra images the instruction can name as image 2, image 3 (the 2511 templates take two, qwen-2.1/edit nine; see references.max in generate.models): a pixel layer, an image file or a stored generation; a background job; needs a ComfyUI server)"#,
             enabled: edit_enabled,
             run: run_edit,
+            journal: true,
+        },
+        CommandSpec {
+            id: ANGLES,
+            label: "Generative Angles…",
+            // Placed by the menu catalogue under Edit; the app opens its orbit dialog.
+            menu: &[],
+            shortcut: None,
+            params: r#"{"rotation":0|45|90|135|180|225|270|315=0,"tilt":-30|0|30|60=0,"zoom":0|5|10=5,"seed":{u64?=random},"variations":int=1} → as generate.edit (the whole picture seen from another camera, as layers over the canvas like Generative Edit's: rotation = degrees around the subject from the front (45 front-right quarter view … 180 back view … 315 front-left quarter view), tilt = the camera's height (-30 low angle, 0 eye level, 30 elevated, 60 high angle), zoom = 0 wide, 5 medium, 10 close-up; runs qwen-edit-2511/angles, which needs fal's Multiple Angles LoRA (Apache-2.0) in ComfyUI/models/loras; a selection does not confine it)"#,
+            enabled: edit_enabled,
+            run: run_angles,
             journal: true,
         },
         CommandSpec {

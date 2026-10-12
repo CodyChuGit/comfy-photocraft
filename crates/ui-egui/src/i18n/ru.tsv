@@ -2533,3 +2533,49 @@ cameraRaw	Roughness	Неровность
 	Click to retry	Нажмите, чтобы повторить
 	Retry	Повторить
 	Variations strip	Полоса вариантов
+	{n} selected	Выбрано: {n}
+	Save selected	Сохранить выбранное
+	Save results dir	Папка для сохранённых результатов
+	Save results naming	Имена сохранённых результатов
+	Alerts	Звуковые оповещения
+	Done and failed	Готово и сбой
+	Not in this build yet	Пока нет в этой сборке
+	Open a picture first	Сначала откройте изображение
+	Generative Features	Генеративные функции
+	Runs on your own ComfyUI server with the models you installed.	Работает на вашем собственном сервере ComfyUI с установленными вами моделями.
+	SOON	СКОРО
+	Split into Layers	Разделить на слои
+	Angles	Ракурсы
+	A new picture from a prompt, with up to three references	Новое изображение по промпту, до трёх референсов
+	Paint the selection from a prompt	Заполняет выделение по промпту
+	Change the picture by instruction	Меняет изображение по инструкции
+	Grow the canvas and continue the scene	Расширяет холст и продолжает сцену
+	Cut the subject out onto transparency	Вырезает объект на прозрачный фон
+	Separate the picture into editable layers	Разделяет изображение на редактируемые слои
+	Select what you name in a few words	Выделяет то, что вы назовёте несколькими словами
+	See the subject from another camera angle	Показывает объект с другого ракурса
+	Generative Features…	Генеративные функции…
+	Generative Angles…	Генеративные ракурсы…
+	front	спереди
+	Camera	Камера
+	Generative Angles	Генеративные ракурсы
+	Direction	Направление
+	Distance	Расстояние
+	Needs qwen-image-edit-2511-multiple-angles-lora.safetensors in ComfyUI/models/loras (fal, Apache-2.0)	Нужен qwen-image-edit-2511-multiple-angles-lora.safetensors в ComfyUI/models/loras (fal, Apache-2.0)
+	front view	вид спереди
+	front-right quarter view	вид в три четверти спереди справа
+	right side view	вид справа
+	back-right quarter view	вид в три четверти сзади справа
+	back view	вид сзади
+	back-left quarter view	вид в три четверти сзади слева
+	left side view	вид слева
+	front-left quarter view	вид в три четверти спереди слева
+	low-angle shot	нижний ракурс
+	eye-level shot	на уровне глаз
+	elevated shot	слегка сверху
+	high-angle shot	верхний ракурс
+	wide shot	общий план
+	medium shot	средний план
+	close-up	крупный план
+	CREATE	СОЗДАТЬ
+	EDIT	ИЗМЕНИТЬ
