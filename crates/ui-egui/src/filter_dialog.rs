@@ -195,6 +195,20 @@ pub fn has_dialog(command: &str) -> bool {
         && photocraft_engine::commands::find(command).is_some_and(|c| !parse_spec(c.params).is_empty())
 }
 
+/// The model picker's page for a generative command's dialog.
+fn model_page(command: &str) -> Option<&'static str> {
+    Some(match command {
+        "generate.fill" => "fill",
+        "generate.image" => "image",
+        "generate.expand" => "expand",
+        "generate.edit" => "edit",
+        "generate.removeBackground" => "matte",
+        "generate.splitLayers" => "split",
+        "select.byText" => "select",
+        _ => return None,
+    })
+}
+
 pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
     let spec = photocraft_engine::commands::find(command)?;
     let mut fields = Map::new();
@@ -223,6 +237,21 @@ pub fn open(app: &mut PhotocraftApp, command: &str) -> Option<u64> {
     }
     if command == "image.rotation.arbitrary" {
         straighten_defaults(app, &mut fields);
+    }
+    // Generative commands: the model picker in place of the hidden `template` field.
+    if let Some(page) = model_page(command)
+        && parse_spec(spec.params).iter().any(|p| p.key == "template")
+    {
+        crate::generate_panel::load_catalog(app);
+        let items: Vec<Value> = crate::generate_panel::picker_items(app, page, false)
+            .into_iter()
+            .map(|i| {
+                json!({"id": i.id, "name": i.name, "family": i.family, "description": i.description, "research": i.research, "allowed": i.allowed, "installed": i.installed})
+            })
+            .collect();
+        fields.insert("__models".into(), Value::Array(items));
+        fields.insert("__groupModels".into(), json!(app.session.prefs().integrations.group_models_by_family));
+        fields.insert("__autoModel".into(), json!(crate::generate_panel::auto_name(app, page)));
     }
     if parse_spec(spec.params).iter().any(|p| p.kind == Kind::Document) {
         // The document picker lists every open document (params refer to them by index).
@@ -309,6 +338,38 @@ pub fn body(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     };
     for p in parse_spec(&spec) {
         match p.kind {
+            Kind::Json if p.key == "template" && f.contains_key("__models") => {
+                let items: Vec<crate::model_picker::Item> = f
+                    .get("__models")
+                    .and_then(Value::as_array)
+                    .map(|a| {
+                        a.iter()
+                            .map(|v| crate::model_picker::Item {
+                                id: v["id"].as_str().unwrap_or_default().to_string(),
+                                name: v["name"].as_str().unwrap_or_default().to_string(),
+                                family: v["family"].as_str().unwrap_or_default().to_string(),
+                                description: v["description"].as_str().unwrap_or_default().to_string(),
+                                research: v["research"].as_bool().unwrap_or(false),
+                                allowed: v["allowed"].as_bool().unwrap_or(false),
+                                installed: v["installed"].as_bool(),
+                                eta: None,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let group = f.get("__groupModels").and_then(Value::as_bool).unwrap_or(true);
+                let mut current = f.get("template").and_then(Value::as_str).unwrap_or_default().to_string();
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(tl!("Model")).color(t.text_dim));
+                    let auto = f.get("__autoModel").and_then(Value::as_str);
+                    crate::model_picker::pill(ui, &format!("flt-{cmd}"), &items, &mut current, auto, group, 220.0);
+                });
+                if current.is_empty() {
+                    f.remove("template");
+                } else {
+                    f.insert("template".into(), json!(current));
+                }
+            }
             Kind::Range { min, max, default } => {
                 let mut v = f.get(&p.key).and_then(Value::as_f64).unwrap_or(default as f64) as f32;
                 let unit = if is_pixel_param(&p.key) {

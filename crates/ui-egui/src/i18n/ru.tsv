@@ -2521,3 +2521,8 @@ cameraRaw	Roughness	Неровность
 	What to avoid…	Чего избегать…
 	a layer that is gone	удалённый слой
 	Enter to generate	Генерировать клавишей Enter
+	research	исследовательская
+	The fastest permissive model the server has	Самая быстрая модель со свободной лицензией на сервере
+	Research licence: turn on Allow research-only models in Preferences › AI Integrations	Исследовательская лицензия: включите «Разрешить модели только для исследований» в Настройки › Интеграции ИИ
+	Uses: {name}	Использует: {name}
+	Group models by family	Группировать модели по семействам

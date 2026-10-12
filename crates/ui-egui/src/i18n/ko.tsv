@@ -2829,3 +2829,8 @@ cameraRaw	Color	색상
 	What to avoid…	피할 내용…
 	a layer that is gone	없어진 레이어
 	Enter to generate	Enter 키로 생성
+	research	연구용
+	The fastest permissive model the server has	서버에 있는 가장 빠른 허용 라이선스 모델
+	Research licence: turn on Allow research-only models in Preferences › AI Integrations	연구용 라이선스: 환경설정 › AI 통합에서 '연구 전용 모델 허용'을 켜세요
+	Uses: {name}	사용: {name}
+	Group models by family	모델을 계열별로 묶기

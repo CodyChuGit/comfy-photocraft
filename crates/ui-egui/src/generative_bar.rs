@@ -175,10 +175,19 @@ fn load_templates(app: &mut PhotocraftApp) {
         })
         .unwrap_or_default();
     app.ui.generative_bar.templates = templates;
-    // Which of them the server has: asked on a worker (the desktop app) so the bar never waits
-    // for the server; inline (tests, web) the answer lands at once. No server configured: the
-    // badges stay unknown.
+    // The picker's rows come from the Generate panel's catalogue (offline); opening the bar asks
+    // the server which of them it has.
+    crate::generate_panel::load_catalog(app);
+    probe_installed(app);
+}
+
+/// Ask the server which templates it has the files for: on a worker (the desktop app) so the
+/// bar and the panel never wait for the server; inline (tests, web) the answer lands at once.
+/// No server configured: the badges stay unknown. The answer marks both the bar's list and the
+/// Generate panel's catalogue (the model picker's `not installed`).
+pub(crate) fn probe_installed(app: &mut PhotocraftApp) {
     if app.ui.generative_bar.probe_job.is_none() && !app.session.prefs().integrations.comfy_server.trim().is_empty() {
+        app.ui.generate.probed = true;
         match app.run("generate.models", json!({"probe": true, "async": true})) {
             Ok(v) if v.get("pending").and_then(Value::as_bool) == Some(true) => app.ui.generative_bar.probe_job = v.get("job").and_then(Value::as_u64),
             Ok(v) => apply_installed(app, &v),
@@ -197,6 +206,9 @@ fn apply_installed(app: &mut PhotocraftApp, v: &Value) {
         let installed = if slots.iter().any(Option::is_none) { None } else { Some(slots.iter().all(|s| *s == Some(true))) };
         if let Some(c) = app.ui.generative_bar.templates.iter_mut().find(|c| c.id == id) {
             c.installed = installed;
+        }
+        if let Some(m) = app.ui.generate.catalog.iter_mut().find(|m| m.id == id) {
+            m.installed = installed;
         }
     }
 }
@@ -478,8 +490,9 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
         .or_else(|| app.session.active_job().filter(|j| j.command == COMMAND || j.command == EDIT_COMMAND));
     app.ui.generative_bar.showing_job = job.as_ref().map(|j| j.id.0);
     let results = valid_results(app);
-    let default_template = current_template(app);
-    let prefs_research = app.session.prefs().integrations.allow_research_models;
+    let picker = crate::generate_panel::picker_items(app, &app.ui.generative_bar.mode.clone(), true);
+    let group = app.session.prefs().integrations.group_models_by_family;
+    let auto = crate::generate_panel::auto_name(app, &app.ui.generative_bar.mode.clone());
     egui::Area::new(id).order(egui::Order::Foreground).fixed_pos(pos).constrain(false).show(ctx, |ui| {
         egui::Frame::NONE
             .fill(t.card)
@@ -494,7 +507,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                     crate::icons::paint(ui, ir, "sparkles", 16.0, t.accent);
                     match job {
                         Some(j) => running(ui, &j, &t, &mut action),
-                        None => idle(ui, app, &results, &default_template, prefs_research, &t, &mut action),
+                        None => idle(ui, app, &results, (&picker, auto.as_deref(), group), &t, &mut action),
                     }
                     let (xr, xresp) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
                     if xresp.hovered() {
@@ -561,7 +574,14 @@ fn running(ui: &mut egui::Ui, j: &photocraft_engine::jobs::JobInfo, t: &Tokens, 
     }
 }
 
-fn idle(ui: &mut egui::Ui, app: &mut PhotocraftApp, results: &[u64], default_template: &str, research: bool, t: &Tokens, action: &mut Option<Action>) {
+fn idle(
+    ui: &mut egui::Ui,
+    app: &mut PhotocraftApp,
+    results: &[u64],
+    (picker, auto, group): (&[crate::model_picker::Item], Option<&str>, bool),
+    t: &Tokens,
+    action: &mut Option<Action>,
+) {
     let (bar, shared) = (&mut app.ui.generative_bar, &mut app.ui.generate);
     // Fill (regenerate the selection) or Edit (change the picture by instruction, shown
     // inside the selection). The Generate panel follows.
@@ -608,20 +628,11 @@ fn idle(ui: &mut egui::Ui, app: &mut PhotocraftApp, results: &[u64], default_tem
     } else if mode == MODE_FILL && looks_like_an_edit(&shared.prompt) {
         ui.label(RichText::new(tl!("Changing what is there? Switch to Edit")).color(t.text_dim).size(11.5));
     }
-    // Template picker: Auto (the fastest permissive tier the server has), then every template
-    // of the mode, research ones only when the preference allows.
-    let mut current = default_template.to_string();
-    // Templates the server lacks files for stay listed (the engine says what is missing) but
-    // say so.
-    let labels: Vec<(String, String)> = bar
-        .templates
-        .iter()
-        .filter(|c| c.task == mode && (c.allowed || research || c.id == current))
-        .map(|c| (c.id.clone(), if c.installed == Some(false) { format!("{} ({})", c.name, tl!("not installed")) } else { c.name.clone() }))
-        .collect();
-    let mut options: Vec<(String, &str)> = vec![(photocraft_engine::generate_cmds::AUTO_TEMPLATE.to_string(), "Auto")];
-    options.extend(labels.iter().map(|(id, l)| (id.clone(), l.as_str())));
-    if crate::widgets::dropdown(ui, "generative-template", &mut current, &options, 150.0) {
+    // The model picker: Auto (the fastest permissive tier the server has), then the mode's
+    // templates with their estimates, research ones greyed until the preference allows them,
+    // missing files marked. The same picker as the Generate panel's.
+    let mut current = shared.template.get(&mode).cloned().filter(|c| c != photocraft_engine::generate_cmds::AUTO_TEMPLATE).unwrap_or_default();
+    if crate::model_picker::pill(ui, "generative-bar", picker, &mut current, auto, group, 170.0) {
         shared.template.insert(mode.clone(), current);
     }
     // Variations.

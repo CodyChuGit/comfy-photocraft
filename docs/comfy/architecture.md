@@ -379,7 +379,7 @@ Each one is read by code in the same change that adds it, so the audit count doe
   + adds the active layer, a layer, a file, or a stored generation; files dropped on the panel
   become references) shown when the mode's template takes references (`refs_limit`); a prompt
   growing from two to six rows with a counter, a larger editor, the Enhance wand and a negative
-  prompt behind a disclosure; the model (Auto, then the page's templates), aspect and size (1K /
+  prompt behind a disclosure; the model picker, aspect and size (1K /
   1.5K / 2K within the template's `sizes`, or a custom size on its grid), count and the image
   destination (new document / layer) or the expand pads; Clear all; and **Generate · ~16 s**,
   the estimate from `generate_cmds::estimate_seconds`, which turns into Cancel with the percent
@@ -389,6 +389,22 @@ Each one is read by code in the same change that adds it, so the audit count doe
   `integrations.showGenerativeBar` (`auto` / `always` / `never`; a saved boolean reads as `auto` /
   `never`) shows the bar in `auto` only while the panel is not on screen; Edit › Generative Fill…
   then focuses the panel's Fill mode instead of opening the bar.
+- **Model picker** (PhotoshopEX, `model_picker.rs`): one component for the Generate panel, the
+  task bar and the generated dialogs' `template` field (`__models` rows in the dialog's fields).
+  The pill shows the family glyph (a rounded square in the family's colour with its initial) and
+  the short name; its popover lists Auto first (described by the model a run without a choice
+  uses: the preference's default, else what `auto` picks) and then the page's templates, newest
+  first by a numeric-aware compare, grouped into family submenus from eight rows on when
+  `integrations.groupModelsByFamily` is on. A row has the glyph, the name, the template's one-line
+  description and badges: the estimate at the current size and count, `research` (greyed and not
+  selectable until `allowResearchModels`) and `not installed` (still selectable; the engine's
+  error names the file). The data is plain `model_picker::Item`s built from `generate.models` by
+  `generate_panel::picker_items`; loading the catalogue never contacts the server (the panel is
+  on screen from startup), the background probe runs when the task bar opens or a picker's
+  popover first opens, and its end never touches the status line. Rows whose short names collide
+  show their full names. In the panel's one-row form the pill is the family glyph alone, so the
+  choice stays reachable on a 900-pt window. The pill and rows carry accessibility labels
+  ("Model: Auto").
 - **Dock budget**: with the two generative groups open the filler (Layers) asks for 320 pt instead
   of 500, the other groups give way to their compact heights before the generative ones, and the
   generative groups fold to their tab strips when Layers would drop under 260 pt

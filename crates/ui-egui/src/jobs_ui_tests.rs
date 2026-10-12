@@ -141,6 +141,26 @@ fn filters_from_the_ui_run_in_the_background() {
 }
 
 #[test]
+fn the_model_pickers_background_check_leaves_the_status_line_alone() {
+    let fake = photocraft_genai::fake::FakeComfy::start().unwrap();
+    let mut h = app_harness();
+    h.state_mut().session.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
+    h.state_mut().ui.status = "Gaussian Blur".into();
+    crate::generate_panel::load_catalog(h.state_mut());
+    assert!(!h.state().session.has_jobs(), "loading the catalogue stays offline");
+    crate::generate_panel::probe_once(h.state_mut());
+    assert!(h.state().session.has_jobs(), "the check runs in the background");
+    let t = Instant::now();
+    while h.state().session.has_jobs() && t.elapsed() < Duration::from_secs(10) {
+        h.step();
+    }
+    h.run_steps(2);
+    let st = &h.state().ui;
+    assert!(!st.status.contains("generative models") && !st.status_error, "no \"Checking generative models\" left behind: {:?}", st.status);
+    assert!(h.state().ui.generate.catalog.iter().any(|m| m.installed == Some(true)), "the answer reached the picker");
+}
+
+#[test]
 fn control_requests_wait_for_jobs_unless_asked_not_to() {
     let mut h = app_harness();
     let ctx = h.ctx.clone();

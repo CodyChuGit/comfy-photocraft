@@ -2247,3 +2247,8 @@ cameraRaw	Color	Barvy
 	What to avoid…	Čemu se vyhnout…
 	a layer that is gone	vrstva, která už neexistuje
 	Enter to generate	Generovat klávesou Enter
+	research	výzkum
+	The fastest permissive model the server has	Nejrychlejší model se svobodnou licencí, který server má
+	Research licence: turn on Allow research-only models in Preferences › AI Integrations	Výzkumná licence: zapněte Povolit modely jen pro výzkum v Předvolby › Integrace AI
+	Uses: {name}	Použije: {name}
+	Group models by family	Seskupit modely podle rodiny

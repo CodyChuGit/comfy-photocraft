@@ -221,7 +221,10 @@ ArtCraft Omni API) with the local server as the default and a fallback order.
   `generate.edit` / `generate.image` (2511 edits take two; new `qwen-edit-2511/image-ref`,
   `krea2-turbo/image-style`, research `qwen-2.1/edit`), image variations, the task bar as the
   panel's compact form (`showGenerativeBar` auto / always / never, `enterToGenerate`).
-- ⬜ Plan Phase 3: the model picker with creator, capabilities and installed state.
+- ✅ Plan Phase 3: the model picker (one component for the Generate panel, the task bar and the
+  generated dialogs): family glyphs, newest first, family submenus from eight rows
+  (`groupModelsByFamily`), the estimate, `research` and `not installed` badges, an Auto row that
+  names the model it resolves to; `ui.inspect.modelPickers`.
 - ⬜ Plan Phase 4: the Variations strip at the canvas edge.
 - ⬜ Plan Phase 5: hub, completion alerts, export naming preference, Angles.
 

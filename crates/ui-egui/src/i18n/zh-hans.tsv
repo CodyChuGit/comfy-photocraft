@@ -2255,3 +2255,8 @@ cameraRaw	Blending	混合
 	What to avoid…	要避免的内容…
 	a layer that is gone	已不存在的图层
 	Enter to generate	按 Enter 键生成
+	research	研究用
+	The fastest permissive model the server has	服务器上最快的宽松许可模型
+	Research licence: turn on Allow research-only models in Preferences › AI Integrations	研究许可：请在 偏好设置 › AI 集成 中开启“允许仅限研究的模型”
+	Uses: {name}	使用：{name}
+	Group models by family	按系列分组模型

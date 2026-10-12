@@ -645,6 +645,7 @@ pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {
         "generativeBar": crate::generative_bar::inspect(app),
         "generatePanel": crate::generate_panel::inspect(app),
         "generations": crate::generations_panel::inspect(app),
+        "modelPickers": crate::model_picker::inspect(ctx),
         "panels": app.ui.panels,
         "views": app.ui.views,
         "dialogs": dialogs,

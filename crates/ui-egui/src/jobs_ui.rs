@@ -183,6 +183,9 @@ fn on_event(app: &mut PhotocraftApp, e: JobEvent) {
             app.ui.panels.brush_settings = true;
             app.ui.brush_tab = 1;
         }
+        // The model pickers' background check of the server stays quiet either way (the badges
+        // show its answer; a generative run reports an unreachable server itself).
+        JobOutcome::Done(_) | JobOutcome::Failed(_) if e.command == "generate.models" => {}
         JobOutcome::Done(_) => {
             app.sync_views();
             app.ui.status = e.label;

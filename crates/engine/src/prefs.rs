@@ -738,6 +738,9 @@ pub struct Integrations {
     /// Enter in the Generate panel's prompt generates (Shift+Enter starts a new line);
     /// otherwise Ctrl+Enter does and Enter is a new line.
     pub enter_to_generate: bool,
+    /// The model picker groups a page's templates into one submenu per family once there are
+    /// eight or more.
+    pub group_models_by_family: bool,
     /// Rewrite every prompt with the vision-language model before a run (`generate.*`'s
     /// `enhance`): names what the picture shows instead of "this", adds the detail the image
     /// models want. The bar's Enhance button does it on demand when this is off.
@@ -763,6 +766,7 @@ impl Default for Integrations {
             allow_research_models: false,
             show_generative_bar: "auto".into(),
             enter_to_generate: false,
+            group_models_by_family: true,
             enhance_prompts: false,
             model_precision: "auto".into(),
         }

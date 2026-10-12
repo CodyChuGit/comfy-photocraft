@@ -2230,3 +2230,8 @@ cameraRaw	Color	カラー
 	What to avoid…	避けたい内容…
 	a layer that is gone	存在しないレイヤー
 	Enter to generate	Enter キーで生成
+	research	研究用
+	The fastest permissive model the server has	サーバーにある最速の寛容ライセンスのモデル
+	Research licence: turn on Allow research-only models in Preferences › AI Integrations	研究用ライセンス: 環境設定 › AI 連携で「研究専用モデルを許可」をオンにしてください
+	Uses: {name}	使用: {name}
+	Group models by family	モデルをファミリーごとにまとめる

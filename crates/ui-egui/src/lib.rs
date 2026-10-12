@@ -87,6 +87,7 @@ pub mod mask_thumbs_ui;
 pub mod menu_catalog;
 pub mod menu_nav;
 pub mod menus;
+pub mod model_picker;
 pub mod monitor_status;
 pub mod move_mods;
 pub mod move_ui;

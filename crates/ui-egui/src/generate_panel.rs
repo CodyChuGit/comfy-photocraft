@@ -49,6 +49,12 @@ pub struct ModelInfo {
     pub step: u32,
     pub counts_max: u32,
     pub allowed: bool,
+    pub family: String,
+    pub description: String,
+    /// A research-only licence.
+    pub research: bool,
+    /// The server has every file (None until the background probe answers).
+    pub installed: Option<bool>,
 }
 
 /// The Generate panel's state (`UiState::generate`), shared with the task bar.
@@ -107,6 +113,9 @@ pub struct GeneratePanel {
     /// The prompt is open in its large editor.
     #[serde(skip)]
     pub editor: bool,
+    /// The server was asked which templates it has (the picker's `not installed` badges).
+    #[serde(skip)]
+    pub probed: bool,
 }
 
 impl Default for GeneratePanel {
@@ -135,6 +144,7 @@ impl Default for GeneratePanel {
             drop_rect: None,
             confirm_clear: false,
             editor: false,
+            probed: false,
         }
     }
 }
@@ -167,7 +177,8 @@ fn hint(mode: &str) -> &'static str {
     }
 }
 
-/// Load the template list once (offline: `generate.models` without the server).
+/// Load the template list once (offline: `generate.models` without the server; the panel is
+/// on screen from startup and must not contact the server by itself).
 pub fn load_catalog(app: &mut PhotocraftApp) {
     if !app.ui.generate.catalog.is_empty() {
         return;
@@ -195,11 +206,48 @@ pub fn load_catalog(app: &mut PhotocraftApp) {
                         step: num(t, "sizes", "step"),
                         counts_max: num(t, "counts", "max").max(1),
                         allowed: t["allowed"].as_bool().unwrap_or(false),
+                        family: t["family"].as_str().unwrap_or_default().to_string(),
+                        description: t["description"].as_str().unwrap_or_default().to_string(),
+                        research: t["license"] == "research",
+                        installed: None,
                     })
                 })
                 .collect()
         })
         .unwrap_or_default();
+}
+
+/// Ask the server which templates it has, once: when a model picker opens (the task bar asks
+/// again each time it opens). The background probe fills in both lists.
+pub fn probe_once(app: &mut PhotocraftApp) {
+    if !app.ui.generate.probed {
+        crate::generative_bar::probe_installed(app);
+    }
+}
+
+/// The model picker's rows for `page` (`fill`, `image`, … as templates list them), with the
+/// time estimate at the panel's current area and count when `eta` (the panel and the bar).
+pub fn picker_items(app: &PhotocraftApp, page: &str, eta: bool) -> Vec<crate::model_picker::Item> {
+    let research_ok = app.session.prefs().integrations.allow_research_models;
+    let area = if eta { work_area(app, page) } else { None };
+    let count = u32::from(app.ui.generate.count.max(1));
+    let refs = if matches!(page, "image" | "edit") { app.ui.generate.references.len() as u32 } else { 0 };
+    app.ui
+        .generate
+        .catalog
+        .iter()
+        .filter(|m| m.pages.iter().any(|p| p == page))
+        .map(|m| crate::model_picker::Item {
+            id: m.id.clone(),
+            name: m.name.clone(),
+            family: m.family.clone(),
+            description: m.description.clone(),
+            research: m.research,
+            allowed: m.allowed || research_ok,
+            installed: m.installed,
+            eta: area.and_then(|(w, h)| photocraft_engine::generate_cmds::estimate_seconds(&m.id, w, h, count, refs)),
+        })
+        .collect()
 }
 
 fn info<'a>(app: &'a PhotocraftApp, id: &str) -> Option<&'a ModelInfo> {
@@ -216,10 +264,13 @@ pub fn chosen_template(app: &PhotocraftApp, mode: &str) -> Option<String> {
 /// default, else what `auto` picks first; image mode with references and a default that takes
 /// none goes to the reference template (as the engine does).
 pub fn effective_template(app: &PhotocraftApp, mode: &str) -> String {
+    chosen_template(app, mode).unwrap_or_else(|| default_template(app, mode))
+}
+
+/// The template a run of `mode` without a choice most likely uses (what the picker's Auto row
+/// stands for).
+pub fn default_template(app: &PhotocraftApp, mode: &str) -> String {
     use photocraft_engine::generate_cmds as g;
-    if let Some(t) = chosen_template(app, mode) {
-        return t;
-    }
     let prefs = &app.session.prefs().integrations;
     match mode {
         "image" => {
@@ -237,6 +288,14 @@ pub fn effective_template(app: &PhotocraftApp, mode: &str) -> String {
         }
         m => g::likely_auto(command_of(m)).to_string(),
     }
+}
+
+/// The name the picker shows for [`default_template`], for its Auto row.
+pub fn auto_name(app: &PhotocraftApp, mode: &str) -> Option<String> {
+    let id = default_template(app, mode);
+    let items = picker_items(app, mode, false);
+    let names = crate::model_picker::display_names(&items);
+    items.iter().zip(names).find(|(i, _)| i.id == id).map(|(_, n)| n).or_else(|| info(app, &id).map(|m| crate::model_picker::short_name(&m.name).to_string()))
 }
 
 /// Image mode's output size: the aspect at the size preset (or the custom size), on the
@@ -623,6 +682,7 @@ fn compact_row(app: &mut PhotocraftApp, ui: &mut egui::Ui, _t: &Tokens, action: 
         // The button at the right edge first; the prompt takes what is left.
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             generate_button(app, ui, action, 0.0);
+            model_pill(app, ui, &mode, 30.0);
             let w = ui.available_width().max(40.0);
             let field = egui::TextEdit::singleline(&mut app.ui.generate.prompt).hint_text(hint(&mode)).desired_width(w).id(field_id);
             let resp = ui.add(field);
@@ -724,27 +784,27 @@ fn full(app: &mut PhotocraftApp, ui: &mut egui::Ui, t: &Tokens, action: &mut Opt
     });
 }
 
+/// The model picker of the mode (Auto, then the page's templates with their estimates); the
+/// one-row form draws it as the family glyph alone. Its popover opening asks the server which
+/// templates it has, once.
+fn model_pill(app: &mut PhotocraftApp, ui: &mut egui::Ui, mode: &str, width: f32) {
+    let group = app.session.prefs().integrations.group_models_by_family;
+    let mut current = app.ui.generate.template.get(mode).cloned().unwrap_or_default();
+    let items = picker_items(app, mode, true);
+    let auto = auto_name(app, mode);
+    if crate::model_picker::pill(ui, "generate-panel", &items, &mut current, auto.as_deref(), group, width) {
+        app.ui.generate.template.insert(mode.to_string(), current);
+    }
+    if crate::model_picker::is_open(ui.ctx(), "generate-panel") {
+        probe_once(app);
+    }
+}
+
 /// Model, aspect, size, count (and the expand pads / the image destination).
 fn options_row(app: &mut PhotocraftApp, ui: &mut egui::Ui, mode: &str, template: &str, _action: &mut Option<Action>) {
-    let research = app.session.prefs().integrations.allow_research_models;
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
-        // Model: Auto, then the page's templates (research ones only when allowed).
-        let mut current = app.ui.generate.template.get(mode).cloned().unwrap_or_default();
-        let auto_label = tl!("Auto");
-        let names: Vec<(String, String)> = app
-            .ui
-            .generate
-            .catalog
-            .iter()
-            .filter(|m| m.pages.iter().any(|p| p == mode) && (m.allowed || research || m.id == current))
-            .map(|m| (m.id.clone(), m.name.clone()))
-            .collect();
-        let mut options: Vec<(String, &str)> = vec![(String::new(), auto_label)];
-        options.extend(names.iter().map(|(id, n)| (id.clone(), n.as_str())));
-        if widgets::dropdown(ui, "generate-model", &mut current, &options, 150.0) {
-            app.ui.generate.template.insert(mode.to_string(), current);
-        }
+        model_pill(app, ui, mode, 170.0);
         if mode == "image" {
             let m = info(app, template).cloned().unwrap_or_default();
             let mut aspect = app.ui.generate.aspect.clone();

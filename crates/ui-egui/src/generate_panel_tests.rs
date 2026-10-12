@@ -211,6 +211,13 @@ fn a_short_group_shows_one_row_and_drops_land_in_the_deck() {
     let (a, _, _) = app(&fake.url);
     let h = harness(a, 60.0);
     assert!(h.state().ui.generate.compact, "one row");
+    // The model picker stays reachable as the family glyph alone.
+    {
+        use egui_kittest::kittest::Queryable;
+        assert!(h.query_by_label("Model: Auto").is_some(), "the glyph pill");
+        let shown = crate::model_picker::inspect(&h.ctx);
+        assert!(shown[0]["id"] == "generate-panel" && shown[0]["rect"][2].as_f64().is_some_and(|w| w < 60.0), "{shown}");
+    }
     let rect = h.state().ui.generate.drop_rect.expect("the panel's rect");
     let target = h.state().drop_target(&egui::Context::default(), Some(rect.center()));
     assert_eq!(target, crate::file_open::DropTarget::References);

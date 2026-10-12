@@ -4,6 +4,46 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-12 (later): plan Phase 3, the model picker
+
+Built [`plan-artcraft-experience.md`](plan-artcraft-experience.md) §5.
+
+- **`model_picker.rs`** (new): one pill + popover for the Generate panel (`generate-panel`), the
+  task bar (`generative-bar`) and the generated dialogs' `template` field (`flt-<command>`, rows
+  carried as `__models` in the dialog's fields). Data-driven: callers pass `model_picker::Item`s
+  built by `generate_panel::picker_items` from `generate.models`, so the plan's
+  `pill(ui, app, page, …)` became `pill(ui, id, items, current, auto, group, width)`. Family glyphs
+  from the plan's colour map; newest first by a numeric-aware compare; family submenus from eight
+  rows when the new preference `integrations.groupModelsByFamily` (default on) allows; badges for
+  the estimate, `research` (greyed, not selectable until `allowResearchModels`) and
+  `not installed` (selectable). The Auto row names what it resolves to ("Uses: Qwen-Image-Edit-2511,
+  Lightning 8 steps"; the preference's default first, as the engine does). Rows whose short names
+  collide show full names (both Krea text-to-image templates shortened to "Krea 2 Turbo").
+- **The probe moved**: Phase 3 first made loading the catalogue probe the server. The panel is on
+  screen from startup, so every launch contacted ComfyUI and left "Checking generative models" in
+  the status line; three UI tests caught it (a job they did not start). Now the catalogue loads
+  offline, the bar probes when it opens (as before Phase 3), a picker probes when its popover
+  first opens (`generate_panel::probe_once`), and a finished `generate.models` job stays out of the
+  status line (`jobs_ui.rs`, one arm).
+- **One-row form**: at 1440×900 the panel stays in its one-row form even with Generations hidden,
+  which hid the picker, so that form now carries the pill as the glyph alone (30 pt).
+- **Automation**: `ui.inspect.modelPickers` lists the pickers drawn with their rect, label and
+  whether the popover is open; the pill and rows have accessibility labels ("Model: Auto").
+- **Live** (`docs/comfy/bench/scripts/model-picker-live.ps1`, release GUI, ComfyUI up): each
+  popover opened through `ui.click` on its inspected rect and screenshotted. These were checked:
+  Fill lists the five fill templates with estimates (~6 s to ~54 s) and Qwen-Image-2.1 greyed
+  `research`; Image marks the Krea style template `not installed` (its LoRA is absent); the task
+  bar and the Generate Image dialog show the same component.
+- **Tests**: `model_picker_tests.rs` (6: grouping threshold and preference, numeric newest-first,
+  research gating and badge text, display names, every shipped family has a glyph, the panel's
+  rows and the probe against the fake, clicking through the popover with kittest); the one-row
+  panel test checks the glyph pill; `jobs_ui_tests` checks the quiet background check. Gates:
+  clippy, fmt, layers, wasm, parity unchanged, scorecard 57 of 151 unread (the new preference is
+  read). Workspace: the nine known environment failures plus the scorecard staleness test, which
+  passes after regenerating `docs/scorecard.md`.
+- **Open**: the dialogs show no estimates (their size lives in the dialog's own fields); the
+  popover grows to the longest name (about 600 pt for the mask-guided fill).
+
 ## 2026-10-12: plan Phase 2, the Generate panel and reference images
 
 Built [`plan-artcraft-experience.md`](plan-artcraft-experience.md) §4.
