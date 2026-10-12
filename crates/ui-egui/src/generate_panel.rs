@@ -628,6 +628,12 @@ fn apply(app: &mut PhotocraftApp, a: Action) {
 }
 
 /// The running job the button follows: the panel's own, or a generative job on this document.
+/// Is the panel showing job `id` (its Generate button became Cancel with the percent), so the
+/// modal progress dialog is not needed?
+pub fn shows_job(app: &PhotocraftApp, id: JobId) -> bool {
+    app.ui.generate.job == Some(id.0) && visible(app)
+}
+
 fn running_job(app: &PhotocraftApp) -> Option<photocraft_engine::jobs::JobInfo> {
     app.ui.generate.job.map(JobId).and_then(|j| app.session.job(j))
 }

@@ -2683,3 +2683,10 @@ cameraRaw	Blending	Fusion
 	Research licence: turn on Allow research-only models in Preferences › AI Integrations	Licence de recherche : activez Autoriser les modèles de recherche dans Préférences › Intégrations IA
 	Uses: {name}	Utilise : {name}
 	Group models by family	Grouper les modèles par famille
+	Variation {n} of {count}	Variante {n} sur {count}
+	Delete this variation	Supprimer cette variante
+	Keep this one	Garder celle-ci
+	Keep this one and delete the other variations	Garder celle-ci et supprimer les autres variantes
+	Click to retry	Cliquez pour réessayer
+	Retry	Réessayer
+	Variations strip	Bande des variantes

@@ -225,7 +225,10 @@ ArtCraft Omni API) with the local server as the default and a fallback order.
   generated dialogs): family glyphs, newest first, family submenus from eight rows
   (`groupModelsByFamily`), the estimate, `research` and `not installed` badges, an Auto row that
   names the model it resolves to; `ui.inspect.modelPickers`.
-- ⬜ Plan Phase 4: the Variations strip at the canvas edge.
+- ✅ Plan Phase 4: the Variations strip at the canvas edge (`integrations.variationsStrip`): the
+  last five runs of the document as tiles from the Generations library, click to show, × to
+  drop, ✓ to keep, ✦ for more, placeholders while running, Retry when failed;
+  `generate.dropVariation`, `generate.keepVariation`, `ui.inspect.variations`.
 - ⬜ Plan Phase 5: hub, completion alerts, export naming preference, Angles.
 
 ## Phase 5: Quality and depth

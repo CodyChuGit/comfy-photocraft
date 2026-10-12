@@ -2260,3 +2260,10 @@ cameraRaw	Blending	混合
 	Research licence: turn on Allow research-only models in Preferences › AI Integrations	研究许可：请在 偏好设置 › AI 集成 中开启“允许仅限研究的模型”
 	Uses: {name}	使用：{name}
 	Group models by family	按系列分组模型
+	Variation {n} of {count}	变体 {n}/{count}
+	Delete this variation	删除此变体
+	Keep this one	保留此项
+	Keep this one and delete the other variations	保留此项并删除其他变体
+	Click to retry	点击重试
+	Retry	重试
+	Variations strip	变体条

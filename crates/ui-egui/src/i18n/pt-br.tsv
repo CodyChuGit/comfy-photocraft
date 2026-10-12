@@ -2690,3 +2690,10 @@ cameraRaw	Whites	Brancos
 	Research licence: turn on Allow research-only models in Preferences › AI Integrations	Licença de pesquisa: ative Permitir modelos só para pesquisa em Preferências › Integrações de IA
 	Uses: {name}	Usa: {name}
 	Group models by family	Agrupar modelos por família
+	Variation {n} of {count}	Variação {n} de {count}
+	Delete this variation	Excluir esta variação
+	Keep this one	Manter esta
+	Keep this one and delete the other variations	Manter esta e excluir as outras variações
+	Click to retry	Clique para tentar de novo
+	Retry	Tentar de novo
+	Variations strip	Faixa de variações

@@ -4,6 +4,49 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-12 (evening): plan Phase 4, the Variations strip
+
+Built [`plan-artcraft-experience.md`](plan-artcraft-experience.md) §6.
+
+- **`variations_strip.rs`** (new): the active document's last five generative runs as 56-pt tiles
+  at the canvas's right edge (`integrations.variationsStrip`: `right`, `bottom`, `off`; new
+  preference, read by the strip). The plan suggested a new `app.ui.bundles` map fed by job
+  events; the runs are instead read from the Generations library each frame (records whose `doc`
+  is the active document, fill / edit / expand / image / similar, with the result layers that
+  still exist). Runs started by a dialog, a script or the CLI-shared library show too, and undo,
+  delete and close need no bookkeeping. A tile is the layer's pixels over the run's area (cached
+  by pixel fingerprint, four builds per frame). Click shows it (`generate.variation`), × drops it,
+  ✓ on the shown one keeps it, ✦ in the header runs Generate Similar for as many again; a running
+  job shows placeholders with a sheen and its percent; a failed one a red tile with the reason,
+  Retry (`generate.recreate`) and Dismiss.
+- **Engine**: `generate.dropVariation {layers, index}` (deletes one; when it was on screen and the
+  others are hidden the next one shows and becomes active) and `generate.keepVariation {layers,
+  index}` (keeps one, deletes the others), one undo step each; the variation commands share their
+  parsing and now refuse a layer listed twice.
+- **Task bar**: the 1/n switcher, its `results` / `shown` state and `show_variation` are gone
+  (the strip replaces them; `ui.inspect.generativeBar` no longer reports `results`).
+- **No modal over the canvas**: a fill started from a dialog or a script showed the modal progress
+  dialog in the middle of the canvas. It now stays away while the strip draws the job's
+  placeholders, the task bar shows the job or the Generate panel shows its Cancel (that last case
+  was a Phase 2 gap).
+- **Automation**: `ui.inspect.variations` (placement, visibility, runs with status, layers,
+  shown, failure, and the drawn rects of tiles, ×, ✓, ✦, placeholders, Retry, Dismiss).
+- **Live** (`docs/comfy/bench/scripts/variations-live.ps1`, release GUI, ComfyUI up): a fill with
+  four variations over open water ran in the background in 33.8 s; four placeholders and no modal
+  while it ran, then four tiles each with a different red sailboat; `ui.click` on the third tile
+  showed it in one undo step ("Variation 3"); ✓ left one layer (5 → 2 layers with the
+  background). One run showed the tool switched from Brush to Path Selection after the click; it
+  did not reproduce (the history showed only "Variation 3"), the window was on the desktop, and a
+  whole-app test now checks that a tile click reaches nothing but the strip.
+- **Tests**: `variations_strip_tests.rs` (5: tiles, click / × / ✓ each one step and undo; running
+  placeholders then tiles, the modal exemption, a failed run's Retry and Dismiss; bottom and off;
+  Similar adds a run, a text selection stays out, five runs at most; the whole-app click), engine
+  `dropping_and_keeping_variations_are_one_undo_step_each`, the bar tests read the strip. Gates:
+  clippy, fmt, layers, wasm, parity unchanged, scorecard 57 of 152 unread.
+- **Open**: a run's thumbnails show the layer unmasked over its padded area (the request
+  rectangle), not the masked composite; pending tiles of `generate.image` into a new document sit
+  on the document it started from.
+
 ## 2026-10-12 (later): plan Phase 3, the model picker
 
 Built [`plan-artcraft-experience.md`](plan-artcraft-experience.md) §5.

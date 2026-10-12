@@ -3291,3 +3291,10 @@ cameraRaw	Roughness	Chropowatość
 	Research licence: turn on Allow research-only models in Preferences › AI Integrations	Licencja badawcza: włącz Zezwalaj na modele tylko do badań w Preferencje › Integracje AI
 	Uses: {name}	Używa: {name}
 	Group models by family	Grupuj modele według rodziny
+	Variation {n} of {count}	Wariant {n} z {count}
+	Delete this variation	Usuń ten wariant
+	Keep this one	Zachowaj ten
+	Keep this one and delete the other variations	Zachowaj ten i usuń pozostałe warianty
+	Click to retry	Kliknij, aby ponowić
+	Retry	Ponów
+	Variations strip	Pasek wariantów

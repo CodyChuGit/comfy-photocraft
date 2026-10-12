@@ -2325,3 +2325,10 @@ cameraRaw	Amount	Quantità
 	Research licence: turn on Allow research-only models in Preferences › AI Integrations	Licenza di ricerca: attiva Consenti modelli solo per ricerca in Preferenze › Integrazioni IA
 	Uses: {name}	Usa: {name}
 	Group models by family	Raggruppa i modelli per famiglia
+	Variation {n} of {count}	Variante {n} di {count}
+	Delete this variation	Elimina questa variante
+	Keep this one	Tieni questa
+	Keep this one and delete the other variations	Tieni questa ed elimina le altre varianti
+	Click to retry	Fai clic per riprovare
+	Retry	Riprova
+	Variations strip	Striscia delle varianti

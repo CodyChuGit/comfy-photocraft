@@ -138,6 +138,7 @@ pub mod transform_tool;
 pub mod type_panels_ui;
 pub mod type_tool;
 mod variables_ui;
+pub mod variations_strip;
 pub mod vector_ui;
 pub mod view_cmds;
 pub mod wheel_nav;
@@ -1125,6 +1126,7 @@ impl eframe::App for PhotocraftApp {
         timeline_ui::windows(self, &ctx);
         workspace_ui::windows(self, &ctx);
         palette::show(self, &ctx);
+        variations_strip::show(self, &ctx);
         generative_bar::show(self, &ctx);
         dialogs::show(self, &ctx);
         jobs_ui::dialog(self, &ctx);

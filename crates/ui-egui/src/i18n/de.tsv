@@ -2291,3 +2291,10 @@
 	Research licence: turn on Allow research-only models in Preferences › AI Integrations	Forschungslizenz: Aktivieren Sie „Nur-Forschungsmodelle erlauben“ unter Voreinstellungen › KI-Integrationen
 	Uses: {name}	Verwendet: {name}
 	Group models by family	Modelle nach Familie gruppieren
+	Variation {n} of {count}	Variante {n} von {count}
+	Delete this variation	Diese Variante löschen
+	Keep this one	Diese behalten
+	Keep this one and delete the other variations	Diese behalten und die anderen Varianten löschen
+	Click to retry	Zum Wiederholen klicken
+	Retry	Wiederholen
+	Variations strip	Variantenleiste

@@ -368,6 +368,61 @@ fn variations_are_hidden_siblings_and_the_variation_command_switches_them() {
         assert!(matches!(s.execute(VARIATION, p.clone()), Err(EngineError::BadParams { .. })), "{p}");
     }
     assert!(matches!(s.execute(VARIATION, json!({"layers": [999_999], "index": 1})), Err(EngineError::NoLayer(_))));
+    let twice = json!({"layers": [ids[0].0, ids[0].0], "index": 1});
+    assert!(matches!(s.execute(VARIATION, twice), Err(EngineError::BadParams { .. })));
+}
+
+#[test]
+fn dropping_and_keeping_variations_are_one_undo_step_each() {
+    let fake = FakeComfy::start().unwrap();
+    let mut s = session(&fake.url);
+    let r = s.execute(FILL, json!({"prompt": "a kite", "seed": 7, "variations": 4})).unwrap();
+    let ids: Vec<u64> = r["layers"].as_array().unwrap().iter().filter_map(Value::as_u64).collect();
+    let (n, steps) = {
+        let d = s.active().unwrap();
+        (d.doc.layers.len(), d.history.past_len())
+    };
+    let visible = |s: &Session| -> Vec<bool> {
+        let d = s.active().unwrap();
+        ids.iter().filter_map(|id| d.doc.layer(LayerId(*id)).map(|l| l.visible)).collect()
+    };
+    // Dropping the shown first one shows the next and makes it active.
+    let v = s.execute(DROP_VARIATION, json!({"layers": ids, "index": 1})).unwrap();
+    assert_eq!((v["dropped"].as_u64(), v["shown"].as_u64()), (Some(ids[0]), Some(ids[1])));
+    assert_eq!(v["layers"], json!([ids[1], ids[2], ids[3]]));
+    {
+        let d = s.active().unwrap();
+        assert_eq!((d.doc.layers.len(), d.history.past_len(), d.active_layer), (n - 1, steps + 1, Some(LayerId(ids[1]))));
+    }
+    assert_eq!(visible(&s), [true, false, false]);
+    // Dropping a hidden one leaves the shown one alone.
+    let rest = [ids[1], ids[2], ids[3]];
+    let v = s.execute(DROP_VARIATION, json!({"layers": rest, "index": 3})).unwrap();
+    assert_eq!((v["dropped"].as_u64(), v["shown"].as_u64()), (Some(ids[3]), Some(ids[1])));
+    assert!(s.undo(), "the drop comes back");
+    assert_eq!(s.active().unwrap().doc.layers.len(), n - 1);
+    // Keep the third: the others go, it is shown and active, in one step.
+    let v = s.execute(KEEP_VARIATION, json!({"layers": rest, "index": 2})).unwrap();
+    assert_eq!((v["kept"].as_u64(), v["removed"].clone()), (Some(ids[2]), json!([ids[1], ids[3]])));
+    {
+        let d = s.active().unwrap();
+        assert_eq!(d.doc.layers.len(), n - 3);
+        assert!(d.doc.layer(LayerId(ids[2])).unwrap().visible);
+        assert_eq!(d.active_layer, Some(LayerId(ids[2])));
+        assert_eq!(d.history.past_len(), steps + 2);
+    }
+    assert!(s.undo());
+    assert_eq!(s.active().unwrap().doc.layers.len(), n - 1, "keep undoes in one step");
+    for p in [json!({"layers": rest}), json!({"layers": rest, "index": 4}), json!({"layers": [], "index": 1})] {
+        assert!(matches!(s.execute(KEEP_VARIATION, p.clone()), Err(EngineError::BadParams { .. })), "{p}");
+        assert!(matches!(s.execute(DROP_VARIATION, p.clone()), Err(EngineError::BadParams { .. })), "{p}");
+    }
+    // The only layer of a document cannot be dropped.
+    let mut lone = Session::new();
+    lone.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+    let only = lone.active().unwrap().doc.layers[0].id.0;
+    assert!(lone.execute(DROP_VARIATION, json!({"layers": [only], "index": 1})).is_err());
+    assert_eq!(lone.active().unwrap().doc.layers.len(), 1);
 }
 
 #[test]

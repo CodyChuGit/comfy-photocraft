@@ -2526,3 +2526,10 @@ cameraRaw	Roughness	Неровность
 	Research licence: turn on Allow research-only models in Preferences › AI Integrations	Исследовательская лицензия: включите «Разрешить модели только для исследований» в Настройки › Интеграции ИИ
 	Uses: {name}	Использует: {name}
 	Group models by family	Группировать модели по семействам
+	Variation {n} of {count}	Вариант {n} из {count}
+	Delete this variation	Удалить этот вариант
+	Keep this one	Оставить этот
+	Keep this one and delete the other variations	Оставить этот и удалить остальные варианты
+	Click to retry	Нажмите, чтобы повторить
+	Retry	Повторить
+	Variations strip	Полоса вариантов

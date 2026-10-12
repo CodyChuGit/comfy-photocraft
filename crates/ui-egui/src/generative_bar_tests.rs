@@ -54,30 +54,29 @@ fn the_menu_opens_the_bar_and_generate_runs_the_fill_with_variations() {
     let layers_before = app.session.active().unwrap().doc.layers.len();
     generate(&mut app).unwrap();
     assert_eq!(fake.state().prompts.len(), 2, "one backend run per variation");
-    let bar = app.ui.generative_bar.clone();
-    assert_eq!(bar.results.len(), 2);
-    assert_eq!(bar.shown, 0);
-    assert!(bar.job.is_none());
+    assert!(app.ui.generative_bar.job.is_none());
+    // The run's variations are the Variations strip's newest run.
+    let run = crate::variations_strip::bundles(&app).first().cloned().unwrap();
+    assert_eq!((run.layers.len(), run.shown), (2, Some(0)));
     let d = app.session.active().unwrap();
     assert_eq!(d.doc.layers.len(), layers_before + 2);
-    assert_eq!(d.doc.layer(LayerId(bar.results[0])).unwrap().name, "Generative Fill: a kite (1/2)");
-    assert_eq!(valid_results(&app), bar.results);
+    assert_eq!(d.doc.layer(LayerId(run.layers[0])).unwrap().name, "Generative Fill: a kite (1/2)");
 
-    // The switcher shows the second variation through generate.variation (one undo step).
+    // The strip shows the second variation through generate.variation (one undo step).
     let steps = app.session.active().unwrap().history.past_len();
-    show_variation(&mut app, 1).unwrap();
+    crate::variations_strip::choose(&mut app, run.record, 1).unwrap();
     let d = app.session.active().unwrap();
-    let (a, b) = (LayerId(bar.results[0]), LayerId(bar.results[1]));
+    let (a, b) = (LayerId(run.layers[0]), LayerId(run.layers[1]));
     assert!(!d.doc.layer(a).unwrap().visible && d.doc.layer(b).unwrap().visible);
     assert_eq!(d.history.past_len(), steps + 1);
-    assert_eq!(app.ui.generative_bar.shown, 1);
-    assert!(show_variation(&mut app, 7).is_ok(), "an index past the end shows the last one");
-    assert_eq!(app.ui.generative_bar.shown, 1);
+    assert_eq!(crate::variations_strip::bundles(&app)[0].shown, Some(1));
+    assert!(crate::variations_strip::choose(&mut app, run.record, 7).is_ok(), "an index past the end shows the last one");
+    assert_eq!(crate::variations_strip::bundles(&app)[0].shown, Some(1));
 
     // ui.inspect shows the bar; ui.set drives and validates it.
     let v = control(&mut app, &ctx, "ui.inspect", json!({}));
     assert_eq!(v["result"]["generativeBar"]["prompt"], "a kite");
-    assert_eq!(v["result"]["generativeBar"]["results"].as_array().unwrap().len(), 2);
+    assert_eq!(v["result"]["variations"]["runs"][0]["layers"].as_array().unwrap().len(), 2);
     let bad = control(&mut app, &ctx, "ui.set", json!({"generativeVariations": 9}));
     assert_eq!(bad["ok"], false, "{bad}");
     let bad = control(&mut app, &ctx, "ui.set", json!({"generativePrompt": 5}));
@@ -148,8 +147,9 @@ fn the_menu_opens_the_bar_and_generate_runs_the_fill_with_variations() {
     assert!(generate(&mut app).is_err());
     app.session.edit_prefs(|p| p.integrations.allow_research_models = true);
     generate(&mut app).unwrap();
-    assert_eq!(app.ui.generative_bar.results.len(), 3);
-    assert_eq!(app.session.active().unwrap().doc.layer(LayerId(app.ui.generative_bar.results[1])).unwrap().name, "Generative Fill: a boat (2/3)");
+    let run = crate::variations_strip::bundles(&app).first().cloned().unwrap();
+    assert_eq!(run.layers.len(), 3);
+    assert_eq!(app.session.active().unwrap().doc.layer(LayerId(run.layers[1])).unwrap().name, "Generative Fill: a boat (2/3)");
 }
 
 #[test]

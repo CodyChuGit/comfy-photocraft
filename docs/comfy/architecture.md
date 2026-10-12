@@ -405,6 +405,18 @@ Each one is read by code in the same change that adds it, so the audit count doe
   show their full names. In the panel's one-row form the pill is the family glyph alone, so the
   choice stays reachable on a 900-pt window. The pill and rows carry accessibility labels
   ("Model: Auto").
+- **Variations strip** (PhotoshopEX, `variations_strip.rs`): the active document's last five
+  generative runs as 56-pt tiles at the canvas's right edge (or along its bottom, or off:
+  `integrations.variationsStrip`), newest first. The runs are read from the Generations library
+  each frame (records whose `doc` is the active document, fill / edit / expand / image / similar,
+  with the result layers that still exist), so runs started anywhere show and undo, delete and
+  close need no bookkeeping. A tile is the result layer's pixels over the run's area (built once
+  per pixel change, four per frame at most); the shown one has an accent ring and ✓ (Keep:
+  `generate.keepVariation`), every tile × on hover (`generate.dropVariation`), a click shows it
+  (`generate.variation`), the header says `2/4` and ✦ runs Generate Similar for as many again.
+  A running job shows placeholders with a sheen and its percent; a failed one a red tile with the
+  reason, Retry (`generate.recreate`) and Dismiss. While the strip, the task bar or the Generate
+  panel shows a job, the modal progress dialog stays away. The task bar's 1/n switcher is gone.
 - **Dock budget**: with the two generative groups open the filler (Layers) asks for 320 pt instead
   of 500, the other groups give way to their compact heights before the generative ones, and the
   generative groups fold to their tab strips when Layers would drop under 260 pt

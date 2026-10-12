@@ -2252,3 +2252,10 @@ cameraRaw	Color	Barvy
 	Research licence: turn on Allow research-only models in Preferences › AI Integrations	Výzkumná licence: zapněte Povolit modely jen pro výzkum v Předvolby › Integrace AI
 	Uses: {name}	Použije: {name}
 	Group models by family	Seskupit modely podle rodiny
+	Variation {n} of {count}	Varianta {n} z {count}
+	Delete this variation	Smazat tuto variantu
+	Keep this one	Ponechat tuto
+	Keep this one and delete the other variations	Ponechat tuto a smazat ostatní varianty
+	Click to retry	Kliknutím zkusíte znovu
+	Retry	Zkusit znovu
+	Variations strip	Pruh variant

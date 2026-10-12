@@ -1,9 +1,10 @@
 //! The generative task bar (comfy-photocraft): Photoshop's contextual bar under a selection,
 //! reduced to what the fork does today. A prompt, the template picker, the number of variations,
-//! Generate; progress with Cancel while the job runs; the variation switcher once results exist.
+//! Generate; progress with Cancel while the job runs. The variations of a run are compared in the
+//! Variations strip at the canvas edge ([`crate::variations_strip`]).
 //!
 //! The bar is data in [`crate::state::UiState`] (`ui.inspect` shows it, `ui.set` drives it) and
-//! it only ever runs engine commands (`generate.fill`, `generate.variation`), so the work, the
+//! it only ever runs engine commands (`generate.fill`, `generate.edit`), so the work, the
 //! undo history and the journal are the ones a menu would produce. Edit › Generative Fill… and the
 //! selection context menu open it (the generated dialog stays for a hidden bar); it also appears
 //! by itself when a selection is made, as Preferences › AI Integrations › Show generative bar says:
@@ -12,7 +13,7 @@
 //! PhotoshopEX: the bar is the Generate panel's compact form. Its prompt, template (per mode) and
 //! count are the panel's ([`crate::generate_panel::GeneratePanel`]), so the two never disagree.
 
-use egui::{Align, Layout, Rect, RichText, Sense, Stroke, pos2, vec2};
+use egui::{Rect, RichText, Sense, Stroke, pos2, vec2};
 use photocraft_engine::jobs::{JobEvent, JobId, JobOutcome};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -23,7 +24,6 @@ use crate::theme::Tokens;
 pub const COMMAND: &str = "generate.fill";
 /// The bar's other mode: the whole picture by instruction, masked to the selection.
 pub const EDIT_COMMAND: &str = "generate.edit";
-const VARIATION_COMMAND: &str = "generate.variation";
 const ENHANCE_COMMAND: &str = "generate.enhancePrompt";
 const MODE_FILL: &str = "fill";
 const MODE_EDIT: &str = "edit";
@@ -58,19 +58,11 @@ pub struct GenerativeBar {
     pub mode: String,
     /// The `generate.fill` job the bar started and shows progress for.
     pub job: Option<u64>,
-    /// Layers of the last run (one per variation) and which one is shown (0-based).
-    pub results: Vec<u64>,
-    pub shown: usize,
     /// Templates for the picker, fetched when the bar opens.
     pub templates: Vec<TemplateChoice>,
     /// The prompt field takes the keyboard focus on the next frame (opened from a menu).
     #[serde(skip)]
     pub focus: bool,
-    /// The document (session index) the job runs on and the results belong to.
-    #[serde(skip)]
-    job_doc: Option<usize>,
-    #[serde(skip)]
-    results_doc: Option<usize>,
     /// Whether the active document had a selection last frame (the bar opens when one appears).
     #[serde(skip)]
     had_selection: bool,
@@ -91,12 +83,8 @@ impl Default for GenerativeBar {
             open: false,
             mode: MODE_FILL.to_string(),
             job: None,
-            results: Vec::new(),
-            shown: 0,
             templates: Vec::new(),
             focus: false,
-            job_doc: None,
-            results_doc: None,
             had_selection: false,
             showing_job: None,
             probe_job: None,
@@ -247,7 +235,8 @@ pub fn looks_like_an_edit(prompt: &str) -> bool {
 
 /// Run the bar's command (`generate.fill`, or `generate.edit` in Edit mode) with its prompt,
 /// template and variations. In the desktop app it starts a background job the bar then
-/// follows; inline (tests, web) the results land at once.
+/// follows; inline (tests, web) the results land at once. Either way the run's variations show
+/// in the Variations strip.
 pub fn generate(app: &mut PhotocraftApp) -> Result<Value, String> {
     let prompt = app.ui.generate.prompt.trim().to_string();
     if prompt.is_empty() {
@@ -257,17 +246,10 @@ pub fn generate(app: &mut PhotocraftApp) -> Result<Value, String> {
     let template = current_template(app);
     let command = mode_command(app);
     let params = json!({"prompt": prompt, "variations": variations, "template": template});
-    let doc = app.session.active_index();
     match app.run(command, params) {
         Ok(v) => {
             if v.get("pending").and_then(Value::as_bool) == Some(true) {
-                let bar = &mut app.ui.generative_bar;
-                bar.job = v.get("job").and_then(Value::as_u64);
-                bar.job_doc = doc;
-                bar.results.clear();
-                bar.shown = 0;
-            } else {
-                apply_result(app, &v, doc);
+                app.ui.generative_bar.job = v.get("job").and_then(Value::as_u64);
             }
             Ok(v)
         }
@@ -276,13 +258,6 @@ pub fn generate(app: &mut PhotocraftApp) -> Result<Value, String> {
             Err(e)
         }
     }
-}
-
-fn apply_result(app: &mut PhotocraftApp, v: &Value, doc: Option<usize>) {
-    let bar = &mut app.ui.generative_bar;
-    bar.results = v["layers"].as_array().map(|a| a.iter().filter_map(Value::as_u64).collect()).unwrap_or_default();
-    bar.shown = 0;
-    bar.results_doc = doc;
 }
 
 /// The Enhance button: `generate.enhancePrompt` rewrites the bar's prompt with the
@@ -326,8 +301,8 @@ fn apply_enhanced(app: &mut PhotocraftApp, v: &Value) {
     }
 }
 
-/// A background job ended: a fill records its result layers in the bar, whether the bar started
-/// it or a script / the dialog did (while the bar has no job of its own).
+/// A background job ended: the bar's probe, its Enhance answer, or its own run (whose results the
+/// Variations strip shows).
 pub fn on_event(app: &mut PhotocraftApp, e: &JobEvent) {
     if app.ui.generative_bar.probe_job == Some(e.id.0) {
         app.ui.generative_bar.probe_job = None;
@@ -345,39 +320,9 @@ pub fn on_event(app: &mut PhotocraftApp, e: &JobEvent) {
         }
         return;
     }
-    let active = app.session.active_index();
-    let bar = &mut app.ui.generative_bar;
-    let own = bar.job == Some(e.id.0);
-    if !own && ((e.command != COMMAND && e.command != EDIT_COMMAND) || bar.job.is_some()) {
-        return;
+    if app.ui.generative_bar.job == Some(e.id.0) {
+        app.ui.generative_bar.job = None;
     }
-    let doc = if own { bar.job_doc.take() } else { active };
-    bar.job = None;
-    if let JobOutcome::Done(v) = &e.outcome {
-        apply_result(app, v, doc);
-    }
-}
-
-/// The result layers, when they all still exist in the active document.
-fn valid_results(app: &PhotocraftApp) -> Vec<u64> {
-    let bar = &app.ui.generative_bar;
-    if bar.results.len() < 2 || bar.results_doc != app.session.active_index() {
-        return Vec::new();
-    }
-    let Some(d) = app.session.active() else { return Vec::new() };
-    if bar.results.iter().all(|id| d.doc.layer(photocraft_doc::LayerId(*id)).is_some()) { bar.results.clone() } else { Vec::new() }
-}
-
-/// Show variation `index` (0-based) of the last run: one undo step through `generate.variation`.
-pub fn show_variation(app: &mut PhotocraftApp, index: usize) -> Result<Value, String> {
-    let layers = valid_results(app);
-    if layers.is_empty() {
-        return Err("no variations to switch between".into());
-    }
-    let index = index.min(layers.len() - 1);
-    let r = app.run(VARIATION_COMMAND, json!({"layers": layers, "index": index + 1}))?;
-    app.ui.generative_bar.shown = index;
-    Ok(r)
 }
 
 /// `ui.inspect.generativeBar`: the bar's own state plus the prompt, template and variations it
@@ -489,7 +434,6 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
         .and_then(|j| app.session.job(j))
         .or_else(|| app.session.active_job().filter(|j| j.command == COMMAND || j.command == EDIT_COMMAND));
     app.ui.generative_bar.showing_job = job.as_ref().map(|j| j.id.0);
-    let results = valid_results(app);
     let picker = crate::generate_panel::picker_items(app, &app.ui.generative_bar.mode.clone(), true);
     let group = app.session.prefs().integrations.group_models_by_family;
     let auto = crate::generate_panel::auto_name(app, &app.ui.generative_bar.mode.clone());
@@ -507,7 +451,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                     crate::icons::paint(ui, ir, "sparkles", 16.0, t.accent);
                     match job {
                         Some(j) => running(ui, &j, &t, &mut action),
-                        None => idle(ui, app, &results, (&picker, auto.as_deref(), group), &t, &mut action),
+                        None => idle(ui, app, (&picker, auto.as_deref(), group), &t, &mut action),
                     }
                     let (xr, xresp) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::click());
                     if xresp.hovered() {
@@ -528,11 +472,6 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
             let _ = enhance(app);
         }
         Some(Action::Cancel(j)) => crate::jobs_ui::cancel(app, j),
-        Some(Action::Variation(i)) => {
-            if let Err(e) = show_variation(app, i) {
-                crate::notices::error(app, e);
-            }
-        }
         Some(Action::Close) => app.ui.generative_bar.open = false,
         None => {}
     }
@@ -542,7 +481,6 @@ enum Action {
     Generate,
     Enhance,
     Cancel(JobId),
-    Variation(usize),
     Close,
 }
 
@@ -577,7 +515,6 @@ fn running(ui: &mut egui::Ui, j: &photocraft_engine::jobs::JobInfo, t: &Tokens, 
 fn idle(
     ui: &mut egui::Ui,
     app: &mut PhotocraftApp,
-    results: &[u64],
     (picker, auto, group): (&[crate::model_picker::Item], Option<&str>, bool),
     t: &Tokens,
     action: &mut Option<Action>,
@@ -644,29 +581,6 @@ fn idle(
     if ui.add_enabled_ui(can_run, |ui| crate::widgets::primary_button(ui, tl!("Generate"), 88.0)).inner.clicked() || (enter && can_run) {
         *action = Some(Action::Generate);
     }
-    // The variation switcher, once a run made more than one.
-    if results.len() > 1 {
-        let shown = bar.shown.min(results.len() - 1);
-        ui.add_space(4.0);
-        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-            if arrow(ui, "chevrons-left", shown > 0, t).on_hover_text(tl!("Previous variation")).clicked() {
-                *action = Some(Action::Variation(shown.saturating_sub(1)));
-            }
-            ui.label(RichText::new(format!("{}/{}", shown + 1, results.len())).color(t.text).monospace());
-            if arrow(ui, "chevrons-right", shown + 1 < results.len(), t).on_hover_text(tl!("Next variation")).clicked() {
-                *action = Some(Action::Variation(shown + 1));
-            }
-        });
-    }
-}
-
-fn arrow(ui: &mut egui::Ui, icon: &str, enabled: bool, t: &Tokens) -> egui::Response {
-    let (r, resp) = ui.allocate_exact_size(vec2(18.0, 18.0), if enabled { Sense::click() } else { Sense::hover() });
-    if enabled && resp.hovered() {
-        ui.painter().rect_filled(r, t.radius_sm, t.hover);
-    }
-    crate::icons::paint(ui, r, icon, 12.0, if enabled { t.text } else { t.text_faint });
-    resp
 }
 
 #[cfg(test)]

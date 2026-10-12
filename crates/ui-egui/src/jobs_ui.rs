@@ -299,8 +299,13 @@ pub fn status_progress(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 /// [`DIALOG_DELAY_MS`]; Esc cancels (see [`tick`]).
 pub fn dialog(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let Some(j) = app.session.active_job() else { return };
-    // A fill the generative task bar is showing has its progress and Cancel there already.
-    if j.elapsed_ms < DIALOG_DELAY_MS || crate::generative_bar::shows_job(app, j.id) {
+    // A fill the generative task bar, the Generate panel or the Variations strip is showing has
+    // its progress and Cancel there already.
+    if j.elapsed_ms < DIALOG_DELAY_MS
+        || crate::generative_bar::shows_job(app, j.id)
+        || crate::generate_panel::shows_job(app, j.id)
+        || crate::variations_strip::shows_job(app, ctx, j.id)
+    {
         return;
     }
     let t = Tokens::get(ctx);

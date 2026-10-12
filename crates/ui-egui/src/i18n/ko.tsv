@@ -2834,3 +2834,10 @@ cameraRaw	Color	색상
 	Research licence: turn on Allow research-only models in Preferences › AI Integrations	연구용 라이선스: 환경설정 › AI 통합에서 '연구 전용 모델 허용'을 켜세요
 	Uses: {name}	사용: {name}
 	Group models by family	모델을 계열별로 묶기
+	Variation {n} of {count}	변형 {n}/{count}
+	Delete this variation	이 변형 삭제
+	Keep this one	이것 유지
+	Keep this one and delete the other variations	이것을 유지하고 다른 변형 삭제
+	Click to retry	클릭하여 다시 시도
+	Retry	다시 시도
+	Variations strip	변형 스트립

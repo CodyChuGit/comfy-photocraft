@@ -35,6 +35,10 @@ pub const IMAGE: &str = "generate.image";
 pub const HEALTH: &str = "generate.health";
 pub const MODELS: &str = "generate.models";
 pub const VARIATION: &str = "generate.variation";
+/// Delete one variation of a run (the Variations strip's ×).
+pub const DROP_VARIATION: &str = "generate.dropVariation";
+/// Keep one variation of a run and delete the others (the Variations strip's Keep).
+pub const KEEP_VARIATION: &str = "generate.keepVariation";
 pub const FREE: &str = "generate.free";
 pub const EXPAND: &str = "generate.expand";
 /// Most results one `generate.fill` call makes (`variations`).
@@ -1748,9 +1752,10 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
     )
 }
 
-/// `generate.variation`: show one of the layers a fill made as variations, hide the others.
-fn run_variation(s: &mut Session, p: &Value) -> Result<Value> {
-    let bad_layers = || bad(VARIATION, "`layers` must be a list of 1 to 16 layer ids");
+/// The variation commands' `layers` (1 to 16 ids, all in the active document) and 1-based
+/// `index`.
+fn variation_params(s: &Session, cmd: &str, p: &Value) -> Result<(Vec<LayerId>, usize)> {
+    let bad_layers = || bad(cmd, "`layers` must be a list of 1 to 16 layer ids");
     let layers: Vec<LayerId> = p
         .get("layers")
         .and_then(Value::as_array)
@@ -1761,15 +1766,24 @@ fn run_variation(s: &mut Session, p: &Value) -> Result<Value> {
     if layers.is_empty() || layers.len() > 16 {
         return Err(bad_layers());
     }
-    let index = match opt_num(VARIATION, p, "index", 1.0, layers.len() as f64)? {
+    let index = match opt_num(cmd, p, "index", 1.0, layers.len() as f64)? {
         Some(x) if x.fract() == 0.0 => x as usize,
-        Some(_) => return Err(bad(VARIATION, "`index` must be a whole number (1 = the first variation)")),
-        None => return Err(bad(VARIATION, "`index` is required (1 = the first variation)")),
+        Some(_) => return Err(bad(cmd, "`index` must be a whole number (1 = the first variation)")),
+        None => return Err(bad(cmd, "`index` is required (1 = the first variation)")),
     };
     let d = s.active().ok_or(EngineError::NoDocument)?;
     if let Some(missing) = layers.iter().find(|id| d.doc.layer(**id).is_none()) {
         return Err(EngineError::NoLayer(*missing));
     }
+    if layers.iter().enumerate().any(|(i, id)| layers.iter().take(i).any(|o| o == id)) {
+        return Err(bad(cmd, "`layers` lists a layer twice"));
+    }
+    Ok((layers, index))
+}
+
+/// `generate.variation`: show one of the layers a fill made as variations, hide the others.
+fn run_variation(s: &mut Session, p: &Value) -> Result<Value> {
+    let (layers, index) = variation_params(s, VARIATION, p)?;
     let shown = layers.get(index.saturating_sub(1)).copied();
     s.edit(&format!("Variation {index}"), |doc, active| {
         for (i, id) in layers.iter().enumerate() {
@@ -1779,6 +1793,51 @@ fn run_variation(s: &mut Session, p: &Value) -> Result<Value> {
         Ok(())
     })?;
     Ok(json!({"shown": shown.map(|l| l.0), "index": index, "count": layers.len()}))
+}
+
+/// `generate.dropVariation`: delete the index-th variation, as one undo step. When it was the
+/// one on screen the next one (else the previous one) is shown and becomes the active layer.
+fn run_drop_variation(s: &mut Session, p: &Value) -> Result<Value> {
+    let (layers, index) = variation_params(s, DROP_VARIATION, p)?;
+    let Some(dropped) = layers.get(index.saturating_sub(1)).copied() else { return Err(bad(DROP_VARIATION, "`index` is past the end of `layers`")) };
+    let rest: Vec<LayerId> = layers.iter().copied().filter(|l| *l != dropped).collect();
+    let d = s.active().ok_or(EngineError::NoDocument)?;
+    let was_shown = d.doc.layer(dropped).is_some_and(|l| l.visible);
+    let others_hidden = rest.iter().all(|id| d.doc.layer(*id).is_some_and(|l| !l.visible));
+    // The dropped one was on screen and none of the others is: show its neighbour.
+    let next = if was_shown && others_hidden { rest.get(index.saturating_sub(1)).or(rest.last()).copied() } else { None };
+    s.edit(&format!("Drop Variation {index}"), |doc, active| {
+        doc.remove(dropped).ok_or(EngineError::NoLayer(dropped))?;
+        if doc.layers.is_empty() {
+            return Err(EngineError::Other("a document must keep at least one layer".into()));
+        }
+        if let Some(n) = next {
+            doc.layer_mut(n).ok_or(EngineError::NoLayer(n))?.visible = true;
+            *active = Some(n);
+        } else if *active == Some(dropped) {
+            *active = rest.first().copied().or_else(|| doc.top_layer());
+        }
+        Ok(())
+    })?;
+    let shown = rest.iter().copied().find(|id| s.active().and_then(|d| d.doc.layer(*id)).is_some_and(|l| l.visible));
+    Ok(json!({"dropped": dropped.0, "layers": rest.iter().map(|l| l.0).collect::<Vec<_>>(), "shown": shown.map(|l| l.0)}))
+}
+
+/// `generate.keepVariation`: keep the index-th variation, shown and active, and delete the
+/// others, as one undo step.
+fn run_keep_variation(s: &mut Session, p: &Value) -> Result<Value> {
+    let (layers, index) = variation_params(s, KEEP_VARIATION, p)?;
+    let Some(kept) = layers.get(index.saturating_sub(1)).copied() else { return Err(bad(KEEP_VARIATION, "`index` is past the end of `layers`")) };
+    let removed: Vec<LayerId> = layers.iter().copied().filter(|l| *l != kept).collect();
+    s.edit("Keep Variation", |doc, active| {
+        for id in &removed {
+            doc.remove(*id).ok_or(EngineError::NoLayer(*id))?;
+        }
+        doc.layer_mut(kept).ok_or(EngineError::NoLayer(kept))?.visible = true;
+        *active = Some(kept);
+        Ok(())
+    })?;
+    Ok(json!({"kept": kept.0, "removed": removed.iter().map(|l| l.0).collect::<Vec<_>>()}))
 }
 
 /// `variations`: 1..=[`MAX_VARIATIONS`] whole results with consecutive seeds.
@@ -2662,6 +2721,26 @@ pub fn specs() -> Vec<CommandSpec> {
             params: r#"{"layers":[id],"index":int=1} → {"shown","index","count"} (the layers a Generative Fill made as variations: shows the index-th (1-based) and hides the others, as one undo step)"#,
             enabled: doc_enabled,
             run: run_variation,
+            journal: true,
+        },
+        CommandSpec {
+            id: DROP_VARIATION,
+            label: "Drop Variation",
+            menu: &[],
+            shortcut: None,
+            params: r#"{"layers":[id],"index":int} → {"dropped","layers","shown"} (deletes the index-th (1-based) of a run's variation layers as one undo step; when it was the one on screen and the others are hidden, the next one (else the previous one) is shown and active; layers = the ones left; the Variations strip's ×)"#,
+            enabled: doc_enabled,
+            run: run_drop_variation,
+            journal: true,
+        },
+        CommandSpec {
+            id: KEEP_VARIATION,
+            label: "Keep Variation",
+            menu: &[],
+            shortcut: None,
+            params: r#"{"layers":[id],"index":int} → {"kept","removed"} (keeps the index-th (1-based) of a run's variation layers, shown and active, and deletes the others, as one undo step; the Variations strip's Keep)"#,
+            enabled: doc_enabled,
+            run: run_keep_variation,
             journal: true,
         },
         CommandSpec {

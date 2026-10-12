@@ -741,6 +741,9 @@ pub struct Integrations {
     /// The model picker groups a page's templates into one submenu per family once there are
     /// eight or more.
     pub group_models_by_family: bool,
+    /// Where the Variations strip (the candidates of the active document's recent generative
+    /// runs) sits over the canvas: `right`, `bottom` or `off`.
+    pub variations_strip: String,
     /// Rewrite every prompt with the vision-language model before a run (`generate.*`'s
     /// `enhance`): names what the picture shows instead of "this", adds the detail the image
     /// models want. The bar's Enhance button does it on demand when this is off.
@@ -767,6 +770,7 @@ impl Default for Integrations {
             show_generative_bar: "auto".into(),
             enter_to_generate: false,
             group_models_by_family: true,
+            variations_strip: "right".into(),
             enhance_prompts: false,
             model_precision: "auto".into(),
         }
@@ -775,6 +779,9 @@ impl Default for Integrations {
 
 /// `integrations.showGenerativeBar`: see [`Integrations::show_generative_bar`].
 pub const GENERATIVE_BAR_MODES: &[&str] = &["auto", "always", "never"];
+
+/// `integrations.variationsStrip`: see [`Integrations::variations_strip`].
+pub const VARIATIONS_STRIP_PLACES: &[&str] = &["right", "bottom", "off"];
 
 /// Read `showGenerativeBar` as one of [`GENERATIVE_BAR_MODES`], accepting the boolean it used to
 /// be (and falling back to `auto` for anything else, so a hand-edited file never fails to load).
@@ -981,6 +988,7 @@ pub fn choices(path: &str) -> Option<&'static [&'static str]> {
         "performance.renderingMode" => RenderingMode::NAMES,
         "integrations.modelPrecision" => MODEL_PRECISIONS,
         "integrations.showGenerativeBar" => GENERATIVE_BAR_MODES,
+        "integrations.variationsStrip" => VARIATIONS_STRIP_PLACES,
         _ => return None,
     })
 }

@@ -2235,3 +2235,10 @@ cameraRaw	Color	カラー
 	Research licence: turn on Allow research-only models in Preferences › AI Integrations	研究用ライセンス: 環境設定 › AI 連携で「研究専用モデルを許可」をオンにしてください
 	Uses: {name}	使用: {name}
 	Group models by family	モデルをファミリーごとにまとめる
+	Variation {n} of {count}	バリエーション {n}/{count}
+	Delete this variation	このバリエーションを削除
+	Keep this one	これを残す
+	Keep this one and delete the other variations	これを残して他のバリエーションを削除
+	Click to retry	クリックして再試行
+	Retry	再試行
+	Variations strip	バリエーションストリップ
