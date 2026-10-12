@@ -4,6 +4,18 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-11 (later): the build plan
+
+[`plan-artcraft-experience.md`](plan-artcraft-experience.md): the hand-off plan the owner asked
+for so another agent can build the study's §6. Five phases, each with the engine commands (params
+doc strings), the data shapes (`GenerationRecord`, the library on disk under
+`<config_dir>/generations/`, template capability flags, `Request.references`), the UI modules
+and the exact upstream files to touch (dock groups, rail, menus, control protocol, with line
+anchors at `ce5c692`), the tests per file, the docs per phase, performance budgets, a failure
+taxonomy, the ETA formula, live scripts, an acceptance walkthrough and a file map. Open
+decisions listed in §0 (panels on by default, a 200-result / 2 GB library cap, sounds behind a
+cargo feature). Nothing built yet.
+
 ## 2026-10-11: the ArtCraft study, refocused on the experience
 
 The owner clarified: not the business model, the **UI and experience**, with the credits removed
