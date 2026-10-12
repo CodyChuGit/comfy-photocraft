@@ -2158,3 +2158,39 @@ cameraRaw	Blending	混合
 	Click an object, or drag a rectangle around it	點按物件，或在其周圍拖曳矩形
 	Select by Point	依點選取
 	Select by Text	依文字選取
+	{done} results	{done} 個結果
+	{running} running · {done} results	{running} 個進行中 · {done} 個結果
+	Cancelled	已取消
+	Clear completed…	清除已完成…
+	Clear failed…	清除失敗項目…
+	Completed	已完成
+	Copy prompt	複製提示詞
+	Delete every completed result and its files?	刪除所有已完成的結果及其檔案？
+	Delete every generation and its files? Running jobs stay.	刪除所有生成內容及其檔案？執行中的工作會保留。
+	Dismiss failed	關閉失敗項目
+	Failed	失敗
+	Generations	生成記錄
+	Generative Fill, Edit and Generate Image results appear here.	生成式填滿、生成式編輯與產生影像的結果會顯示在這裡。
+	In progress	進行中
+	Interrupted	已中斷
+	Invalid request	無效的要求
+	List	清單
+	Model files missing	缺少模型檔案
+	More	更多
+	No generations yet	尚無生成記錄
+	Open as Document	以文件開啟
+	Out of memory on the server	伺服器記憶體不足
+	Pin	釘選
+	Place	置入
+	Place as Layer	以圖層置入
+	Prompt copied	已複製提示詞
+	Recreate	重新產生
+	Remove all…	全部移除…
+	Remove every failed and cancelled row?	移除所有失敗與已取消的列？
+	Result discarded	結果已捨棄
+	Saved {n} file(s)	已儲存 {n} 個檔案
+	Saving files is not available here	此處無法儲存檔案
+	Server error	伺服器錯誤
+	Server unreachable	無法連線至伺服器
+	Timed out	逾時
+	Unpin	取消釘選

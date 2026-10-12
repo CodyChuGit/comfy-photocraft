@@ -40,6 +40,7 @@ mod frame_cmds;
 pub mod fx_view_cmds;
 pub mod gallery_cmds;
 pub mod generate_cmds;
+pub mod generate_jobs;
 pub mod gradient_fill_cmds;
 pub mod group_view_cmds;
 pub mod hidden_target;
@@ -313,6 +314,9 @@ pub struct Session {
     pub authorize: Option<fn(&str, &serde_json::Value) -> Result<()>>,
     /// Background jobs (see [`jobs`]).
     jobs: jobs::Jobs,
+    /// The Generations library: every generative job and its stored results (see
+    /// [`generate_jobs`]).
+    pub generations: generate_jobs::GenerationStore,
 }
 
 /// Move item `i` of `v` to position `to`, clamped to the end. Returns where it went; `None` when

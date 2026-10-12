@@ -173,7 +173,7 @@ mod tests {
             assert!(dir.is_dir(), "the data folder is created");
             assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0, "the write probe is removed");
             // Every derived path sits under the exe dir.
-            for sub in ["preferences.json", "Presets", "Recovery", crate::gpu_startup::MARKER_FILE] {
+            for sub in ["preferences.json", "Presets", "Recovery", "generations", crate::gpu_startup::MARKER_FILE] {
                 assert!(dir.join(sub).starts_with(&exe));
             }
             assert!(!root.join("home").exists() && !root.join("appdata").exists(), "nothing written to the user folder");

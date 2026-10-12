@@ -289,6 +289,13 @@ fn run_cmds(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
     if cmds.is_empty() && a.get("--out").is_none() {
         return Err("run needs at least one --cmd (or --out)".into());
     }
+    // Generative runs land in the desktop app's Generations library (and `generate.jobs` lists
+    // it); other runs never touch it.
+    if cmds.iter().any(|(id, _)| id.starts_with("generate.") || id.starts_with("select.by") || id == "select.subjectML")
+        && let Some(dir) = photocraft_engine::generate_jobs::default_dir()
+    {
+        h.session.set_generations_dir(dir);
+    }
     let mut reported_fonts = std::collections::HashSet::<String>::new();
     for (id, params) in cmds {
         let r = h.command_run(&id, params).map_err(|e| format!("`{id}`: {e}"))?;

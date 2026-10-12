@@ -130,8 +130,20 @@ pub(crate) fn place_in_words(region: Rect, canvas: Rect) -> String {
     if big {
         return "whole".to_string();
     }
-    let v = if cy < 1.0 / 3.0 { "upper" } else if cy > 2.0 / 3.0 { "lower" } else { "" };
-    let h = if cx < 1.0 / 3.0 { "left" } else if cx > 2.0 / 3.0 { "right" } else { "" };
+    let v = if cy < 1.0 / 3.0 {
+        "upper"
+    } else if cy > 2.0 / 3.0 {
+        "lower"
+    } else {
+        ""
+    };
+    let h = if cx < 1.0 / 3.0 {
+        "left"
+    } else if cx > 2.0 / 3.0 {
+        "right"
+    } else {
+        ""
+    };
     match (v, h) {
         ("", "") => "centre".to_string(),
         ("", h) => format!("{h} part"),
@@ -855,7 +867,7 @@ pub(crate) fn resize_gray8(src: &Gray8, w: u32, h: u32) -> Result<Gray8> {
 
 /// Write RGBA8 pixels into a raster layer over `rect`, converting to the layer's own format
 /// (gray, CMYK, 16-bit, float…); `src` must have `rect`'s size.
-fn write_rgba8(layer: &mut Layer, src: &Rgba8, rect: Rect) -> Result<()> {
+pub(crate) fn write_rgba8(layer: &mut Layer, src: &Rgba8, rect: Rect) -> Result<()> {
     if (src.width, src.height) != (rect.width(), rect.height()) {
         return Err(EngineError::Other("internal error: the image and its rectangle differ in size".into()));
     }
@@ -1184,7 +1196,8 @@ fn fill_region(
         let p = o.picture;
         prefill_outside(&mut image, Rect::new(p.x0 - rect.x0, p.y0 - rect.y0, p.x1 - rect.x0, p.y1 - rect.y0));
     }
-    let FillJob { backend, server, command, template_id, auto, auto_order, prompt, negative, seed, steps, guidance, name, models, variations, edge, enhance } = job;
+    let FillJob { backend, server, command, template_id, auto, auto_order, prompt, negative, seed, steps, guidance, name, models, variations, edge, enhance } =
+        job;
     let mask = Gray8::new(w, h, coverage.iter().map(|c| (c * 255.0 + 0.5) as u8).collect()).map_err(gen_err)?;
     // The model gets a softened mask so it re-renders a band around the area and blends it (much
     // wider for an expand, whose seam runs along a whole picture edge and whose sky or water tone
@@ -2174,7 +2187,8 @@ fn run_info(s: &mut Session, p: &Value) -> Result<Value> {
     let id = layer_param(s, p)?;
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let layer = d.doc.layer(id).ok_or(EngineError::NoLayer(id))?;
-    Ok(json!({"layer": id.0, "generative": generative_info(layer)}))
+    let job = s.generations.record_for_layer(d.doc.id, id);
+    Ok(json!({"layer": id.0, "generative": generative_info(layer), "job": job}))
 }
 
 fn similar_enabled(s: &Session) -> std::result::Result<(), String> {
@@ -2322,7 +2336,8 @@ fn run_enhance(s: &mut Session, p: &Value) -> Result<Value> {
         false,
         move |ctx| {
             ctx.progress(0.05, "Improving the prompt");
-            let out = enhance_prompt(backend.as_ref(), kind, &prompt, image.as_ref(), place.as_deref(), seed, &JobProgress::span(ctx, 0.05, 0.95)).map_err(gen_err)?;
+            let out = enhance_prompt(backend.as_ref(), kind, &prompt, image.as_ref(), place.as_deref(), seed, &JobProgress::span(ctx, 0.05, 0.95))
+                .map_err(gen_err)?;
             ctx.check()?;
             Ok(out)
         },
@@ -2415,7 +2430,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Layer Info",
             menu: &[],
             shortcut: None,
-            params: r#"{"layer":{id?=active}} → {"layer","generative":{"command","prompt","negative","template","seed","steps","guidance","edge","rect":[x,y,w,h],"name","width","height","transparent","enhanced"}|null} (what a layer remembers about the generative run that made it; prompt = as typed, enhanced = the rewritten prompt the model got when `enhance` was on, else empty; kept with the layer through PSD round trips)"#,
+            params: r#"{"layer":{id?=active}} → {"layer","generative":{"command","prompt","negative","template","seed","steps","guidance","edge","rect":[x,y,w,h],"name","width","height","transparent","enhanced"}|null,"job":{u64?}} (what a layer remembers about the generative run that made it; prompt = as typed, enhanced = the rewritten prompt the model got when `enhance` was on, else empty; kept with the layer through PSD round trips; job = its row in the Generations library (generate.jobs) when this session made it)"#,
             enabled: doc_enabled,
             run: run_info,
             journal: false,

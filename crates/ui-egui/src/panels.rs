@@ -1043,8 +1043,9 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             ui.painter().line_segment([r.left_top() - vec2(6.0, 8.0), r.left_bottom() + vec2(-6.0, 8.0)], Stroke::new(1.0, t.separator));
             ui.spacing_mut().item_spacing.y = 4.0;
             use crate::dock::Group;
-            let entries: [(&str, &str, Group); 5] = [
+            let entries: [(&str, &str, Group); 6] = [
                 ("sliders-horizontal", tl!("Properties"), Group::Properties),
+                ("grid-2x2", tl!("Generations"), Group::Generations),
                 ("navigation", tl!("Navigator"), Group::Navigator),
                 ("palette", tl!("Color & Swatches"), Group::Color),
                 ("layers", tl!("Layers"), Group::Layers),
@@ -1054,7 +1055,11 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 // Studio floats Properties outside the dock.
                 let docked = t.pro || g != Group::Properties;
                 let on = g.shown(&p) && !(docked && app.ui.dock.is_collapsed(g));
-                if icons::rail_button(ui, icon, rb, on, name).clicked() {
+                let r = icons::rail_button(ui, icon, rb, on, name);
+                if g == Group::Generations {
+                    crate::generations_panel::rail_badge(app, ui, r.rect, &t);
+                }
+                if r.clicked() {
                     crate::dock::rail_click(app, g, docked);
                 }
             }
@@ -1085,6 +1090,7 @@ fn dock_panels(app: &mut PhotocraftApp, ui: &mut egui::Ui, p: &crate::state::Pan
     let shown: Vec<Group> = [
         (Group::Color, p.color),
         (Group::Properties, t.pro && p.properties),
+        (Group::Generations, p.generations),
         (Group::Character, p.character),
         (Group::Navigator, p.navigator),
         (Group::History, p.history),
@@ -1120,6 +1126,7 @@ fn dock_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, group: crate::dock::Gro
         (Group::Color, _) => color_picker(app, ui),
         (Group::Properties, 0) => properties_body(app, ui),
         (Group::Properties, _) => adjustments_grid(app, ui),
+        (Group::Generations, _) => crate::generations_panel::panel(app, ui),
         (Group::Character, tab) => crate::type_tool::character_panel(app, ui, tab == 1),
         (Group::Navigator, 0) => navigator(app, ui),
         (Group::Navigator, 1) => crate::tone::histogram_panel(app, ui),

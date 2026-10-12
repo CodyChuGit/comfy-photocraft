@@ -2254,3 +2254,39 @@ cameraRaw	Amount	Quantità
 	Click an object, or drag a rectangle around it	Fai clic su un oggetto o traccia un rettangolo attorno
 	Select by Point	Seleziona per punto
 	Select by Text	Seleziona per testo
+	{done} results	{done} risultati
+	{running} running · {done} results	{running} in corso · {done} risultati
+	Cancelled	Annullato
+	Clear completed…	Cancella completati…
+	Clear failed…	Cancella non riusciti…
+	Completed	Completati
+	Copy prompt	Copia prompt
+	Delete every completed result and its files?	Eliminare tutti i risultati completati e i relativi file?
+	Delete every generation and its files? Running jobs stay.	Eliminare tutte le generazioni e i relativi file? I processi in corso restano.
+	Dismiss failed	Nascondi non riusciti
+	Failed	Non riusciti
+	Generations	Generazioni
+	Generative Fill, Edit and Generate Image results appear here.	Qui compaiono i risultati di Riempimento generativo, Modifica generativa e Genera immagine.
+	In progress	In corso
+	Interrupted	Interrotto
+	Invalid request	Richiesta non valida
+	List	Elenco
+	Model files missing	File del modello mancanti
+	More	Altro
+	No generations yet	Nessuna generazione
+	Open as Document	Apri come documento
+	Out of memory on the server	Memoria esaurita sul server
+	Pin	Fissa
+	Place	Inserisci
+	Place as Layer	Inserisci come livello
+	Prompt copied	Prompt copiato
+	Recreate	Ricrea
+	Remove all…	Rimuovi tutto…
+	Remove every failed and cancelled row?	Rimuovere tutte le righe non riuscite e annullate?
+	Result discarded	Risultato scartato
+	Saved {n} file(s)	{n} file salvati
+	Saving files is not available here	Il salvataggio dei file non è disponibile qui
+	Server error	Errore del server
+	Server unreachable	Server non raggiungibile
+	Timed out	Tempo scaduto
+	Unpin	Rimuovi fissaggio

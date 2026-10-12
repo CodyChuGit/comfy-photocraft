@@ -60,6 +60,7 @@ pub mod file_ui;
 pub mod fill_ui;
 pub mod filter_dialog;
 pub mod gallery_ui;
+pub mod generations_panel;
 pub mod generative_bar;
 pub mod gpu_canvas;
 pub mod gpu_status;

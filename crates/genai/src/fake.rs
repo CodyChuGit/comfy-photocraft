@@ -305,7 +305,14 @@ fn route(method: &str, path: &str, body: &[u8], ctype: &str, opts: &Options, sta
             let folder = &p["/models/".len()..];
             let mut files: Vec<String> = template::builtin()
                 .iter()
-                .flat_map(|t| t.meta.models.iter().filter(|s| s.folder == folder).flat_map(|s| std::iter::once(s.default.clone()).chain(s.nvfp4.clone())).collect::<Vec<_>>())
+                .flat_map(|t| {
+                    t.meta
+                        .models
+                        .iter()
+                        .filter(|s| s.folder == folder)
+                        .flat_map(|s| std::iter::once(s.default.clone()).chain(s.nvfp4.clone()))
+                        .collect::<Vec<_>>()
+                })
                 .filter(|f| !opts.missing_files.contains(f))
                 .collect();
             files.sort();

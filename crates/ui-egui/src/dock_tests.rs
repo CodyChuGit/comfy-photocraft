@@ -48,7 +48,7 @@ fn short_columns_squeeze_groups_down_to_their_minimum_and_never_go_negative() {
 #[test]
 fn bad_stored_values_are_sanitised() {
     let mut l = DockLayout { order: vec![Group::Layers, Group::Layers, Group::Color], ..Default::default() };
-    assert_eq!(l.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Character, Group::Navigator, Group::History]);
+    assert_eq!(l.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Generations, Group::Character, Group::Navigator, Group::History]);
     for bad in [f32::NAN, -10.0, f32::INFINITY, 1e12] {
         l.heights.insert(Group::Color, bad);
         let h = l.height(Group::Color);
@@ -56,7 +56,7 @@ fn bad_stored_values_are_sanitised() {
     }
     // Unknown fields, wrong types and old UI state all load.
     let back: DockLayout = serde_json::from_value(json!({"order": ["layers"], "bogus": 1})).unwrap();
-    assert_eq!(back.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Character, Group::Navigator, Group::History]);
+    assert_eq!(back.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Generations, Group::Character, Group::Navigator, Group::History]);
     let mut ui = serde_json::to_value(crate::state::UiState::default()).unwrap();
     ui.as_object_mut().unwrap().remove("dock");
     let ui: crate::state::UiState = serde_json::from_value(ui).unwrap();
@@ -145,7 +145,9 @@ fn switching_layer_kinds_keeps_the_layers_panel_still() {
 
 #[test]
 fn dragging_the_splitter_resizes_and_survives_a_ui_state_round_trip() {
-    let (app, _, _) = app_with_layers();
+    let (mut app, _, _) = app_with_layers();
+    // Properties directly above the filler (PhotoshopEX's Generations group would sit between).
+    app.ui.panels.generations = false;
     let mut h = harness(app, vec2(1200.0, 800.0), ThemeKind::ProMedium);
     let props = rect_of(&h, Group::Properties);
     let layers = rect_of(&h, Group::Layers);
@@ -356,11 +358,12 @@ fn is_pro(theme: ThemeKind) -> bool {
 }
 
 /// Full app at `size` (1× scale) on a document with `n` layers named "Row 00", "Row 01", …
-fn app_harness_rows(size: egui::Vec2, theme: ThemeKind, n: usize) -> Harness<'static, PhotocraftApp> {
+fn app_harness_rows(size: egui::Vec2, theme: ThemeKind, n: usize, generations: bool) -> Harness<'static, PhotocraftApp> {
     let mut h = Harness::builder().with_size(size).with_max_steps(64).build_eframe(move |cc| {
         PhotocraftApp::setup_context(&cc.egui_ctx, theme);
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
         app.ui.theme = theme;
+        app.ui.panels.generations = generations;
         app.run("file.new", json!({"width": 200, "height": 150})).unwrap();
         for i in 0..n {
             app.run("layer.new.layer", json!({"name": format!("Row {i:02}")})).unwrap();
@@ -386,17 +389,22 @@ fn rows_in_view(h: &Harness<'static, PhotocraftApp>, n: usize) -> usize {
 }
 
 /// #147: the default workspace gives Layers the column's spare height: at least ten rows on a
-/// 900 pt window, and a usable list on a 720 pt one.
+/// 900 pt window, and a usable list on a 720 pt one. PhotoshopEX's Essentials also shows the
+/// Generations group (the owner's choice, plan §0), which costs Layers two rows at 900 pt:
+/// upstream's guarantee is checked without it, PhotoshopEX's layout with it.
 #[test]
 fn default_layout_shows_ten_layer_rows_at_900pt() {
-    for (size, want) in [(vec2(1440.0, 900.0), 10), (vec2(1280.0, 720.0), 4)] {
-        let h = app_harness_rows(size, ThemeKind::ProMedium, 40);
+    for (size, want, generations) in
+        [(vec2(1440.0, 900.0), 10, false), (vec2(1280.0, 720.0), 4, false), (vec2(1440.0, 900.0), 8, true), (vec2(1280.0, 720.0), 2, true)]
+    {
+        let h = app_harness_rows(size, ThemeKind::ProMedium, 40, generations);
         let rows = rows_in_view(&h, 40);
         let groups = last_rects(&h.ctx);
-        assert!(rows >= want, "{size:?}: {rows} rows visible, want ≥ {want}: {groups:?}");
-        // Color and Properties stay open, just not at the expense of Layers.
-        for g in [Group::Color, Group::Properties] {
-            assert!(rect_of(&h, g).height() >= g.compact_height() - 0.5, "{g:?} at {size:?}: {groups:?}");
+        assert!(rows >= want, "{size:?} (Generations {generations}): {rows} rows visible, want ≥ {want}: {groups:?}");
+        // Color, Properties (and Generations) stay open, just not at the expense of Layers.
+        let open: &[Group] = if generations { &[Group::Color, Group::Properties, Group::Generations] } else { &[Group::Color, Group::Properties] };
+        for g in open {
+            assert!(rect_of(&h, *g).height() >= g.compact_height() - 0.5, "{g:?} at {size:?}: {groups:?}");
         }
     }
 }
@@ -459,7 +467,7 @@ fn window_character_opens_its_own_group_and_keeps_properties() {
     let old = DockLayout { order: vec![Group::Color, Group::Properties, Group::Navigator, Group::History, Group::Layers], ..Default::default() };
     assert_eq!(old.order(), Group::ALL.to_vec());
     let moved = DockLayout { order: vec![Group::Layers, Group::Color], ..Default::default() };
-    assert_eq!(moved.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Character, Group::Navigator, Group::History]);
+    assert_eq!(moved.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Generations, Group::Character, Group::Navigator, Group::History]);
 }
 
 type StripProbe = Option<(Vec<(usize, Rect)>, Rect, Option<Rect>, Rect)>;

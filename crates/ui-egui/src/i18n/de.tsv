@@ -2220,3 +2220,39 @@
 	Click an object, or drag a rectangle around it	Auf ein Objekt klicken oder ein Rechteck darum ziehen
 	Select by Point	Per Punkt auswählen
 	Select by Text	Per Text auswählen
+	{done} results	{done} Ergebnisse
+	{running} running · {done} results	{running} laufen · {done} Ergebnisse
+	Cancelled	Abgebrochen
+	Clear completed…	Abgeschlossene löschen…
+	Clear failed…	Fehlgeschlagene löschen…
+	Completed	Abgeschlossen
+	Copy prompt	Prompt kopieren
+	Delete every completed result and its files?	Alle abgeschlossenen Ergebnisse und ihre Dateien löschen?
+	Delete every generation and its files? Running jobs stay.	Alle Generierungen und ihre Dateien löschen? Laufende Aufträge bleiben.
+	Dismiss failed	Fehlgeschlagene ausblenden
+	Failed	Fehlgeschlagen
+	Generations	Generierungen
+	Generative Fill, Edit and Generate Image results appear here.	Hier erscheinen die Ergebnisse von Generativer Füllung, Generativem Bearbeiten und Bild generieren.
+	In progress	In Bearbeitung
+	Interrupted	Unterbrochen
+	Invalid request	Ungültige Anfrage
+	List	Liste
+	Model files missing	Modelldateien fehlen
+	More	Mehr
+	No generations yet	Noch keine Generierungen
+	Open as Document	Als Dokument öffnen
+	Out of memory on the server	Kein Speicher mehr auf dem Server
+	Pin	Anheften
+	Place	Platzieren
+	Place as Layer	Als Ebene platzieren
+	Prompt copied	Prompt kopiert
+	Recreate	Neu erstellen
+	Remove all…	Alle entfernen…
+	Remove every failed and cancelled row?	Alle fehlgeschlagenen und abgebrochenen Zeilen entfernen?
+	Result discarded	Ergebnis verworfen
+	Saved {n} file(s)	{n} Datei(en) gespeichert
+	Saving files is not available here	Dateien speichern ist hier nicht verfügbar
+	Server error	Serverfehler
+	Server unreachable	Server nicht erreichbar
+	Timed out	Zeitüberschreitung
+	Unpin	Lösen

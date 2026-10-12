@@ -29,6 +29,8 @@ pub enum Group {
     Color,
     /// Properties | Adjustments.
     Properties,
+    /// Generations: every generative job and its results (PhotoshopEX; see `generations_panel`).
+    Generations,
     /// Character | Paragraph (not in the default workspace; Window › Character opens it, #150).
     Character,
     /// Navigator | Histogram | Info.
@@ -41,12 +43,13 @@ pub enum Group {
 
 impl Group {
     /// Photoshop Essentials order, top to bottom.
-    pub const ALL: [Group; 6] = [Group::Color, Group::Properties, Group::Character, Group::Navigator, Group::History, Group::Layers];
+    pub const ALL: [Group; 7] = [Group::Color, Group::Properties, Group::Generations, Group::Character, Group::Navigator, Group::History, Group::Layers];
 
     pub fn key(self) -> &'static str {
         match self {
             Group::Color => "color",
             Group::Properties => "properties",
+            Group::Generations => "generations",
             Group::Character => "character",
             Group::Navigator => "navigator",
             Group::History => "history",
@@ -60,6 +63,7 @@ impl Group {
         match self {
             Group::Color => 190.0,
             Group::Properties => 250.0,
+            Group::Generations => 260.0,
             Group::Character => 270.0,
             Group::Navigator => 210.0,
             Group::History => 200.0,
@@ -73,6 +77,8 @@ impl Group {
         match self {
             Group::Color => 130.0,
             Group::Properties => 160.0,
+            // Its header and a sliver of the feed: the rail badge says when something lands.
+            Group::Generations => 80.0,
             Group::Character => 160.0,
             Group::Navigator => 140.0,
             Group::History => 130.0,
@@ -103,6 +109,7 @@ impl Group {
             Group::Color if pro => &["Color", "Swatches", "Gradients", "Patterns"],
             Group::Color => &["Swatches", "Color", "Gradients", "Patterns"],
             Group::Properties => &["Properties", "Adjustments"],
+            Group::Generations => &["Generations"],
             Group::Character => &["Character", "Paragraph"],
             Group::Navigator => &["Navigator", "Histogram", "Info"],
             Group::History => &["History", "Actions", "Layer Comps"],
@@ -112,13 +119,14 @@ impl Group {
 
     /// Tabs that lay out their own scrolling list and footer (they fill the group).
     pub fn scrolls_itself(self, tab: usize) -> bool {
-        matches!((self, tab), (Group::Layers, 0) | (Group::History, 0))
+        matches!((self, tab), (Group::Layers, 0) | (Group::History, 0) | (Group::Generations, 0))
     }
 
     fn tab_mut(self, tabs: &mut DockTabs) -> &mut usize {
         match self {
             Group::Color => &mut tabs.color,
             Group::Properties => &mut tabs.properties,
+            Group::Generations => &mut tabs.generations,
             Group::Character => &mut tabs.character,
             Group::Navigator => &mut tabs.navigator,
             Group::History => &mut tabs.history,
@@ -135,6 +143,7 @@ impl Group {
         match self {
             Group::Color => panels.color,
             Group::Properties => panels.properties,
+            Group::Generations => panels.generations,
             Group::Character => panels.character,
             Group::Navigator => panels.navigator,
             Group::History => panels.history,
@@ -146,6 +155,7 @@ impl Group {
         match self {
             Group::Color => &mut panels.color,
             Group::Properties => &mut panels.properties,
+            Group::Generations => &mut panels.generations,
             Group::Character => &mut panels.character,
             Group::Navigator => &mut panels.navigator,
             Group::History => &mut panels.history,

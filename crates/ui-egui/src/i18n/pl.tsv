@@ -3222,3 +3222,38 @@ cameraRaw	Roughness	Chropowatość
 	Click an object, or drag a rectangle around it	Kliknij obiekt lub przeciągnij wokół niego prostokąt
 	Select by Point	Zaznacz punktem
 	Select by Text	Zaznacz według tekstu
+	{done} results	Wyniki: {done}
+	{running} running · {done} results	W toku: {running} · wyniki: {done}
+	Cancelled	Anulowano
+	Clear completed…	Wyczyść ukończone…
+	Clear failed…	Wyczyść nieudane…
+	Completed	Ukończone
+	Copy prompt	Kopiuj prompt
+	Delete every completed result and its files?	Usunąć wszystkie ukończone wyniki i ich pliki?
+	Delete every generation and its files? Running jobs stay.	Usunąć wszystkie generacje i ich pliki? Trwające zadania pozostaną.
+	Dismiss failed	Ukryj nieudane
+	Failed	Nieudane
+	Generations	Generacje
+	Generative Fill, Edit and Generate Image results appear here.	Tutaj pojawiają się wyniki wypełnienia generatywnego, edycji generatywnej i generowania obrazów.
+	In progress	W toku
+	Interrupted	Przerwano
+	Invalid request	Nieprawidłowe żądanie
+	Model files missing	Brak plików modelu
+	More	Więcej
+	No generations yet	Brak generacji
+	Open as Document	Otwórz jako dokument
+	Out of memory on the server	Brak pamięci na serwerze
+	Pin	Przypnij
+	Place	Umieść
+	Place as Layer	Umieść jako warstwę
+	Prompt copied	Skopiowano prompt
+	Recreate	Utwórz ponownie
+	Remove all…	Usuń wszystko…
+	Remove every failed and cancelled row?	Usunąć wszystkie nieudane i anulowane wiersze?
+	Result discarded	Wynik odrzucony
+	Saved {n} file(s)	Zapisane pliki: {n}
+	Saving files is not available here	Zapisywanie plików nie jest tu dostępne
+	Server error	Błąd serwera
+	Server unreachable	Serwer nieosiągalny
+	Timed out	Przekroczono limit czasu
+	Unpin	Odepnij

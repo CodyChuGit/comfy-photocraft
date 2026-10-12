@@ -89,10 +89,24 @@ fn other_gpus_keep_the_default_files_unless_forced_and_a_missing_file_is_never_c
 
 #[test]
 fn blackwell_names() {
-    for yes in ["NVIDIA GeForce RTX 5090 : cudaMallocAsync", "NVIDIA GeForce RTX 5070 Ti", "NVIDIA RTX PRO 6000 Blackwell Workstation Edition", "NVIDIA B200", "NVIDIA GB10"] {
+    for yes in [
+        "NVIDIA GeForce RTX 5090 : cudaMallocAsync",
+        "NVIDIA GeForce RTX 5070 Ti",
+        "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+        "NVIDIA B200",
+        "NVIDIA GB10",
+    ] {
         assert!(is_blackwell(yes), "{yes}");
     }
-    for no in ["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 3090", "NVIDIA RTX 5000 Ada Generation", "NVIDIA RTX 500 Ada Generation Laptop GPU", "NVIDIA A100", "Fake GPU", ""] {
+    for no in [
+        "NVIDIA GeForce RTX 4090",
+        "NVIDIA GeForce RTX 3090",
+        "NVIDIA RTX 5000 Ada Generation",
+        "NVIDIA RTX 500 Ada Generation Laptop GPU",
+        "NVIDIA A100",
+        "Fake GPU",
+        "",
+    ] {
         assert!(!is_blackwell(no), "{no}");
     }
 }

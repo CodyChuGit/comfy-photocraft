@@ -228,6 +228,33 @@ to shared files).
 | `generate.upscale` | Image › Generative Upscale… | `{"model","factor":2|4}` | pixel layer, backend |
 | `generate.models` | — | `{}` → `{models:[…], server}` | always (query, `journal: false`) |
 | `generate.health` | — | `{}` → `{ok, version, vramFree, queue}` | always (query) |
+| `generate.jobs` | Window › Generations (PhotoshopEX) | `{"limit":100,"includeDismissed":false,"status"?}` → `{jobs:[GenerationRecord…],running,total,dir}`, newest first | always (query) |
+| `generate.jobs.dismiss` / `.pin` / `.clear` | the panel's ×, context menu and overflow menu | `{id | which: completed|failed|stale|all}` / `{id,pinned}` / `{which}`: hide, protect from the caps, delete with files | always |
+| `generate.recreate` | the panel's Recreate and Similar | `{id,seed?,variations?}` → Generate Similar while the result layer exists; else the original command on its open document; a fill or edit whose document closed becomes Generate Image of its prompt (`fallback: "image"`) | native |
+| `generate.place` | the panel's Place, a click on a result whose document closed | `{id,index=0,target:layer|document}` → the stored PNG as a new layer (at its original place when it fits) or a new document, `GenerativeInfo` re-attached | native |
+| `generate.export` | the panel's Save… | `{id,dir,index?=all,name?="{model}_{date}_{seed}"}` → `{files}`; never replaces a file; refused to automation (ambient path) | native |
+
+### 3.1 The Generations library (PhotoshopEX): `crates/engine/src/generate_jobs.rs`
+
+Every generative command (`generate.fill/image/expand/edit/similar/splitLayers/removeBackground`,
+`select.byText/byPoint/subjectML`, `generate.recreate`) is recorded by the dispatcher in
+`jobs.rs`, not by the command: a background job gets a `running` row when it starts
+(`generation_started`) and its outcome in `end_job`; an inline run (the CLI, tests, MCP with
+`wait`) is recorded when it returns. Requests refused before anything ran (bad params, disabled,
+no document) leave no row. The result's layers (`layers` / `layer`, or the new `document`) are
+rendered over their request rectangle with the mask folded into alpha and written as PNGs with a
+128-px thumbnail, on a writer thread for background jobs, so a result survives its document.
+Failures are classified from the message (`classify_failure`) into a kind the panel labels.
+
+Files, under `<config dir>/generations` (the app's `app_dirs`; the CLI resolves the same folder
+and attaches it only for runs with a generative command): `index.json` (`{"version":1,"records":[…]}`,
+atomic, written on a one-second debounce from `poll_jobs` and on drop), `thumbs/<id>.png`,
+`results/<id>-<i>.png`. Record ids are unix microseconds plus the process id, bumped past every
+known id (job ids restart in every process). A process merges the index another one wrote (its
+own rows win; rows it removed are not resurrected), so the CLI's runs show up in the app.
+Caps: 500 completed results or 5 GB, oldest unpinned first; failed and cancelled rows go after 30
+days; rows a closed process left running become `interrupted` at the next start. Without a folder
+(tests, the web) the library is in memory only and has no files.
 
 Each `run`:
 
@@ -316,6 +343,16 @@ Each one is read by code in the same change that adds it, so the audit count doe
   the task bar only, like Photoshop.
 - **Preferences › Generative** page: server URL with a "Test connection" button (runs
   `generate.health`), default model, timeouts, previews, research-model opt-in, content filter.
+- **Window › Generations** (PhotoshopEX, `generations_panel.rs`): a dock group below Properties,
+  on in Essentials, with a rail button whose badge counts running jobs (else unread results). In
+  progress rows show the real progress and Cancel; Failed rows the kind ("Server unreachable",
+  "Model files missing", "Out of memory on the server", …) with Recreate and Dismiss; Completed
+  results a grid or list of thumbnails with Place, Generate Similar, Save… and Copy prompt on
+  hover and every action in the context menu. A click selects the result's layer while its
+  document is open and opens it as a new document otherwise. Only visible lines are laid out
+  and thumbnails decode lazily (six per frame at most); the panel re-reads the index once a
+  second for the CLI's rows. Squeezed below 140 pt (its compact height is 80 pt, so Layers keeps
+  eight rows at 900 pt) it becomes one strip of square tiles with tooltips and context menus.
 
 ## 6. Headless and agents
 

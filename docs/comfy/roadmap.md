@@ -207,6 +207,19 @@ with typed failures and a queue popover, a prompt panel with a reference deck an
 cost) on the Generate button, then providers chosen late behind the user's own keys (Fal, the
 ArtCraft Omni API) with the local server as the default and a fallback order.
 
+**PhotoshopEX build (2026-10-11), following [`plan-artcraft-experience.md`](plan-artcraft-experience.md):**
+
+- ✅ Plan Phase 1, the persistent task queue: the **Generations library** (every generative job
+  recorded with typed failures, results and thumbnails stored under the config folder, kept
+  across restarts, shared with the CLI; 500 results / 5 GB) and **Window › Generations** (in
+  progress, failed, completed; Place, Generate Similar, Save…, Copy prompt; Recreate). Commands
+  `generate.jobs`, `.jobs.dismiss/.pin/.clear`, `generate.recreate`, `generate.place`,
+  `generate.export`.
+- ⬜ Plan Phase 2: the Generate panel (prompt box, reference deck, capability flags, ETA).
+- ⬜ Plan Phase 3: the model picker with creator, capabilities and installed state.
+- ⬜ Plan Phase 4: the Variations strip at the canvas edge.
+- ⬜ Plan Phase 5: hub, completion alerts, export naming preference, Angles.
+
 ## Phase 5: Quality and depth
 
 - Harmonize, Generative Upscale, Generate Similar.

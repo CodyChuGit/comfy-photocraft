@@ -2612,3 +2612,39 @@ cameraRaw	Blending	Fusion
 	Click an object, or drag a rectangle around it	Cliquez sur un objet ou tracez un rectangle autour
 	Select by Point	Sélectionner par point
 	Select by Text	Sélectionner par texte
+	{done} results	{done} résultats
+	{running} running · {done} results	{running} en cours · {done} résultats
+	Cancelled	Annulé
+	Clear completed…	Effacer les terminés…
+	Clear failed…	Effacer les échecs…
+	Completed	Terminés
+	Copy prompt	Copier le prompt
+	Delete every completed result and its files?	Supprimer tous les résultats terminés et leurs fichiers ?
+	Delete every generation and its files? Running jobs stay.	Supprimer toutes les générations et leurs fichiers ? Les tâches en cours sont conservées.
+	Dismiss failed	Masquer les échecs
+	Failed	Échecs
+	Generations	Générations
+	Generative Fill, Edit and Generate Image results appear here.	Les résultats du remplissage génératif, de l'édition générative et de Générer une image apparaissent ici.
+	In progress	En cours
+	Interrupted	Interrompu
+	Invalid request	Requête non valide
+	List	Liste
+	Model files missing	Fichiers du modèle manquants
+	More	Plus
+	No generations yet	Aucune génération pour l'instant
+	Open as Document	Ouvrir comme document
+	Out of memory on the server	Mémoire insuffisante sur le serveur
+	Pin	Épingler
+	Place	Placer
+	Place as Layer	Placer comme calque
+	Prompt copied	Prompt copié
+	Recreate	Recréer
+	Remove all…	Tout supprimer…
+	Remove every failed and cancelled row?	Supprimer toutes les lignes en échec ou annulées ?
+	Result discarded	Résultat abandonné
+	Saved {n} file(s)	{n} fichier(s) enregistré(s)
+	Saving files is not available here	L'enregistrement de fichiers n'est pas disponible ici
+	Server error	Erreur du serveur
+	Server unreachable	Serveur injoignable
+	Timed out	Délai dépassé
+	Unpin	Désépingler

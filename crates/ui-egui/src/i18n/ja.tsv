@@ -2164,3 +2164,39 @@ cameraRaw	Color	カラー
 	Click an object, or drag a rectangle around it	オブジェクトをクリックするか、周囲を矩形で囲んでください
 	Select by Point	ポイントで選択
 	Select by Text	テキストで選択
+	{done} results	結果 {done} 件
+	{running} running · {done} results	実行中 {running} 件 · 結果 {done} 件
+	Cancelled	キャンセル済み
+	Clear completed…	完了したものを消去…
+	Clear failed…	失敗したものを消去…
+	Completed	完了
+	Copy prompt	プロンプトをコピー
+	Delete every completed result and its files?	完了したすべての結果とそのファイルを削除しますか？
+	Delete every generation and its files? Running jobs stay.	すべての生成結果とそのファイルを削除しますか？実行中のジョブは残ります。
+	Dismiss failed	失敗したものを閉じる
+	Failed	失敗
+	Generations	生成履歴
+	Generative Fill, Edit and Generate Image results appear here.	生成塗りつぶし、生成編集、画像を生成の結果がここに表示されます。
+	In progress	実行中
+	Interrupted	中断
+	Invalid request	無効なリクエスト
+	List	リスト
+	Model files missing	モデルファイルがありません
+	More	その他
+	No generations yet	まだ生成結果はありません
+	Open as Document	ドキュメントとして開く
+	Out of memory on the server	サーバーのメモリ不足
+	Pin	ピン留め
+	Place	配置
+	Place as Layer	レイヤーとして配置
+	Prompt copied	プロンプトをコピーしました
+	Recreate	再作成
+	Remove all…	すべて削除…
+	Remove every failed and cancelled row?	失敗およびキャンセルされた行をすべて削除しますか？
+	Result discarded	結果は破棄されました
+	Saved {n} file(s)	{n} 個のファイルを保存しました
+	Saving files is not available here	ここではファイルを保存できません
+	Server error	サーバーエラー
+	Server unreachable	サーバーに接続できません
+	Timed out	タイムアウト
+	Unpin	ピン留めを解除

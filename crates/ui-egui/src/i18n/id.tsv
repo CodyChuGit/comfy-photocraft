@@ -2599,3 +2599,39 @@ cameraRaw	Blending	Pembauran
 	Click an object, or drag a rectangle around it	Klik objek, atau seret persegi panjang di sekitarnya
 	Select by Point	Pilih berdasarkan titik
 	Select by Text	Pilih berdasarkan teks
+	{done} results	{done} hasil
+	{running} running · {done} results	{running} berjalan · {done} hasil
+	Cancelled	Dibatalkan
+	Clear completed…	Hapus yang selesai…
+	Clear failed…	Hapus yang gagal…
+	Completed	Selesai
+	Copy prompt	Salin prompt
+	Delete every completed result and its files?	Hapus semua hasil yang selesai beserta filenya?
+	Delete every generation and its files? Running jobs stay.	Hapus semua generasi beserta filenya? Pekerjaan yang berjalan tetap ada.
+	Dismiss failed	Tutup yang gagal
+	Failed	Gagal
+	Generations	Generasi
+	Generative Fill, Edit and Generate Image results appear here.	Hasil Isian Generatif, Edit Generatif, dan Hasilkan Gambar muncul di sini.
+	In progress	Sedang berjalan
+	Interrupted	Terputus
+	Invalid request	Permintaan tidak valid
+	List	Daftar
+	Model files missing	File model tidak ada
+	More	Lainnya
+	No generations yet	Belum ada generasi
+	Open as Document	Buka sebagai Dokumen
+	Out of memory on the server	Memori server habis
+	Pin	Sematkan
+	Place	Tempatkan
+	Place as Layer	Tempatkan sebagai Layer
+	Prompt copied	Prompt disalin
+	Recreate	Buat ulang
+	Remove all…	Hapus semua…
+	Remove every failed and cancelled row?	Hapus semua baris yang gagal dan dibatalkan?
+	Result discarded	Hasil dibuang
+	Saved {n} file(s)	{n} file disimpan
+	Saving files is not available here	Menyimpan file tidak tersedia di sini
+	Server error	Kesalahan server
+	Server unreachable	Server tidak dapat dijangkau
+	Timed out	Waktu habis
+	Unpin	Lepas sematan

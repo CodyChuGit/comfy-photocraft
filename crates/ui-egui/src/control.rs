@@ -70,7 +70,7 @@ pub enum Outcome {
 
 /// The fields `ui.set` reads. Anything else is rejected before a field is applied, so a typo or
 /// a field the method doesn't have can't reply with success while nothing changes (#412).
-pub const UI_SET_FIELDS: [&str; 24] = [
+pub const UI_SET_FIELDS: [&str; 25] = [
     "tool",
     "panels",
     "dock",
@@ -96,6 +96,8 @@ pub const UI_SET_FIELDS: [&str; 24] = [
     "generativePrompt",
     "generativeTemplate",
     "generativeVariations",
+    // Window › Generations (`generations_panel::set`).
+    "generationsView",
 ];
 
 fn ok(v: Value) -> Outcome {
@@ -342,6 +344,9 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                 return err(e);
             }
             if let Err(e) = crate::generative_bar::set(app, p) {
+                return err(e);
+            }
+            if let Err(e) = crate::generations_panel::set(app, p) {
                 return err(e);
             }
             ok(Value::Null)
@@ -633,6 +638,7 @@ pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {
             })
         }),
         "generativeBar": app.ui.generative_bar,
+        "generations": crate::generations_panel::inspect(app),
         "panels": app.ui.panels,
         "views": app.ui.views,
         "dialogs": dialogs,

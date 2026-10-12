@@ -553,7 +553,19 @@ fn idle(ui: &mut egui::Ui, app: &mut PhotocraftApp, results: &[u64], default_tem
     if can_enhance && eresp.hovered() {
         ui.painter().rect_filled(er, t.radius_sm, t.hover);
     }
-    crate::icons::paint(ui, er, "wand-sparkles", 13.0, if enhancing { t.accent } else if can_enhance { t.text } else { t.text_faint });
+    crate::icons::paint(
+        ui,
+        er,
+        "wand-sparkles",
+        13.0,
+        if enhancing {
+            t.accent
+        } else if can_enhance {
+            t.text
+        } else {
+            t.text_faint
+        },
+    );
     if eresp.on_hover_text(tl!("Enhance prompt")).clicked() && can_enhance {
         *action = Some(Action::Enhance);
     }

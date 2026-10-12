@@ -2765,3 +2765,38 @@ cameraRaw	Color	색상
 	Click an object, or drag a rectangle around it	개체를 클릭하거나 주위에 사각형을 드래그하세요
 	Select by Point	점으로 선택
 	Select by Text	텍스트로 선택
+	{done} results	결과 {done}개
+	{running} running · {done} results	실행 중 {running}개 · 결과 {done}개
+	Cancelled	취소됨
+	Clear completed…	완료된 항목 지우기…
+	Clear failed…	실패한 항목 지우기…
+	Completed	완료됨
+	Copy prompt	프롬프트 복사
+	Delete every completed result and its files?	완료된 모든 결과와 해당 파일을 삭제할까요?
+	Delete every generation and its files? Running jobs stay.	모든 생성 항목과 해당 파일을 삭제할까요? 실행 중인 작업은 유지됩니다.
+	Dismiss failed	실패한 항목 닫기
+	Failed	실패
+	Generations	생성 기록
+	Generative Fill, Edit and Generate Image results appear here.	생성형 채우기, 생성형 편집, 이미지 생성 결과가 여기에 표시됩니다.
+	In progress	진행 중
+	Interrupted	중단됨
+	Invalid request	잘못된 요청
+	Model files missing	모델 파일 없음
+	More	더 보기
+	No generations yet	아직 생성 기록이 없습니다
+	Open as Document	문서로 열기
+	Out of memory on the server	서버 메모리 부족
+	Pin	고정
+	Place	배치
+	Place as Layer	레이어로 배치
+	Prompt copied	프롬프트를 복사했습니다
+	Recreate	다시 만들기
+	Remove all…	모두 제거…
+	Remove every failed and cancelled row?	실패하거나 취소된 행을 모두 제거할까요?
+	Result discarded	결과 폐기됨
+	Saved {n} file(s)	파일 {n}개를 저장했습니다
+	Saving files is not available here	여기서는 파일을 저장할 수 없습니다
+	Server error	서버 오류
+	Server unreachable	서버에 연결할 수 없음
+	Timed out	시간 초과
+	Unpin	고정 해제

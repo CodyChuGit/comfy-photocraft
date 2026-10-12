@@ -64,6 +64,12 @@ pub fn presets_dir() -> Option<PathBuf> {
     config_dir().map(|d| d.join("Presets"))
 }
 
+/// The Generations library (every generative job, its results and thumbnails; see
+/// `photocraft_engine::generate_jobs`).
+pub fn generations_dir() -> Option<PathBuf> {
+    config_dir().map(|d| d.join("generations"))
+}
+
 fn recovery_dir() -> Option<PathBuf> {
     config_dir().map(|d| d.join("Recovery"))
 }

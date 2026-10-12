@@ -310,7 +310,11 @@ fn main() -> eframe::Result {
             {
                 services.is_wayland = display == Some(tablet::DisplayKind::Wayland);
             }
-            let mut app = PhotocraftApp::new(Session::new(), services);
+            let mut session = Session::new();
+            if let Some(dir) = services::generations_dir() {
+                session.set_generations_dir(dir);
+            }
+            let mut app = PhotocraftApp::new(session, services);
             app.integrated_titlebar = cfg!(target_os = "macos");
             app.custom_titlebar = custom_titlebar;
             // Only the title bar's free gap drags the window, never the menus (mac_window.rs).

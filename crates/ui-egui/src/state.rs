@@ -318,6 +318,14 @@ pub struct Panels {
     /// The toolbar's header chevron: two columns even when one fits (#1197).
     #[serde(default)]
     pub toolbar_double: bool,
+    /// Window › Generations: the Generations dock group (on in Essentials; a layout saved before
+    /// it existed gets it too).
+    #[serde(default = "shown_by_default")]
+    pub generations: bool,
+}
+
+fn shown_by_default() -> bool {
+    true
 }
 
 impl Default for Panels {
@@ -334,6 +342,7 @@ impl Default for Panels {
             brush_settings: false,
             character: false,
             toolbar_double: false,
+            generations: true,
         }
     }
 }
@@ -705,6 +714,8 @@ pub struct DockTabs {
     pub history: usize,
     /// Character | Paragraph.
     pub character: usize,
+    /// Generations (one tab).
+    pub generations: usize,
 }
 
 /// Color panel state.
@@ -752,6 +763,9 @@ pub struct UiState {
     /// The generative task bar under the selection (comfy-photocraft, `generative_bar`).
     #[serde(default)]
     pub generative_bar: crate::generative_bar::GenerativeBar,
+    /// Window › Generations: view mode, last viewed result, thumbnails (`generations_panel`).
+    #[serde(default)]
+    pub generations: crate::generations_panel::GenerationsUi,
     /// Smoothing is a per-tool option (Brush and Eraser each keep theirs): the tool whose
     /// smoothing the session brush holds, and the other tools' saved values.
     #[serde(default)]
@@ -873,6 +887,7 @@ impl Default for UiState {
             layer_menu: None,
             canvas_tool_menu: None,
             generative_bar: Default::default(),
+            generations: Default::default(),
             smoothing_tool: None,
             tool_smoothing: Vec::new(),
             clone_source: None,

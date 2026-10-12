@@ -178,6 +178,7 @@ pub fn authorize_engine_command(id: &str, params: &Value) -> Result<(), Automati
                 | "layer.videoLayers.newVideoLayerFromFile"
                 | "layer.videoLayers.replaceFootage"
                 | "layer.videoLayers.reloadFrame"
+                | "generate.export"
         )
         || command_uses_ambient_path(id, params)
         || profile_command_may_read_ambient(id, params)
@@ -443,8 +444,13 @@ mod tests {
             "measurementLog.export",
             "layer.videoLayers.reloadFrame",
             "edit.colorSettings",
+            "generate.export",
         ] {
             assert!(authorize_engine_command(id, &serde_json::json!({})).is_err());
+        }
+        // The Generations library reads and writes only its own folder.
+        for id in ["generate.jobs", "generate.jobs.dismiss", "generate.place", "generate.recreate"] {
+            assert!(authorize_engine_command(id, &serde_json::json!({})).is_ok(), "{id}");
         }
         assert!(authorize_engine_command("file.new", &serde_json::json!({})).is_ok());
         // The UI-level examples in docs/control-protocol.md.

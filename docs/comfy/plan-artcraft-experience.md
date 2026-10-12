@@ -52,12 +52,16 @@ entries of [`devlog.md`](devlog.md), and [`dev-environment-windows.md`](dev-envi
   of a file when no document is needed). Scripts from earlier sessions are in
   `docs/comfy/bench/scripts/` (read `enhance-live.ps1` for the pattern).
 
-**Decisions the owner has not made** (defaults chosen below; ask or proceed):
+**Decisions** (answered by the owner on 2026-10-11):
 
-1. Panels on by default in the Essentials workspace? Default here: **on** for PhotoshopEX.
-2. Library cap: default **200 results / 2 GB**, oldest dropped first (completed, not pinned).
-3. Sounds need an audio dependency (`rodio`, pure Rust, uses `cpal`). Default: behind a cargo
-   feature `alerts`, on in the release build, off in CI and wasm.
+1. Panels on by default in the Essentials workspace: **on**.
+2. Library cap: **500 results / 5 GB**, oldest unpinned completed results dropped first.
+3. Sounds: behind a cargo feature `alerts` (`rodio`), on in the desktop release build, off in CI
+   and wasm; the preference defaults to off.
+
+**Correction to §3.1** found while building: job ids restart at 1 in every process, so a record's
+id cannot be the `JobId`. The store assigns its own ids (unique across processes: unix
+microseconds, bumped on collision) and maps the running `JobId` to it.
 
 ---
 

@@ -157,7 +157,7 @@ type Apply = Box<dyn FnOnce(&mut Session, Payload) -> Result<Value> + Send>;
 
 /// Wall-clock milliseconds since some fixed point (0 on wasm, where `Instant` is unavailable and
 /// jobs run inline anyway).
-fn now_ms() -> f64 {
+pub(crate) fn now_ms() -> f64 {
     #[cfg(not(target_arch = "wasm32"))]
     {
         static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
@@ -489,6 +489,10 @@ impl Session {
         }
         #[cfg(not(target_arch = "wasm32"))]
         self.jobs.draining.retain(|h| !h.is_finished());
+        for r in &self.jobs.running {
+            self.generations.update_progress(r.id, r.ctx.fraction(), &r.ctx.message());
+        }
+        self.generations.poll();
         std::mem::take(&mut self.jobs.events)
     }
 
@@ -628,13 +632,26 @@ impl Session {
         self.coalesce_request = None;
         self.color_restrict = None;
         let pending = self.jobs.pending.take();
+        // The Generations library records generative commands (see `generate_jobs`).
+        let generative = crate::generate_jobs::is_generative(id);
         match (r, pending) {
             (Err(e), Some(job)) => {
                 job.ctx.cancel();
+                if generative {
+                    self.generation_inline(id, &params, Err(&e));
+                }
                 Err(e)
             }
-            (Err(e), None) => Err(e),
+            (Err(e), None) => {
+                if generative {
+                    self.generation_inline(id, &params, Err(&e));
+                }
+                Err(e)
+            }
             (Ok(_), Some(mut job)) => {
+                if generative {
+                    self.generation_started(id, &params, &job.label, job.id, job.doc);
+                }
                 job.command = id.to_string();
                 job.params = params;
                 job.journal = spec.journal;
@@ -643,6 +660,9 @@ impl Session {
                 Ok(Started::Job(jid))
             }
             (Ok(v), None) => {
+                if generative {
+                    self.generation_inline(id, &params, Ok(&v));
+                }
                 self.after_command(id, params, spec.journal);
                 Ok(Started::Done(v))
             }
@@ -714,6 +734,7 @@ impl Session {
     }
 
     fn end_job(&mut self, job: &Running, outcome: JobOutcome) {
+        self.generation_job_ended(job.id, job.doc, &outcome);
         let (state, result, error) = match &outcome {
             JobOutcome::Done(v) => ("done", Some(v.clone()), None),
             JobOutcome::Failed(e) => ("failed", None, Some(e.clone())),

@@ -2181,3 +2181,39 @@ cameraRaw	Color	Barvy
 	Click an object, or drag a rectangle around it	Klikněte na objekt nebo kolem něj natáhněte obdélník
 	Select by Point	Vybrat bodem
 	Select by Text	Vybrat podle textu
+	{done} results	{done} výsledků
+	{running} running · {done} results	{running} běží · {done} výsledků
+	Cancelled	Zrušeno
+	Clear completed…	Vymazat dokončené…
+	Clear failed…	Vymazat neúspěšné…
+	Completed	Dokončené
+	Copy prompt	Kopírovat výzvu
+	Delete every completed result and its files?	Smazat všechny dokončené výsledky a jejich soubory?
+	Delete every generation and its files? Running jobs stay.	Smazat všechna generování a jejich soubory? Běžící úlohy zůstanou.
+	Dismiss failed	Zavřít neúspěšné
+	Failed	Neúspěšné
+	Generations	Generování
+	Generative Fill, Edit and Generate Image results appear here.	Zde se zobrazí výsledky generativní výplně, úprav a generování obrázků.
+	In progress	Probíhá
+	Interrupted	Přerušeno
+	Invalid request	Neplatný požadavek
+	List	Seznam
+	Model files missing	Chybí soubory modelu
+	More	Další
+	No generations yet	Zatím žádná generování
+	Open as Document	Otevřít jako dokument
+	Out of memory on the server	Na serveru došla paměť
+	Pin	Připnout
+	Place	Umístit
+	Place as Layer	Umístit jako vrstvu
+	Prompt copied	Výzva zkopírována
+	Recreate	Vytvořit znovu
+	Remove all…	Odstranit vše…
+	Remove every failed and cancelled row?	Odstranit všechny neúspěšné a zrušené řádky?
+	Result discarded	Výsledek zahozen
+	Saved {n} file(s)	Uložené soubory: {n}
+	Saving files is not available here	Ukládání souborů zde není k dispozici
+	Server error	Chyba serveru
+	Server unreachable	Server je nedostupný
+	Timed out	Vypršel časový limit
+	Unpin	Odepnout

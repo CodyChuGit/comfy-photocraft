@@ -2455,3 +2455,39 @@ cameraRaw	Roughness	Неровность
 	Click an object, or drag a rectangle around it	Щёлкните объект или обведите его прямоугольником
 	Select by Point	Выделить по точке
 	Select by Text	Выделить по тексту
+	{done} results	Результатов: {done}
+	{running} running · {done} results	Выполняется: {running} · результатов: {done}
+	Cancelled	Отменено
+	Clear completed…	Очистить завершённые…
+	Clear failed…	Очистить неудачные…
+	Completed	Завершённые
+	Copy prompt	Копировать запрос
+	Delete every completed result and its files?	Удалить все завершённые результаты и их файлы?
+	Delete every generation and its files? Running jobs stay.	Удалить все генерации и их файлы? Выполняющиеся задания останутся.
+	Dismiss failed	Скрыть неудачные
+	Failed	Неудачные
+	Generations	Генерации
+	Generative Fill, Edit and Generate Image results appear here.	Здесь появляются результаты генеративной заливки, генеративного редактирования и создания изображений.
+	In progress	Выполняется
+	Interrupted	Прервано
+	Invalid request	Недопустимый запрос
+	List	Список
+	Model files missing	Отсутствуют файлы модели
+	More	Ещё
+	No generations yet	Генераций пока нет
+	Open as Document	Открыть как документ
+	Out of memory on the server	На сервере не хватает памяти
+	Pin	Закрепить
+	Place	Поместить
+	Place as Layer	Поместить как слой
+	Prompt copied	Запрос скопирован
+	Recreate	Создать заново
+	Remove all…	Удалить все…
+	Remove every failed and cancelled row?	Удалить все неудачные и отменённые строки?
+	Result discarded	Результат отброшен
+	Saved {n} file(s)	Сохранено файлов: {n}
+	Saving files is not available here	Сохранение файлов здесь недоступно
+	Server error	Ошибка сервера
+	Server unreachable	Сервер недоступен
+	Timed out	Время ожидания истекло
+	Unpin	Открепить

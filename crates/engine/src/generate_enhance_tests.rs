@@ -46,11 +46,7 @@ fn system_prompt(g: &Value) -> String {
 }
 
 fn text_input(g: &Value, key: &str) -> String {
-    g.as_object()
-        .and_then(|o| o.values().find(|n| n["class_type"] == "TextGenerate"))
-        .and_then(|n| n["inputs"][key].as_str())
-        .unwrap_or_default()
-        .to_string()
+    g.as_object().and_then(|o| o.values().find(|n| n["class_type"] == "TextGenerate")).and_then(|n| n["inputs"][key].as_str()).unwrap_or_default().to_string()
 }
 
 #[test]
@@ -194,7 +190,8 @@ fn an_image_idea_is_expanded_blind_and_wrapped_for_transparency_as_typed() {
     assert_eq!(info["generative"]["enhanced"], "Enhanced: a fox");
     // Transparent: the rewritten idea goes inside the template's wording, as the typed one would.
     s.edit_prefs(|p| p.integrations.allow_research_models = true);
-    let r = s.execute(IMAGE, json!({"prompt": "a fox", "target": "layer", "seed": 5, "enhance": true, "transparent": true, "template": "qwen-2.1/image"})).unwrap();
+    let r =
+        s.execute(IMAGE, json!({"prompt": "a fox", "target": "layer", "seed": 5, "enhance": true, "transparent": true, "template": "qwen-2.1/image"})).unwrap();
     {
         let st = fake.state();
         assert_eq!(st.prompts.len(), 4);
@@ -206,7 +203,7 @@ fn an_image_idea_is_expanded_blind_and_wrapped_for_transparency_as_typed() {
     // A new document from an idea remembers it too.
     let r = s.execute(IMAGE, json!({"prompt": "a barn", "target": "document", "seed": 5, "enhance": true})).unwrap();
     let info = s.execute(INFO, json!({})).unwrap();
-    assert_eq!(r["document"].as_u64().is_some(), true);
+    assert!(r["document"].as_u64().is_some());
     assert_eq!(info["generative"]["enhanced"], "Enhanced: a barn");
 }
 
@@ -229,7 +226,9 @@ fn a_rewriter_that_says_nothing_usable_leaves_the_prompt_as_typed() {
     let info = s.execute(INFO, json!({"layer": r["layer"]})).unwrap();
     assert_eq!(info["generative"]["enhanced"], "");
     // Quotes and markdown around a real answer are stripped; the role echo before it too.
-    let dressed = FakeComfy::start_with(Options { enhanced_text: Some("Assistant: **\"Turn the sketch of a face into a photo.\"**".into()), ..Options::default() }).unwrap();
+    let dressed =
+        FakeComfy::start_with(Options { enhanced_text: Some("Assistant: **\"Turn the sketch of a face into a photo.\"**".into()), ..Options::default() })
+            .unwrap();
     let mut s = session(&dressed.url);
     let r = s.execute(ENHANCE, json!({"prompt": "x", "task": "edit"})).unwrap();
     assert_eq!(r["prompt"], "Turn the sketch of a face into a photo.");
@@ -237,9 +236,15 @@ fn a_rewriter_that_says_nothing_usable_leaves_the_prompt_as_typed() {
 
 #[test]
 fn cleaning_and_the_place_in_words() {
-    assert_eq!(clean_enhanced(&["assistant\nChange the red boat to blue, keeping the rest.".into()]).as_deref(), Some("Change the red boat to blue, keeping the rest."));
+    assert_eq!(
+        clean_enhanced(&["assistant\nChange the red boat to blue, keeping the rest.".into()]).as_deref(),
+        Some("Change the red boat to blue, keeping the rest.")
+    );
     assert_eq!(clean_enhanced(&["\u{201c}Make the sky stormy.\u{201d}".into()]).as_deref(), Some("Make the sky stormy."));
-    assert_eq!(clean_enhanced(&["".into(), "Assistant:".into(), "ok".into(), "Replace the cup with a vase.".into()]).as_deref(), Some("Replace the cup with a vase."));
+    assert_eq!(
+        clean_enhanced(&["".into(), "Assistant:".into(), "ok".into(), "Replace the cup with a vase.".into()]).as_deref(),
+        Some("Replace the cup with a vase.")
+    );
     assert_eq!(clean_enhanced(&["assistant".into()]), None);
     assert_eq!(clean_enhanced(&[]), None);
     let canvas = Rect::new(0, 0, 300, 300);

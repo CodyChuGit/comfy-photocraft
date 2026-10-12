@@ -4,6 +4,73 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-11 (night): plan Phase 1, the Generations library and panel
+
+Built [`plan-artcraft-experience.md`](plan-artcraft-experience.md) §3 after the owner answered
+§0: panels on by default, a **500-result / 5 GB** cap, sounds behind a cargo feature (Phase 5).
+
+- **Engine** (`crates/engine/src/generate_jobs.rs`, new): `GenerationStore` on `Session`
+  (`session.generations`). The dispatcher records every generative command (fill, image, expand,
+  edit, similar, split, remove background, the three SAM selections, recreate): a background job
+  gets a running row at start and its outcome in `end_job`; an inline run (CLI, tests, MCP with
+  `wait`) is recorded when it returns; refused requests leave no row. Result layers are rendered
+  over their request rectangle with the mask as alpha into `results/<id>-<i>.png` plus a 128-px
+  thumbnail, on a writer thread for background jobs. Failures get a kind from the message
+  (server unreachable, model files missing, out of memory, server error, timeout, bad input,
+  discarded, interrupted). One correction to the plan: job ids restart per process, so record
+  ids are unix µs + pid, bumped past known ids (plan §0 notes it).
+- **Persistence**: `<config dir>/generations/index.json`, atomic, one-second debounce from
+  `poll_jobs`, flushed on drop; another process's rows are merged (ours win, removed rows stay
+  removed), so `photocraft-cli run … --cmd generate.fill` shows up in the app's panel. The CLI
+  attaches the folder only for runs with a generative command. Rows left running by a closed
+  process become "interrupted"; a corrupt index is ignored.
+- **Commands**: `generate.jobs`, `generate.jobs.dismiss` / `.pin` / `.clear`,
+  `generate.recreate` (Similar while the layer exists, else the original command on its
+  document, else a fill/edit becomes Generate Image of its prompt with `fallback: "image"`),
+  `generate.place` (a stored result back as a layer at its place, or a new document),
+  `generate.export` (name tokens `{model} {template} {date} {seed} {prompt} {n}`, never
+  overwrites; denied to automation as an ambient path). `generate.info` gains `job`.
+- **UI** (`generations_panel.rs`, new): `Group::Generations` below Properties, on in Essentials
+  (a saved layout without the field gets it too), rail button `grid-2x2` with a running/unread
+  badge, Window › Generations, `ui.inspect.generations`, `ui.set {generationsView}`. In progress
+  rows (real progress, Cancel), Failed rows (kind label, message tooltip, Recreate, Dismiss),
+  Completed grid or list (hover Place, Generate Similar, Save…, Copy prompt; context menu with
+  Place as Layer, Open as Document, Pin/Unpin, Dismiss; click selects the layer or opens the
+  result as a document); overflow menu with confirmed Clear completed / failed / all.
+  Only visible lines are laid out; thumbnails decode lazily, six per frame. When the dock
+  squeezes the group (any column where Layers needs the room, which on this 1250-pt window is
+  already the case), it draws a **compact strip**: one row of square tiles (progress, a warning
+  sign with the reason in the tooltip, thumbnails) with context menus and the overflow menu.
+  36 strings ×13 languages.
+- **Layout cost** (#147): Generations sits between Properties and Layers at a compact 80 pt, so
+  the default workspace shows **8 Layers rows at 900 pt** (10 without it) and 2 at 720 pt (4).
+  `dock_tests` checks upstream's guarantee with the group hidden and PhotoshopEX's with it.
+- **Tests**: 15 engine tests (`generate_jobs_tests.rs`: lifecycle inline and background, failure
+  kinds against the fake (down, OOM, validation error), restart, interrupted rows, caps and pins,
+  dismiss/clear, place after close, recreate fallbacks, export naming, two-process merge,
+  no-folder mode, bad params); 6 UI tests plus an ignored bench (`generations_panel_tests.rs`);
+  the automation deny test. `panic_hunt` now clears the server URL in its fresh session: with
+  ComfyUI running, `generate.splitLayers {}` and `select.subjectML {}` ran real jobs (>4 s).
+  Workspace: 4347 passed, the same 9 environment failures as the baseline (GPU parity rounding,
+  7 egui-wgpu canvas tests, the eyedropper test). Clippy, fmt, layers, wasm green; parity 636 /
+  636 (the Window › Generations row); scorecard moved only by that row. rustfmt also reformatted
+  a few lines in the earlier generative files (`generate_cmds.rs`, its tests, `fake.rs`,
+  `generative_bar.rs`) and one clippy fix in `generate_enhance_tests.rs`.
+- **Numbers** (dev profile, `bench_generations_panel_with_200_rows`): `panel()` with 200
+  completed rows **0.13 ms** in the grid, **0.08 ms** in the list (1.45 ms before laying out
+  only the visible lines; budget 1 ms); the index for 200 rows is 278 KB and writes in 2.5–3.0 ms.
+  Live, release GUI through the control channel (`docs/comfy/bench/scripts/generations-live.ps1`,
+  RTX 5090, ComfyUI warm): fill 13.7–14.7 s, edit 10.7–13.3 s, a 768×512 Krea 2 image
+  5.6–7.7 s, each a background job that showed as running then completed with its thumbnail;
+  Place after File › Close All opened the 464×416 fill result as a document; a dead server URL
+  gave a `serverUnreachable` row; a restart kept all four rows. A process killed mid-job had
+  already flushed its running row, which the next start marks interrupted.
+- **Open**: an ETA on running rows waits for the template `estimatedSeconds` of Phase 2; the
+  Save… button uses the platform save dialog until Phase 5's export preference; record ids are
+  looked up by layer only within the session that made them (`generate.info.job`); a process
+  that still holds a row another process cleared writes it back on its next flush (the CLI is
+  short-lived, so in practice only two GUI instances could do this).
+
 ## 2026-10-11 (later): the build plan
 
 [`plan-artcraft-experience.md`](plan-artcraft-experience.md): the hand-off plan the owner asked

@@ -2189,3 +2189,39 @@ cameraRaw	Blending	混合
 	Click an object, or drag a rectangle around it	点击对象，或在其周围拖出矩形
 	Select by Point	按点选择
 	Select by Text	按文字选择
+	{done} results	{done} 个结果
+	{running} running · {done} results	{running} 个进行中 · {done} 个结果
+	Cancelled	已取消
+	Clear completed…	清除已完成…
+	Clear failed…	清除失败项…
+	Completed	已完成
+	Copy prompt	复制提示词
+	Delete every completed result and its files?	删除所有已完成的结果及其文件？
+	Delete every generation and its files? Running jobs stay.	删除所有生成内容及其文件？正在运行的任务会保留。
+	Dismiss failed	关闭失败项
+	Failed	失败
+	Generations	生成记录
+	Generative Fill, Edit and Generate Image results appear here.	生成式填充、生成式编辑和生成图像的结果会显示在这里。
+	In progress	进行中
+	Interrupted	已中断
+	Invalid request	无效请求
+	List	列表
+	Model files missing	缺少模型文件
+	More	更多
+	No generations yet	暂无生成记录
+	Open as Document	作为文档打开
+	Out of memory on the server	服务器内存不足
+	Pin	固定
+	Place	置入
+	Place as Layer	作为图层置入
+	Prompt copied	已复制提示词
+	Recreate	重新生成
+	Remove all…	全部移除…
+	Remove every failed and cancelled row?	移除所有失败和已取消的行？
+	Result discarded	结果已丢弃
+	Saved {n} file(s)	已保存 {n} 个文件
+	Saving files is not available here	此处无法保存文件
+	Server error	服务器错误
+	Server unreachable	无法连接服务器
+	Timed out	已超时
+	Unpin	取消固定

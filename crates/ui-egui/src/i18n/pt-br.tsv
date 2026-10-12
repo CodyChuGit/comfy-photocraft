@@ -2619,3 +2619,39 @@ cameraRaw	Whites	Brancos
 	Click an object, or drag a rectangle around it	Clique em um objeto ou arraste um retângulo ao redor dele
 	Select by Point	Selecionar por ponto
 	Select by Text	Selecionar por texto
+	{done} results	{done} resultados
+	{running} running · {done} results	{running} em andamento · {done} resultados
+	Cancelled	Cancelado
+	Clear completed…	Limpar concluídos…
+	Clear failed…	Limpar com falha…
+	Completed	Concluídos
+	Copy prompt	Copiar prompt
+	Delete every completed result and its files?	Excluir todos os resultados concluídos e seus arquivos?
+	Delete every generation and its files? Running jobs stay.	Excluir todas as gerações e seus arquivos? Os trabalhos em andamento permanecem.
+	Dismiss failed	Dispensar com falha
+	Failed	Com falha
+	Generations	Gerações
+	Generative Fill, Edit and Generate Image results appear here.	Os resultados de Preenchimento generativo, Edição generativa e Gerar imagem aparecem aqui.
+	In progress	Em andamento
+	Interrupted	Interrompido
+	Invalid request	Solicitação inválida
+	List	Lista
+	Model files missing	Arquivos do modelo ausentes
+	More	Mais
+	No generations yet	Nenhuma geração ainda
+	Open as Document	Abrir como documento
+	Out of memory on the server	Sem memória no servidor
+	Pin	Fixar
+	Place	Inserir
+	Place as Layer	Inserir como camada
+	Prompt copied	Prompt copiado
+	Recreate	Recriar
+	Remove all…	Remover tudo…
+	Remove every failed and cancelled row?	Remover todas as linhas com falha e canceladas?
+	Result discarded	Resultado descartado
+	Saved {n} file(s)	{n} arquivo(s) salvo(s)
+	Saving files is not available here	Salvar arquivos não está disponível aqui
+	Server error	Erro do servidor
+	Server unreachable	Servidor inacessível
+	Timed out	Tempo esgotado
+	Unpin	Desafixar
