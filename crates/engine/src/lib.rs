@@ -318,6 +318,9 @@ pub struct Session {
     /// The Generations library: every generative job and its stored results (see
     /// [`generate_jobs`]).
     pub generations: generate_jobs::GenerationStore,
+    /// The object finder's last probes (`select.probe`), applied by the click that follows (see
+    /// [`select_ml_cmds`]).
+    pub select_probes: select_ml_cmds::ProbeCache,
 }
 
 /// Move item `i` of `v` to position `to`, clamped to the end. Returns where it went; `None` when

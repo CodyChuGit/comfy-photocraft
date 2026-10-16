@@ -2734,3 +2734,20 @@ cameraRaw	Blending	Fusion
 	close-up	gros plan
 	CREATE	CRÉER
 	EDIT	MODIFIER
+	Best	Meilleure
+	Balanced	Équilibrée
+	Auto takes the full-step model and keeps the 4-bit weights off	Auto prend le modèle à toutes les étapes et laisse les poids 4 bits de côté
+	Auto takes the 8-step Lightning tier when the server has it	Auto prend le palier Lightning 8 étapes quand le serveur l'a
+	Auto takes the 4-step tier where there is one	Auto prend le palier 4 étapes quand il existe
+	Object finder	Détecteur d'objets
+	Show what a click would select while the pointer rests	Montrer ce qu'un clic sélectionnerait pendant que le pointeur s'arrête
+	Refine edge	Affiner le contour
+	Soften the detector's hard edge from the pixels (hair, fur)	Adoucir le contour dur du détecteur d'après les pixels (cheveux, fourrure)
+	Click or drag a box around an object; Ctrl-click a spot to exclude it	Cliquez sur un objet ou tracez un cadre autour ; Ctrl-clic sur un point pour l'exclure
+	Object Finder	Détecteur d'objets
+	Select by Box	Sélection par cadre
+	Refine	Affiner
+	Click or drag a box around an object	Cliquez sur un objet ou tracez un cadre autour
+	Click a spot the object must include; Alt-click one it must not	Cliquez sur un point que l'objet doit inclure ; Alt-clic sur un point à exclure
+	Click to include a spot, Alt-click to exclude one	Clic pour inclure un point, Alt-clic pour en exclure un
+	Click an object, or drag a box around it	Cliquez sur un objet ou tracez un cadre autour

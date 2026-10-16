@@ -744,6 +744,10 @@ pub struct Integrations {
     /// Where the Variations strip (the candidates of the active document's recent generative
     /// runs) sits over the canvas: `right`, `bottom` or `off`.
     pub variations_strip: String,
+    /// What `auto` optimises for: `best` = the full-step base templates and no 4-bit weights
+    /// (the default), `balanced` = the 8-step Lightning tier, `fast` = the 4-step tier where one
+    /// exists. A chosen template is never changed by this; see `generate_cmds::auto_order`.
+    pub quality: String,
     /// The folder the Generations panel's Save writes results into (`generate.export` without
     /// `dir`); empty = ask each time.
     pub save_results_dir: String,
@@ -779,6 +783,7 @@ impl Default for Integrations {
             enter_to_generate: false,
             group_models_by_family: true,
             variations_strip: "right".into(),
+            quality: "best".into(),
             save_results_dir: String::new(),
             save_results_naming: "{model}_{date}_{seed}".into(),
             alerts: "off".into(),
@@ -798,6 +803,9 @@ pub const EXPORT_NAME_TOKENS: &[&str] = &["{model}", "{template}", "{date}", "{s
 
 /// `integrations.alerts`: see [`Integrations::alerts`].
 pub const ALERT_MODES: &[&str] = &["off", "done", "doneAndFailed"];
+
+/// `integrations.quality`: see [`Integrations::quality`].
+pub const QUALITY_MODES: &[&str] = &["best", "balanced", "fast"];
 
 /// `integrations.variationsStrip`: see [`Integrations::variations_strip`].
 pub const VARIATIONS_STRIP_PLACES: &[&str] = &["right", "bottom", "off"];
@@ -1008,6 +1016,7 @@ pub fn choices(path: &str) -> Option<&'static [&'static str]> {
         "integrations.modelPrecision" => MODEL_PRECISIONS,
         "integrations.showGenerativeBar" => GENERATIVE_BAR_MODES,
         "integrations.variationsStrip" => VARIATIONS_STRIP_PLACES,
+        "integrations.quality" => QUALITY_MODES,
         "integrations.alerts" => ALERT_MODES,
         _ => return None,
     })

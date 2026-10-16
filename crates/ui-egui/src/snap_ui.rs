@@ -83,10 +83,11 @@ fn moving_rect(app: &PhotocraftApp) -> Option<[f64; 4]> {
 fn is_point_tool(t: Tool) -> bool {
     matches!(
         t,
+        // Not Object Selection: its click or box is a prompt to the detector, which must land
+        // where the user pointed, not on a nearby selection edge or guide (`object_select`).
         Tool::RectMarquee
             | Tool::EllipseMarquee
             | Tool::Crop
-            | Tool::ObjectSelection
             | Tool::Pen
             | Tool::Rectangle
             | Tool::EllipseShape

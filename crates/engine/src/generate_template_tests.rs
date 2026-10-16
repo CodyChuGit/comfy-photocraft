@@ -11,7 +11,10 @@ fn session(url: &str) -> Session {
     s.execute("file.new", json!({"width": 64, "height": 64})).unwrap();
     s.execute("layer.new.layer", json!({})).unwrap();
     s.execute("select.rect", json!({"x": 16, "y": 16, "width": 32, "height": 32})).unwrap();
-    s.edit_prefs(|p| p.integrations.comfy_server = url.to_string());
+    s.edit_prefs(|p| {
+        p.integrations.comfy_server = url.to_string();
+        p.integrations.quality = "balanced".into();
+    });
     s
 }
 

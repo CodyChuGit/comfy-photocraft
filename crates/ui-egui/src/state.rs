@@ -459,6 +459,12 @@ pub struct ToolOptions {
     /// Object Selection: the phrase of its "Select by text" field (SAM 3.1 through
     /// `select.byText`; comfy-photocraft).
     pub select_text: String,
+    /// Object Selection (SAM 3.1): soften the detector's hard edge with the classical
+    /// refinement; show the object finder's tint while the pointer rests.
+    pub refine_edge: bool,
+    pub object_finder: bool,
+    /// Object Selection's Refine mode: clicks add spots to the last object (⌥ excludes one).
+    pub object_refine: bool,
     /// Pen: "path" (work path) or "shape" (shape layer).
     pub vector_mode: String,
     /// Shape tools: fill with the foreground colour, stroke width (0 = none), rectangle corner
@@ -569,6 +575,9 @@ impl Default for ToolOptions {
             finger_painting: false,
             enhance_edge: false,
             select_text: String::new(),
+            refine_edge: true,
+            object_finder: true,
+            object_refine: false,
             vector_mode: "path".into(),
             shape_fill: true,
             stroke_width: 0.0,
@@ -784,6 +793,10 @@ pub struct UiState {
     /// Edit › Generative Angles…'s window (`angles_ui`).
     #[serde(skip)]
     pub angles: crate::angles_ui::AnglesUi,
+    /// The Object Selection tool's SAM 3.1 mode: the object finder's probe, the last query
+    /// (`object_select`).
+    #[serde(skip)]
+    pub object_select: crate::object_select::ObjectSelectUi,
     /// Smoothing is a per-tool option (Brush and Eraser each keep theirs): the tool whose
     /// smoothing the session brush holds, and the other tools' saved values.
     #[serde(default)]
@@ -910,6 +923,7 @@ impl Default for UiState {
             variations: Default::default(),
             hub: Default::default(),
             angles: Default::default(),
+            object_select: Default::default(),
             smoothing_tool: None,
             tool_smoothing: Vec::new(),
             clone_source: None,

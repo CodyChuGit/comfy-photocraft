@@ -3342,3 +3342,20 @@ cameraRaw	Roughness	Chropowatość
 	close-up	zbliżenie
 	CREATE	UTWÓRZ
 	EDIT	EDYTUJ
+	Best	Najlepsza
+	Balanced	Zrównoważona
+	Auto takes the full-step model and keeps the 4-bit weights off	Auto bierze model z pełną liczbą kroków i nie używa wag 4-bitowych
+	Auto takes the 8-step Lightning tier when the server has it	Auto bierze 8-krokowy poziom Lightning, gdy serwer go ma
+	Auto takes the 4-step tier where there is one	Auto bierze poziom 4-krokowy, gdy istnieje
+	Object finder	Wyszukiwanie obiektów
+	Show what a click would select while the pointer rests	Pokazuj, co zaznaczy kliknięcie, gdy wskaźnik się zatrzyma
+	Refine edge	Popraw krawędź
+	Soften the detector's hard edge from the pixels (hair, fur)	Zmiękcz twardą krawędź detektora na podstawie pikseli (włosy, sierść)
+	Click or drag a box around an object; Ctrl-click a spot to exclude it	Kliknij obiekt lub narysuj wokół niego ramkę; Ctrl+kliknięcie wyklucza miejsce
+	Object Finder	Wyszukiwanie obiektów
+	Select by Box	Zaznacz ramką
+	Refine	Doprecyzuj
+	Click or drag a box around an object	Kliknij obiekt lub narysuj wokół niego ramkę
+	Click a spot the object must include; Alt-click one it must not	Kliknij miejsce, które obiekt ma zawierać; Alt+kliknięcie wyklucza miejsce
+	Click to include a spot, Alt-click to exclude one	Kliknięcie dodaje miejsce, Alt+kliknięcie je wyklucza
+	Click an object, or drag a box around it	Kliknij obiekt lub narysuj wokół niego ramkę

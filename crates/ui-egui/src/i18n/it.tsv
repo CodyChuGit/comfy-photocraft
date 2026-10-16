@@ -2376,3 +2376,21 @@ cameraRaw	Amount	Quantità
 	close-up	primo piano
 	CREATE	CREA
 	EDIT	MODIFICA
+	Best	Migliore
+	Balanced	Bilanciata
+	Auto takes the full-step model and keeps the 4-bit weights off	Auto usa il modello a passi completi e lascia spenti i pesi a 4 bit
+	Auto takes the 8-step Lightning tier when the server has it	Auto usa il livello Lightning a 8 passi quando il server lo ha
+	Auto takes the 4-step tier where there is one	Auto usa il livello a 4 passi dove esiste
+	Object finder	Trova oggetti
+	Show what a click would select while the pointer rests	Mostra cosa selezionerebbe un clic mentre il puntatore è fermo
+	Refine edge	Rifinisci bordo
+	Soften the detector's hard edge from the pixels (hair, fur)	Ammorbidisce il bordo netto del rilevatore dai pixel (capelli, pelo)
+	Click or drag a box around an object; Ctrl-click a spot to exclude it	Fai clic o trascina un riquadro attorno a un oggetto; Ctrl-clic su un punto per escluderlo
+	Object Finder	Trova oggetti
+	Select by Box	Selezione con riquadro
+	Refine	Rifinisci
+	Click or drag a box around an object	Fai clic o trascina un riquadro attorno a un oggetto
+	Click a spot the object must include; Alt-click one it must not	Fai clic su un punto che l'oggetto deve includere; Alt-clic su uno da escludere
+	Click to include a spot, Alt-click to exclude one	Clic per includere un punto, Alt-clic per escluderne uno
+	Click an object, or drag a box around it	Fai clic su un oggetto o trascina un riquadro attorno
+	Fast	Veloce

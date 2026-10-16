@@ -443,6 +443,29 @@ Each one is read by code in the same change that adds it, so the audit count doe
   remember an edit, so Similar and Recreate work and the runs show in the Variations strip. The
   window's orbit widget draws the subject, the ground ring with its 8 stops and the camera, and
   snaps drags to the LoRA's directions and heights; it warns when the server lacks the LoRA.
+- **Quality** (PhotoshopEX): `integrations.quality` (`best` by default) is what `auto` optimises
+  for. `generate_cmds::auto_order(command, quality)` gives the candidates (`best` = the
+  full-step base template; `balanced` = the 8-step Lightning tier, then the base; `fast` = the
+  4-step tier where one exists, then the rest), `likely_auto` the first for estimates, and
+  `backend()` keeps `modelPrecision: auto` off the NVFP4 files under `best` (an explicit `nvfp4`
+  still wins). The Generate panel shows it as a Best / Balanced / Fast menu beside the model and
+  the picker's Auto row names the template it resolves to.
+- **The Object Selection tool's SAM 3.1 mode** (PhotoshopEX, `object_select.rs`, the engine's
+  `select_ml_cmds.rs`): with a server that answers (a health check cached ten seconds per server
+  URL), the **object finder** probes the detector when the pointer rests a quarter second over
+  the picture (`select.probe`, a quiet `jobs::run` without a document lock: no journal, no
+  status-bar row, no Generations row; the request goes out at ≤ 0.6 MP) and tints the object
+  under the pointer in the accent colour; the click applies the kept probe (`select.byPoint
+  {probe}`, instant) when the picture and its history are unchanged. A **drag** is the box prompt
+  (`sam3.1/segment-box`: stock `PrimitiveBoundingBox` into `SAM3_Detect`'s `bboxes`), ⇧ adds and
+  ⌥ subtracts whole objects as before. The options bar's **Refine** mode re-runs the last query
+  with every point so far (a click adds a spot the object must include, ⌥-click one it must
+  not: `negative_coords`), taking its own result back first, so one undo step stays. **Refine
+  edge** (on by default) passes the detector's hard mask through the classical edge refinement
+  (`refine_coverage`, the same as Remove Background). Ctrl stays the Move tool's, so the mode is
+  a switch rather than a modifier; Object Selection no longer snaps its presses, because a
+  prompt must land where the user pointed. Select › Subject and the Properties' Select Subject
+  go through `retouch_ui::select_subject` (the detector when online).
 - **Dock budget**: with the two generative groups open the filler (Layers) asks for 320 pt instead
   of 500, the other groups give way to their compact heights before the generative ones, and the
   generative groups fold to their tab strips when Layers would drop under 260 pt

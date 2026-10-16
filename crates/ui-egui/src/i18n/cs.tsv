@@ -2303,3 +2303,21 @@ cameraRaw	Color	Barvy
 	close-up	detail
 	CREATE	VYTVOŘIT
 	EDIT	UPRAVIT
+	Best	Nejlepší
+	Balanced	Vyvážená
+	Auto takes the full-step model and keeps the 4-bit weights off	Auto vezme model s plným počtem kroků a nechá 4bitové váhy vypnuté
+	Auto takes the 8-step Lightning tier when the server has it	Auto vezme 8krokovou vrstvu Lightning, pokud ji server má
+	Auto takes the 4-step tier where there is one	Auto vezme 4krokovou vrstvu, kde existuje
+	Object finder	Vyhledávač objektů
+	Show what a click would select while the pointer rests	Zobrazit, co by kliknutí vybralo, když ukazatel spočine
+	Refine edge	Zjemnit okraj
+	Soften the detector's hard edge from the pixels (hair, fur)	Změkčit tvrdý okraj detektoru podle pixelů (vlasy, srst)
+	Click or drag a box around an object; Ctrl-click a spot to exclude it	Klikněte na objekt nebo kolem něj táhněte rámeček; Ctrl+kliknutím místo vyloučíte
+	Object Finder	Vyhledávač objektů
+	Select by Box	Výběr rámečkem
+	Refine	Upřesnit
+	Click or drag a box around an object	Klikněte na objekt nebo kolem něj táhněte rámeček
+	Click a spot the object must include; Alt-click one it must not	Klikněte na místo, které má objekt obsahovat; Alt+kliknutím na místo, které ne
+	Click to include a spot, Alt-click to exclude one	Kliknutím přidáte místo, Alt+kliknutím místo vyloučíte
+	Click an object, or drag a box around it	Klikněte na objekt nebo kolem něj táhněte rámeček
+	Fast	Rychlá

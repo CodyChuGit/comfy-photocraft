@@ -2286,3 +2286,21 @@ cameraRaw	Color	カラー
 	close-up	クローズアップ
 	CREATE	作成
 	EDIT	編集
+	Best	最高
+	Balanced	バランス
+	Auto takes the full-step model and keeps the 4-bit weights off	自動ではフルステップのモデルを使い、4 ビット重みは使いません
+	Auto takes the 8-step Lightning tier when the server has it	自動ではサーバーにあれば 8 ステップの Lightning 段階を使います
+	Auto takes the 4-step tier where there is one	自動では 4 ステップ段階があればそれを使います
+	Object finder	オブジェクトファインダー
+	Show what a click would select while the pointer rests	ポインターを止めている間、クリックで選択される範囲を表示
+	Refine edge	エッジを調整
+	Soften the detector's hard edge from the pixels (hair, fur)	検出器の硬いエッジをピクセルからなめらかにします（髪、毛）
+	Click or drag a box around an object; Ctrl-click a spot to exclude it	オブジェクトをクリックするか、周りをドラッグして枠で囲みます。Ctrl+クリックで除外する場所を指定
+	Object Finder	オブジェクトファインダー
+	Select by Box	ボックスで選択
+	Refine	調整
+	Click or drag a box around an object	オブジェクトをクリックするか、周りをドラッグして枠で囲みます
+	Click a spot the object must include; Alt-click one it must not	含めたい場所をクリック、除外したい場所を Alt+クリック
+	Click to include a spot, Alt-click to exclude one	クリックで場所を含め、Alt+クリックで除外
+	Click an object, or drag a box around it	オブジェクトをクリックするか、周りをドラッグして枠で囲みます
+	Fast	高速

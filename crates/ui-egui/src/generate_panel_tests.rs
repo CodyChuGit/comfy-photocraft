@@ -119,7 +119,10 @@ fn the_button_shows_the_formula_estimate() {
     // Edit counts the picture at the size it is sent.
     app.ui.generate.mode = "edit".into();
     let edit = estimate(&app, "edit").unwrap();
-    let e = photocraft_engine::generate_cmds::estimate_seconds("qwen-edit-2511/edit-lightning-8", 64, 48, 2, 0).unwrap();
+    // Auto follows the Quality preference (`best` by default: the full-step edit template).
+    let auto = photocraft_engine::generate_cmds::likely_auto("generate.edit", photocraft_engine::generate_cmds::quality(&app.session));
+    assert_eq!(auto, "qwen-edit-2511/edit");
+    let e = photocraft_engine::generate_cmds::estimate_seconds(auto, 64, 48, 2, 0).unwrap();
     assert!((edit - e).abs() < 1e-3);
 }
 

@@ -2579,3 +2579,20 @@ cameraRaw	Roughness	Неровность
 	close-up	крупный план
 	CREATE	СОЗДАТЬ
 	EDIT	ИЗМЕНИТЬ
+	Best	Лучшее
+	Balanced	Сбалансированное
+	Auto takes the full-step model and keeps the 4-bit weights off	Авто берёт модель с полным числом шагов и не использует 4-битные веса
+	Auto takes the 8-step Lightning tier when the server has it	Авто берёт 8-шаговый уровень Lightning, если он есть на сервере
+	Auto takes the 4-step tier where there is one	Авто берёт 4-шаговый уровень, где он есть
+	Object finder	Поиск объектов
+	Show what a click would select while the pointer rests	Показывать, что выделит щелчок, пока указатель неподвижен
+	Refine edge	Уточнить край
+	Soften the detector's hard edge from the pixels (hair, fur)	Смягчить жёсткий край детектора по пикселям (волосы, шерсть)
+	Click or drag a box around an object; Ctrl-click a spot to exclude it	Щёлкните объект или обведите его рамкой; Ctrl+щелчок исключает место
+	Object Finder	Поиск объектов
+	Select by Box	Выделение рамкой
+	Refine	Уточнить
+	Click or drag a box around an object	Щёлкните объект или обведите его рамкой
+	Click a spot the object must include; Alt-click one it must not	Щёлкните точку, которую объект должен включать; Alt+щелчок — исключить
+	Click to include a spot, Alt-click to exclude one	Щелчок включает точку, Alt+щелчок исключает
+	Click an object, or drag a box around it	Щёлкните объект или обведите его рамкой

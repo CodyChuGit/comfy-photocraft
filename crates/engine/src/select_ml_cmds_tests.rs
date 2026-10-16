@@ -67,6 +67,104 @@ fn by_point_selects_the_object_under_the_point() {
 }
 
 #[test]
+fn a_box_and_negative_points_reach_the_detector_and_refine_softens_the_edge() {
+    let fake = FakeComfy::start().unwrap();
+    let mut s = session(&fake.url);
+    // A box: the box template with PrimitiveBoundingBox in the request's pixels; no points.
+    let r = s.execute(BY_POINT, json!({"box": [10, 8, 40, 30]})).unwrap();
+    assert_eq!(r["selected"], true);
+    {
+        let st = fake.state();
+        let g = &st.prompts[0].1;
+        assert_eq!(g["7"]["class_type"], "PrimitiveBoundingBox");
+        assert_eq!((g["7"]["inputs"]["x"].as_i64(), g["7"]["inputs"]["y"].as_i64()), (Some(10), Some(8)));
+        assert_eq!((g["7"]["inputs"]["width"].as_i64(), g["7"]["inputs"]["height"].as_i64()), (Some(40), Some(30)));
+        assert_eq!(g["4"]["inputs"]["bboxes"], json!(["7", 0]));
+        assert_eq!(g["4"]["inputs"]["positive_coords"], "[]");
+        assert_eq!(g["4"]["inputs"]["negative_coords"], "[]");
+    }
+    assert_eq!(s.active().unwrap().history.entries().last().map(String::as_str), Some("Select by Box"));
+    // Points to include and exclude, with x/y as the first positive.
+    s.execute(BY_POINT, json!({"x": 30, "y": 20, "points": [[40, 20]], "negativePoints": [[5, 5], [60, 40]]})).unwrap();
+    {
+        let st = fake.state();
+        let g = &st.prompts[1].1;
+        assert_eq!(g["4"]["inputs"]["positive_coords"], r#"[{"x":30,"y":20},{"x":40,"y":20}]"#);
+        assert_eq!(g["4"]["inputs"]["negative_coords"], r#"[{"x":5,"y":5},{"x":60,"y":40}]"#);
+        assert!(g.get("7").is_none(), "no box: the point template");
+    }
+    // A box with a negative size is normalised and clipped; a tiny one is refused.
+    s.execute(BY_POINT, json!({"box": [50, 38, -40, -30]})).unwrap();
+    assert_eq!(fake.state().prompts[2].1["7"]["inputs"]["x"], 10);
+    for p in
+        [json!({"box": [1, 1, 1, 1]}), json!({"box": [1, 2, 3]}), json!({"negativePoints": [[1, 1]]}), json!({"x": 1, "y": 1, "negativePoints": [[99, 1]]})]
+    {
+        assert!(matches!(s.execute(BY_POINT, p.clone()), Err(EngineError::BadParams { .. })), "{p}");
+    }
+    // Refine: the fake's hard rectangle gets partial coverage at its edge (the classical edge
+    // refinement reads the pixels: a flat white picture gives it little, but the feather shows).
+    s.execute(BY_POINT, json!({"x": 30, "y": 20, "refine": true})).unwrap();
+    let m = s.active().unwrap().doc.selection.clone().unwrap();
+    let inside = m.read_region(Rect::new(30, 20, 31, 21))[0];
+    let edge = m.read_region(Rect::new(16, 12, 17, 13))[0];
+    assert!(inside > 0.9, "{inside}");
+    assert!(edge < inside, "the refined edge is softer than the centre: {edge} vs {inside}");
+}
+
+#[test]
+fn a_probe_is_kept_for_the_click_that_follows_and_goes_stale_with_an_edit() {
+    let fake = FakeComfy::start().unwrap();
+    let mut s = session(&fake.url);
+    let steps = s.active().unwrap().history.past_len();
+    let journal = s.journal.len();
+    let r = s.execute(PROBE, json!({"x": 30, "y": 20})).unwrap();
+    let id = r["probe"].as_u64().unwrap();
+    assert!(id > 0);
+    assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(64), Some(48)), "the request size (small canvas: as is)");
+    assert_eq!(r["bounds"], json!([16, 12, 32, 24]));
+    let mask = r["mask"].as_str().unwrap();
+    assert_eq!(mask.len(), (64 * 48usize).div_ceil(3) * 4, "base64 of width × height bytes");
+    assert!(mask.ends_with("AAAA") && !mask.contains('='), "3072 bytes pad to nothing: {}", &mask[mask.len() - 8..]);
+    assert_eq!(b64_encode(b"Man"), "TWFu");
+    assert_eq!(b64_encode(b"Ma"), "TWE=");
+    assert_eq!(b64_encode(b"M"), "TQ==");
+    {
+        let d = s.active().unwrap();
+        assert!(d.doc.selection.is_none(), "a probe selects nothing");
+        assert_eq!(d.history.past_len(), steps, "no undo step");
+    }
+    assert_eq!(s.journal.len(), journal, "not journaled");
+    assert_eq!(fake.state().prompts.len(), 1);
+    assert_eq!(s.select_probes.len(), 1);
+    // The click applies the kept probe: no second server call, one undo step.
+    let r = s.execute(BY_POINT, json!({"x": 30, "y": 20, "probe": id})).unwrap();
+    assert_eq!(r["probe"], true);
+    assert_eq!(fake.state().prompts.len(), 1);
+    assert_eq!(selection_bounds(&s), Some(Rect::new(16, 12, 48, 36)));
+    assert_eq!(s.active().unwrap().history.past_len(), steps + 1);
+    // After an edit the probe is stale: the server is asked.
+    let r = s.execute(BY_POINT, json!({"x": 30, "y": 20, "probe": id, "mode": "add"})).unwrap();
+    assert!(r.get("probe").is_none());
+    assert_eq!(fake.state().prompts.len(), 2);
+    // An unknown probe too.
+    s.execute(BY_POINT, json!({"x": 30, "y": 20, "probe": 999})).unwrap();
+    assert_eq!(fake.state().prompts.len(), 3);
+    // Nothing under the pointer is an error that keeps nothing.
+    let none = FakeComfy::start_with(Options { segments: vec![], ..Options::default() }).unwrap();
+    let mut s2 = session(&none.url);
+    assert!(s2.execute(PROBE, json!({"x": 1, "y": 1})).is_err());
+    assert!(s2.select_probes.is_empty());
+    // Probes of big pictures go out small.
+    let mut big = Session::new();
+    big.execute("file.new", json!({"width": 2400, "height": 1800})).unwrap();
+    big.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
+    let r = big.execute(PROBE, json!({"x": 1200, "y": 900})).unwrap();
+    assert!(r["width"].as_u64().unwrap() * r["height"].as_u64().unwrap() <= 768 * 768, "{r}");
+    let sent = photocraft_genai::png::decode_rgba8(&fake.state().uploads.last().unwrap().1).unwrap();
+    assert!(u64::from(sent.width) * u64::from(sent.height) <= 768 * 768);
+}
+
+#[test]
 fn modes_combine_with_the_current_selection() {
     let fake = FakeComfy::start().unwrap();
     let mut s = session(&fake.url);

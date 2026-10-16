@@ -2741,3 +2741,20 @@ cameraRaw	Whites	Brancos
 	close-up	close-up
 	CREATE	CRIAR
 	EDIT	EDITAR
+	Best	Melhor
+	Balanced	Equilibrada
+	Auto takes the full-step model and keeps the 4-bit weights off	Auto usa o modelo de passos completos e deixa os pesos de 4 bits desligados
+	Auto takes the 8-step Lightning tier when the server has it	Auto usa o nível Lightning de 8 passos quando o servidor o tem
+	Auto takes the 4-step tier where there is one	Auto usa o nível de 4 passos onde existe
+	Object finder	Localizador de objetos
+	Show what a click would select while the pointer rests	Mostrar o que um clique selecionaria enquanto o ponteiro descansa
+	Refine edge	Refinar borda
+	Soften the detector's hard edge from the pixels (hair, fur)	Suavizar a borda dura do detector a partir dos pixels (cabelo, pelo)
+	Click or drag a box around an object; Ctrl-click a spot to exclude it	Clique ou arraste uma caixa ao redor de um objeto; Ctrl+clique em um ponto para excluí-lo
+	Object Finder	Localizador de objetos
+	Select by Box	Selecionar por caixa
+	Refine	Refinar
+	Click or drag a box around an object	Clique ou arraste uma caixa ao redor de um objeto
+	Click a spot the object must include; Alt-click one it must not	Clique em um ponto que o objeto deve incluir; Alt+clique em um que não
+	Click to include a spot, Alt-click to exclude one	Clique para incluir um ponto, Alt+clique para excluir um
+	Click an object, or drag a box around it	Clique em um objeto ou arraste uma caixa ao redor dele

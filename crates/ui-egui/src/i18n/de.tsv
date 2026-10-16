@@ -2342,3 +2342,21 @@
 	close-up	Nahaufnahme
 	CREATE	ERSTELLEN
 	EDIT	BEARBEITEN
+	Best	Beste
+	Balanced	Ausgewogen
+	Auto takes the full-step model and keeps the 4-bit weights off	Auto nimmt das Modell mit allen Schritten und lässt die 4-Bit-Gewichte aus
+	Auto takes the 8-step Lightning tier when the server has it	Auto nimmt die 8-Schritt-Lightning-Stufe, wenn der Server sie hat
+	Auto takes the 4-step tier where there is one	Auto nimmt die 4-Schritt-Stufe, wo es eine gibt
+	Object finder	Objektfinder
+	Show what a click would select while the pointer rests	Zeigen, was ein Klick auswählen würde, während der Zeiger ruht
+	Refine edge	Kante verfeinern
+	Soften the detector's hard edge from the pixels (hair, fur)	Die harte Kante des Detektors anhand der Pixel weichzeichnen (Haare, Fell)
+	Click or drag a box around an object; Ctrl-click a spot to exclude it	Auf ein Objekt klicken oder einen Rahmen darum ziehen; Strg-Klick schließt eine Stelle aus
+	Object Finder	Objektfinder
+	Select by Box	Auswahl per Rahmen
+	Refine	Verfeinern
+	Click or drag a box around an object	Auf ein Objekt klicken oder einen Rahmen darum ziehen
+	Click a spot the object must include; Alt-click one it must not	Auf eine Stelle klicken, die das Objekt enthalten soll; Alt-Klick auf eine, die nicht
+	Click to include a spot, Alt-click to exclude one	Klicken schließt eine Stelle ein, Alt-Klick schließt eine aus
+	Click an object, or drag a box around it	Auf ein Objekt klicken oder einen Rahmen darum ziehen
+	Fast	Schnell

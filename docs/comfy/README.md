@@ -108,6 +108,15 @@ server) with the models you installed there; the app ships no weights.
   ComfyUI/models/loras.
 - **The Home screen and Help › Generative Features…**: one card per feature; an Edit card asks
   for a picture first when none is open.
+- **Quality** (the menu beside the model in the Generate panel, or Preferences › AI
+  Integrations › Quality): Best runs the full-step models and keeps the 4-bit weights off; Balanced
+  takes the 8-step Lightning tier; Fast the 4-step tier. It only changes what Auto picks.
+- **The Object Selection tool (W) with SAM 3.1**: rest the pointer on something and the object
+  finder tints what a click would select; click to select it, drag a box around an object to find
+  it inside, ⇧ to add another object, ⌥ to subtract one. Switch the options bar to **Refine** to
+  grow or trim the last object: click a spot it must include, ⌥-click one it must not. **Refine
+  edge** softens the detector's edge from the pixels (hair, fur). Select › Subject uses the
+  detector too.
 - **Preferences › Alerts**: a short sound when a run finishes (`done`) or also when it fails
   (`doneAndFailed`); the Windows and macOS packages are built with the `alerts` feature.
 

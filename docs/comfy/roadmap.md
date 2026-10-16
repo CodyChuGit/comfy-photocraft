@@ -235,6 +235,12 @@ ArtCraft Omni API) with the local server as the default and a fallback order.
   selected in Window › Generations), and Generative Angles (fal's Multiple Angles LoRA, Apache-2.0:
   `qwen-edit-2511/angles`, `generate.angles`, an orbit window).
 
+- ✅ 2026-10-16: **Quality** (`integrations.quality`, best by default: full-step templates, no
+  NVFP4 under auto) after the native-inference study (`docs/comfy/research/`), and the **Object Selection
+  tool's SAM 3.1 mode**: object finder on hover, box prompt, Refine mode (include / exclude
+  spots), refine edge, Select › Subject through the detector. ⬜ Native inference: the report's
+  path is an app-managed ComfyUI sidecar first, then per-model engines after benchmarks.
+
 **Phase 4 status after the PhotoshopEX build (2026-10-12):** ✅ capability flags the UI reads
 (kept in the templates' metadata rather than a separate `models.toml`), ✅ LoRA and style
 reference selection (Krea 2 style reference, the Multiple Angles LoRA) and reference images

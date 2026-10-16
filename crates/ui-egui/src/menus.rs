@@ -162,6 +162,10 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     if let Some(r) = crate::angles_ui::menu(app, id, &params) {
         return r;
     }
+    // Select › Subject goes through SAM 3.1 when a server answers (`retouch_ui::select_subject`).
+    if id == "select.subject" && params.as_object().is_none_or(|o| o.is_empty()) {
+        return crate::retouch_ui::select_subject(app);
+    }
     if id == "window.panel.brushes" {
         // Window › Brushes opens the Brush Settings window on its presets tab.
         app.ui.panels.brush_settings = true;

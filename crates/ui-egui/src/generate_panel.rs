@@ -284,9 +284,9 @@ pub fn default_template(app: &PhotocraftApp, mode: &str) -> String {
         }
         "fill" => {
             let t = prefs.default_fill_template.trim();
-            if t.is_empty() || t == g::AUTO_TEMPLATE { g::likely_auto("generate.fill").to_string() } else { t.to_string() }
+            if t.is_empty() || t == g::AUTO_TEMPLATE { g::likely_auto("generate.fill", g::quality(&app.session)).to_string() } else { t.to_string() }
         }
-        m => g::likely_auto(command_of(m)).to_string(),
+        m => g::likely_auto(command_of(m), g::quality(&app.session)).to_string(),
     }
 }
 
@@ -806,11 +806,27 @@ fn model_pill(app: &mut PhotocraftApp, ui: &mut egui::Ui, mode: &str, width: f32
     }
 }
 
+/// Preferences › AI Integrations › Quality as a menu beside the model: what Auto optimises for
+/// (Best = the full-step base templates and no 4-bit weights; Balanced = the 8-step Lightning
+/// tier; Fast = the 4-step tier where one exists). A chosen template is left alone.
+fn quality_pick(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    let mut q = photocraft_engine::generate_cmds::quality(&app.session).to_string();
+    let options = [
+        ("best".to_string(), "Best", "Auto takes the full-step model and keeps the 4-bit weights off"),
+        ("balanced".to_string(), "Balanced", "Auto takes the 8-step Lightning tier when the server has it"),
+        ("fast".to_string(), "Fast", "Auto takes the 4-step tier where there is one"),
+    ];
+    if widgets::dropdown_with_tooltips(ui, "generate-quality", &mut q, &options, 92.0) {
+        let _ = app.run("prefs.set", json!({"path": "integrations.quality", "value": q}));
+    }
+}
+
 /// Model, aspect, size, count (and the expand pads / the image destination).
 fn options_row(app: &mut PhotocraftApp, ui: &mut egui::Ui, mode: &str, template: &str, _action: &mut Option<Action>) {
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         model_pill(app, ui, mode, 170.0);
+        quality_pick(app, ui);
         if mode == "image" {
             let m = info(app, template).cloned().unwrap_or_default();
             let mut aspect = app.ui.generate.aspect.clone();

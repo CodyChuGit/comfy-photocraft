@@ -33,7 +33,10 @@ fn session(url: &str) -> Session {
     })
     .unwrap();
     s.execute("select.rect", json!({"x": 10, "y": 8, "width": 20, "height": 16})).unwrap();
-    s.edit_prefs(|p| p.integrations.comfy_server = url.to_string());
+    s.edit_prefs(|p| {
+        p.integrations.comfy_server = url.to_string();
+        p.integrations.quality = "balanced".into();
+    });
     s
 }
 
@@ -159,7 +162,10 @@ fn auto_falls_back_to_the_base_edit_template_and_params_are_validated() {
         assert!(matches!(s.execute(EDIT, p.clone()), Err(EngineError::BadParams { .. })), "{p}");
     }
     let mut empty = Session::new();
-    empty.edit_prefs(|p| p.integrations.comfy_server = bare.url.clone());
+    empty.edit_prefs(|p| {
+        p.integrations.comfy_server = bare.url.clone();
+        p.integrations.quality = "balanced".into();
+    });
     assert!(!empty.is_enabled(EDIT), "needs a document");
     let m = s.execute(MODELS, json!({})).unwrap();
     assert_eq!(m["autoEdit"], DEFAULT_EDIT_TEMPLATE, "what auto would pick without the LoRA");

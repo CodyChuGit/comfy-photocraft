@@ -70,7 +70,7 @@ pub enum Outcome {
 
 /// The fields `ui.set` reads. Anything else is rejected before a field is applied, so a typo or
 /// a field the method doesn't have can't reply with success while nothing changes (#412).
-pub const UI_SET_FIELDS: [&str; 27] = [
+pub const UI_SET_FIELDS: [&str; 28] = [
     "tool",
     "panels",
     "dock",
@@ -102,6 +102,8 @@ pub const UI_SET_FIELDS: [&str; 27] = [
     "generatePanel",
     // Edit › Generative Angles… (`angles_ui::set`).
     "angles",
+    // The options bar's per-tool settings, merged field by field (`ToolOptions`).
+    "toolOptions",
 ];
 
 fn ok(v: Value) -> Outcome {
@@ -248,6 +250,22 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
             }
             if gradient_blend.is_some() {
                 crate::gradient_ui::options_changed(app, &gradient_before);
+            }
+            // Tool options: the named fields of `ToolOptions`, spelled as ui.inspect shows them.
+            if let Some(opts) = p.get("toolOptions").filter(|v| !v.is_null()) {
+                let Some(n) = opts.as_object() else { return err("toolOptions must be an object") };
+                let mut cur = serde_json::to_value(&app.ui.tool_options).unwrap_or_default();
+                let Some(c) = cur.as_object_mut() else { return err("tool options are not inspectable") };
+                if let Some(k) = n.keys().find(|k| !c.contains_key(k.as_str())) {
+                    return err(format!("toolOptions has no field `{k}`"));
+                }
+                for (k, v) in n {
+                    c.insert(k.clone(), v.clone());
+                }
+                match serde_json::from_value(cur) {
+                    Ok(v) => app.ui.tool_options = v,
+                    Err(e) => return err(format!("toolOptions: {e}")),
+                }
             }
             if let Some(panels) = p.get("panels") {
                 let mut cur = serde_json::to_value(&app.ui.panels).unwrap_or_default();
@@ -521,12 +539,22 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                 "middle" => egui::PointerButton::Middle,
                 _ => egui::PointerButton::Primary,
             };
+            // Modifier flags may be top-level or grouped under "modifiers" (as ui.key takes them).
+            let m = p.get("modifiers").unwrap_or(p);
+            let flag = |k: &str| m.get(k).and_then(Value::as_bool).unwrap_or(false);
+            let modifiers = egui::Modifiers {
+                command: flag("command"),
+                mac_cmd: cfg!(target_os = "macos") && flag("command"),
+                shift: flag("shift"),
+                alt: flag("alt"),
+                ctrl: flag("ctrl"),
+            };
             app.synthetic.push(egui::Event::PointerMoved(pos));
             if req.method == "ui.click" {
                 let clicks = p.get("count").and_then(Value::as_u64).unwrap_or(1);
                 for _ in 0..clicks {
-                    app.synthetic.push(egui::Event::PointerButton { pos, button, pressed: true, modifiers: Default::default() });
-                    app.synthetic.push(egui::Event::PointerButton { pos, button, pressed: false, modifiers: Default::default() });
+                    app.synthetic.push(egui::Event::PointerButton { pos, button, pressed: true, modifiers });
+                    app.synthetic.push(egui::Event::PointerButton { pos, button, pressed: false, modifiers });
                 }
             }
             ctx.request_repaint();
@@ -628,10 +656,18 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
 /// Snapshot of everything on screen, addressable by id.
 pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {
     let screen = ctx.content_rect();
+    let canvas_rect = {
+        let r = crate::rulers::content_rect(app, app.last_canvas_rect);
+        [r.left(), r.top(), r.width(), r.height()]
+    };
     let dialogs: Vec<Value> =
         app.ui.dialogs.iter().map(|d| json!({"id": d.id, "kind": d.kind, "title": crate::dialogs::title(d), "fields": d.fields})).collect();
     json!({
         "window": {"width": screen.width(), "height": screen.height(), "pixelsPerPoint": ctx.pixels_per_point()},
+        // The main canvas inside the rulers (points): with `views[activeDocument]`'s zoom and
+        // center, document → screen for ui.move / ui.click.
+        "canvasRect": canvas_rect,
+        "activeDocument": app.session.active_index(),
         "tool": app.ui.tool,
         "toolOptions": app.ui.tool_options,
         "magnetic": app.ui.magnetic,
@@ -654,6 +690,7 @@ pub fn inspect(app: &PhotocraftApp, ctx: &egui::Context) -> Value {
         "variations": crate::variations_strip::inspect(app, ctx),
         "hub": crate::generate_hub::inspect(app, ctx),
         "angles": crate::angles_ui::inspect(app),
+        "objectSelect": crate::object_select::inspect(app),
         "panels": app.ui.panels,
         "views": app.ui.views,
         "dialogs": dialogs,

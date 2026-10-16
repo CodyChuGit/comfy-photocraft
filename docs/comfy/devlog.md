@@ -4,6 +4,67 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
+
+- **Research** (five researchers, report in `docs/comfy/research/Native inference for PhotoCraft on RTX
+  5090.md`, notes in `research/notes/`): no Rust runtime runs this model set; candle reaches ~0.65× ComfyUI's
+  bf16 speed stock, burn's attention kernel is an open blocker, TensorRT has a FLUX path only, and
+  in-process Python breaks the no-crash rule. Recommended: keep the ComfyUI protocol as the backend
+  trait, ship an app-managed sidecar for zero setup, go native per model only after same-machine
+  benchmarks. **NVFP4** is a GEMM and VRAM lever (1.6–2.6× per DiT step, 1.2–1.8× per image on a
+  5090, with a quality cost under post-training quantisation), not a general speed-up; Lightning
+  distillation dwarfs it. The owner chose **highest quality first, then optimise**.
+- **Quality** (`integrations.quality`: `best` default, `balanced`, `fast`): what `auto` optimises
+  for. `generate_cmds::auto_order(command, quality)` replaces the fixed orders (`best` = the
+  full-step base templates; `balanced` = the 8-step Lightning tier first, the old behaviour;
+  `fast` = the 4-step fill tier first), `likely_auto` takes the quality, and `backend()` keeps
+  `modelPrecision: auto` off the NVFP4 files under `best`. A Best / Balanced / Fast menu sits beside
+  the model in the Generate panel (writes the preference); the picker's Auto row follows.
+  `generate.models` reports `quality`. Ten engine tests that pin the Lightning tier now set
+  `balanced` in their session helpers.
+- **Object Selection with SAM 3.1** (`object_select.rs`, `select_ml_cmds.rs` reworked):
+  - **Object finder**: the pointer resting a quarter second over the picture runs `select.probe`
+    (new: a `jobs::run` without a document lock, not journaled, no Generations row, quiet in the
+    status bar; the request goes out at ≤ 0.6 MP) and the answer tints the object in the accent
+    colour; the click applies the kept probe (`select.byPoint {probe}`) with no second detection
+    while the picture and its history are unchanged (probes live in `Session::select_probes`, eight
+    kept). The health check behind it is cached ten seconds **per server URL** (a first version
+    cached per app and sent clicks to a dead server after the preference changed).
+  - **Box prompt**: a drag is `select.byPoint {box}` through the new `sam3.1/segment-box` template
+    (stock `PrimitiveBoundingBox` → `SAM3_Detect.bboxes`); `sam3.1/segment-point` gained
+    `negative_coords`. Checked live before writing them: an empty `[]` list is accepted, a
+    negative point trims the mask, a box around the whole fox finds it as the point does.
+  - **Refine mode** (the options bar's New | Refine): a click adds a spot the last object must
+    include, ⌥-click one it must not; the last query runs again with every point so far after
+    `edit.undo` takes its result back, so one undo step stays. Ctrl was tried first and is the Move
+    tool's override, hence a mode. **Refine edge** (on by default) runs the detector's hard mask
+    through the classical edge refinement, as Remove Background does; Select › Subject and the
+    Properties' Select Subject go through the detector when it answers.
+  - Object Selection no longer snaps its presses (`snap_ui`): a prompt snapped to a selection edge
+    landed off the object (a test caught it as a 20,20 click arriving as 23,13).
+  - Automation: `select.byPoint {points, negativePoints, box, refine, probe}`, `select.probe`,
+    `ui.inspect.objectSelect`, `ui.set {toolOptions}` (any field, spelled as inspect shows it),
+    `ui.click` / `ui.move` modifiers, `ui.inspect.canvasRect` + `activeDocument` for document →
+    screen mapping in scripts.
+- **Live** (`docs/comfy/bench/scripts/object-select-live.ps1`, release GUI, SAM 3.1 warm): the
+  finder's probe for the fox arrived 0.8 s after the pointer rested; the click applied it with no
+  new detection (selection 75,123 742×878); Refine's ⌥-click on the tail re-ran with the negative
+  point (344k → 289k pixels in a CLI check: the tail region went); a box around the head found a
+  patchy face region (39 % of its box filled at any threshold; `refine_iterations` 0 gives 51 %,
+  5 gives 13 %); Select › Subject ran `select.subjectML`. **Model limits seen**: SAM 3.1's box
+  prompt is good at framing a whole object and poor at cutting a part out of one (the head of a
+  fox), and a negative point on a whole limb trims rather than removes it; the Refine mode's
+  islands in the screenshot are SAM's own low-confidence pixels, not the edge refinement.
+- **Tests**: engine `select_ml_cmds_tests` (+2: box / negatives / refine; probe kept, applied,
+  stale, unknown, nothing-found, downscaled) and the quality test (auto orders, Blackwell NVFP4
+  under best vs balanced, `generate.models.quality`); UI `object_select_tests.rs` (3: box prompt,
+  Refine mode and its undo depth, mode switching; the finder in a kittest harness with the inline
+  fake; no server and the menu's Select Subject) and `retouch_ui`'s updated test. Gates: clippy,
+  fmt, layers, wasm, parity, scorecard 57 of 156 unread (the new preference is read).
+- **Open**: the sidecar (report step 2) is not started; SAM's box-on-a-part weakness could be
+  helped by sending the box crop at full resolution; the finder could pre-warm the checkpoint on
+  tool selection (the first probe after a cold server takes ~19 s, the model load).
+
 ## 2026-10-12 (night): plan Phase 5, the finish (hub, alerts, saving, Angles) and the walkthrough
 
 Built [`plan-artcraft-experience.md`](plan-artcraft-experience.md) §7 and ran its §9 walkthrough.

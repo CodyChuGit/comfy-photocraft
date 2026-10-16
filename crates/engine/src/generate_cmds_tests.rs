@@ -18,7 +18,11 @@ fn session(url: &str) -> Session {
     s.execute("layer.new.layer", json!({})).unwrap();
     texture(&mut s);
     s.execute("select.rect", json!({"x": 10, "y": 8, "width": 20, "height": 16})).unwrap();
-    s.edit_prefs(|p| p.integrations.comfy_server = url.to_string());
+    s.edit_prefs(|p| {
+        p.integrations.comfy_server = url.to_string();
+        // These tests pin the Lightning `auto` tier: Quality `balanced` (the default is `best`).
+        p.integrations.quality = "balanced".into();
+    });
     s
 }
 
@@ -289,7 +293,10 @@ fn a_sixteen_bit_document_gets_a_sixteen_bit_layer() {
     s.execute("layer.new.layer", json!({})).unwrap();
     texture(&mut s);
     s.execute("select.rect", json!({"x": 8, "y": 8, "width": 8, "height": 8})).unwrap();
-    s.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
+    s.edit_prefs(|p| {
+        p.integrations.comfy_server = fake.url.clone();
+        p.integrations.quality = "balanced".into();
+    });
     let r = s.execute(FILL, json!({"prompt": "x", "margin": 0})).unwrap();
     assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(16), Some(16)), "an 8×8 selection goes out on the 16-px grid");
     let d = s.active().unwrap();
@@ -319,6 +326,39 @@ fn results_of_another_size_are_resampled_to_the_request() {
     assert!(r.get(0, 0).unwrap()[0] < 48 && r.get(0, 0).unwrap()[3] == 255, "{:?}", r.get(0, 0));
     assert!(r.get(1, 1).unwrap()[0] > 207, "{:?}", r.get(1, 1));
     assert!(resize_rgba8(&two, 0, 2).is_err());
+}
+
+#[test]
+fn the_quality_preference_decides_what_auto_picks_and_whether_nvfp4_applies() {
+    // The default is `best`: the full-step base templates, no 4-bit weights under `auto`.
+    let fresh = Session::new();
+    assert_eq!(quality(&fresh), "best");
+    assert_eq!(auto_order(FILL, "best"), &[DEFAULT_FILL_TEMPLATE]);
+    assert_eq!(auto_order(FILL, "balanced"), AUTO_FILL_ORDER);
+    assert_eq!(auto_order(FILL, "fast")[0], "qwen-edit-2511/fill-lightning-4");
+    assert_eq!(auto_order(EDIT, "best"), &[DEFAULT_EDIT_TEMPLATE]);
+    assert_eq!(auto_order(EXPAND, "fast"), AUTO_EXPAND_ORDER, "no 4-step expand: fast is balanced");
+    assert_eq!(likely_auto(FILL, "best"), DEFAULT_FILL_TEMPLATE);
+    assert_eq!(likely_auto(FILL, "nonsense"), "qwen-edit-2511/fill-lightning-8", "unknown reads as balanced in the order");
+    // A Blackwell server with the NVFP4 encoder installed: `auto` precision leaves it alone
+    // under `best`, takes it under `balanced`.
+    let fake = FakeComfy::start_with(Options { device: "NVIDIA GeForce RTX 5090".into(), ..Options::default() }).unwrap();
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 64, "height": 48})).unwrap();
+    s.execute("layer.new.layer", json!({})).unwrap();
+    s.execute("select.rect", json!({"x": 10, "y": 8, "width": 20, "height": 16})).unwrap();
+    s.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
+    let r = s.execute(FILL, json!({"prompt": "a kite", "seed": 1})).unwrap();
+    assert_eq!(r["template"], DEFAULT_FILL_TEMPLATE, "best: the 40-step base template");
+    assert_eq!(fake.state().prompts[0].1["2"]["inputs"]["clip_name"], "qwen_2.5_vl_7b_fp8_scaled.safetensors", "no NVFP4 under best");
+    assert_eq!(s.execute("generate.models", json!({})).unwrap()["quality"], "best");
+    s.execute("prefs.set", json!({"path": "integrations.quality", "value": "balanced"})).unwrap();
+    let r = s.execute(FILL, json!({"prompt": "a kite", "seed": 1})).unwrap();
+    assert_eq!(r["template"], "qwen-edit-2511/fill-lightning-8");
+    assert_eq!(fake.state().prompts[1].1["2"]["inputs"]["clip_name"], "qwen_2.5_vl_7b_nvfp4.safetensors", "auto precision on Blackwell");
+    assert!(s.execute("prefs.set", json!({"path": "integrations.quality", "value": "ultra"})).is_err());
+    let v = s.execute("generate.models", json!({})).unwrap();
+    assert_eq!((v["quality"].as_str(), v["autoFill"].as_str()), (Some("balanced"), Some("qwen-edit-2511/fill-lightning-8")));
 }
 
 #[test]
@@ -570,7 +610,10 @@ fn expand_takes_a_target_size_with_an_anchor_and_validates() {
 fn purge_generative_models_asks_the_server_to_free() {
     let fake = FakeComfy::start().unwrap();
     let mut s = Session::new();
-    s.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
+    s.edit_prefs(|p| {
+        p.integrations.comfy_server = fake.url.clone();
+        p.integrations.quality = "balanced".into();
+    });
     assert!(s.is_enabled(FREE), "no document needed");
     let r = s.execute(FREE, json!({})).unwrap();
     assert_eq!(r["freed"], true);
@@ -610,7 +653,10 @@ fn large_areas_are_sent_at_one_megapixel_and_come_back_full_size() {
     s.execute("file.new", json!({"width": 1600, "height": 1200})).unwrap();
     s.execute("layer.new.layer", json!({})).unwrap();
     s.execute("select.rect", json!({"x": 100, "y": 100, "width": 1400, "height": 1000})).unwrap();
-    s.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
+    s.edit_prefs(|p| {
+        p.integrations.comfy_server = fake.url.clone();
+        p.integrations.quality = "balanced".into();
+    });
     let r = s.execute(FILL, json!({"prompt": "x", "margin": 0})).unwrap();
     // 1400×1000 grown to the grid: 1408×1008 from (100, 100).
     assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(1408), Some(1008)));

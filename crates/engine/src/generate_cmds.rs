@@ -48,6 +48,11 @@ pub const AUTO_TEMPLATE: &str = "auto";
 /// `auto` tries these in order and takes the first whose model files the server lists: the
 /// Lightning tier (8 steps, Apache-2.0 LoRA) when its LoRA is installed, else the 40-step base.
 pub const AUTO_FILL_ORDER: &[&str] = &["qwen-edit-2511/fill-lightning-8", DEFAULT_FILL_TEMPLATE];
+/// `auto` under Preferences › Quality `fast`: the 4-step tier first.
+pub const FAST_FILL_ORDER: &[&str] = &["qwen-edit-2511/fill-lightning-4", "qwen-edit-2511/fill-lightning-8", DEFAULT_FILL_TEMPLATE];
+/// `auto` under Quality `best`: the full-step base template only.
+pub const BEST_FILL_ORDER: &[&str] = &[DEFAULT_FILL_TEMPLATE];
+pub const BEST_EXPAND_ORDER: &[&str] = &[DEFAULT_EXPAND_TEMPLATE];
 /// The same for Generative Expand, whose templates show the model only the picture as a
 /// reference while the padded canvas is the sampling latent.
 pub const DEFAULT_EXPAND_TEMPLATE: &str = "qwen-edit-2511/expand";
@@ -320,6 +325,33 @@ pub fn angle_prompt(rotation: u32, tilt: i32, zoom: u32) -> Option<String> {
 pub(crate) const DEFAULT_EDIT_TEMPLATE: &str = "qwen-edit-2511/edit";
 /// What `auto` tries for an edit, fastest permissive tier first.
 pub(crate) const AUTO_EDIT_ORDER: &[&str] = &["qwen-edit-2511/edit-lightning-8", DEFAULT_EDIT_TEMPLATE];
+pub(crate) const BEST_EDIT_ORDER: &[&str] = &[DEFAULT_EDIT_TEMPLATE];
+
+/// Preferences › AI Integrations › Quality, normalised (`best` unless it says `balanced` or
+/// `fast`).
+pub fn quality(s: &Session) -> &'static str {
+    match s.prefs().integrations.quality.trim() {
+        "balanced" => "balanced",
+        "fast" => "fast",
+        _ => "best",
+    }
+}
+
+/// The templates `auto` picks from for `command` under `quality` (the first one the server has
+/// every file for runs): `best` = the full-step base template, `balanced` = the 8-step Lightning
+/// tier then the base, `fast` = the 4-step tier where one exists.
+pub fn auto_order(command: &str, quality: &str) -> &'static [&'static str] {
+    match (command, quality) {
+        (FILL, "best") => BEST_FILL_ORDER,
+        (FILL, "fast") => FAST_FILL_ORDER,
+        (FILL, _) => AUTO_FILL_ORDER,
+        (EXPAND, "best") => BEST_EXPAND_ORDER,
+        (EXPAND, _) => AUTO_EXPAND_ORDER,
+        (EDIT, "best") => BEST_EDIT_ORDER,
+        (EDIT, _) => AUTO_EDIT_ORDER,
+        _ => &[DEFAULT_IMAGE_TEMPLATE],
+    }
+}
 
 /// The model files (`folder/file`) the last run on each server loaded, for [`run_switching`].
 /// Mirrored to a small file in the temp directory so the app, the CLI and MCP agree on what
@@ -443,7 +475,11 @@ pub(crate) fn backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> {
         return Err(EngineError::Other("no generative server is configured (Preferences › AI Integrations › ComfyUI Server)".into()));
     }
     let timeout = Duration::from_secs(u64::from(integrations.generative_timeout_secs.max(5)));
-    let precision = photocraft_genai::Precision::from_name(&integrations.model_precision);
+    // Quality `best` keeps `auto` precision off the 4-bit files; an explicit `nvfp4` still wins.
+    let precision = match photocraft_genai::Precision::from_name(&integrations.model_precision) {
+        photocraft_genai::Precision::Auto if quality(s) == "best" => photocraft_genai::Precision::Default,
+        p => p,
+    };
     #[cfg(not(target_arch = "wasm32"))]
     {
         let b = photocraft_genai::comfy::ComfyBackend::new(url, timeout).map_err(gen_err)?.with_precision(precision);
@@ -1559,7 +1595,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
         command: FILL,
         template_id: template.meta.id.clone(),
         auto,
-        auto_order: AUTO_FILL_ORDER,
+        auto_order: auto_order(FILL, quality(s)),
         prompt,
         negative,
         seed,
@@ -1728,7 +1764,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
         command: EXPAND,
         template_id: template.meta.id.clone(),
         auto,
-        auto_order: AUTO_EXPAND_ORDER,
+        auto_order: auto_order(EXPAND, quality(s)),
         prompt,
         negative,
         seed,
@@ -1930,7 +1966,7 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
         command: EDIT,
         template_id: template.meta.id.clone(),
         auto,
-        auto_order: AUTO_EDIT_ORDER,
+        auto_order: auto_order(EDIT, quality(s)),
         prompt,
         negative,
         seed,
@@ -2381,16 +2417,10 @@ fn run_health(s: &mut Session, _p: &Value) -> Result<Value> {
     serde_json::to_value(&h).map_err(|e| EngineError::Other(e.to_string()))
 }
 
-/// The template `auto` most likely picks for `command` (the first tier of its order: what a
-/// server with the Lightning LoRA runs), for estimates before the server has answered.
-pub fn likely_auto(command: &str) -> &'static str {
-    let order = match command {
-        FILL => AUTO_FILL_ORDER,
-        EXPAND => AUTO_EXPAND_ORDER,
-        EDIT => AUTO_EDIT_ORDER,
-        _ => return DEFAULT_IMAGE_TEMPLATE,
-    };
-    order.first().copied().unwrap_or(DEFAULT_FILL_TEMPLATE)
+/// The template `auto` most likely picks for `command` under `quality` (the first of its order:
+/// what a server with every file runs), for estimates before the server has answered.
+pub fn likely_auto(command: &str, quality: &str) -> &'static str {
+    auto_order(command, quality).first().copied().unwrap_or(DEFAULT_FILL_TEMPLATE)
 }
 
 /// Seconds a run of `template` for a `width × height` area with `count` variations and
@@ -2428,6 +2458,7 @@ fn run_models(s: &mut Session, p: &Value) -> Result<Value> {
     };
     // `async: true` probes on a worker (the picker's installed badges): a background job whose
     // result is this command's usual answer.
+    let q = quality(s);
     if probe && opt_bool(MODELS, p, "async", false)? {
         let backend = backend(s)?;
         return crate::jobs::run(
@@ -2436,18 +2467,19 @@ fn run_models(s: &mut Session, p: &Value) -> Result<Value> {
             false,
             move |ctx| {
                 ctx.progress(0.2, "Asking the server");
-                Ok(models_json(Some(backend.as_ref()), allow_research, eta_for))
+                Ok(models_json(Some(backend.as_ref()), allow_research, q, eta_for))
             },
             move |_, v| Ok(v),
         );
     }
     let backend = if probe { backend(s).ok() } else { None };
-    Ok(models_json(backend.as_deref(), allow_research, eta_for))
+    Ok(models_json(backend.as_deref(), allow_research, q, eta_for))
 }
 
 /// `generate.models`' answer: every template with its model slots, capabilities and estimate
-/// and, with a `backend`, what the server has installed and what `auto` would pick.
-fn models_json(backend: Option<&dyn GenerativeBackend>, allow_research: bool, eta_for: Option<(u32, u32, u32, u32)>) -> Value {
+/// and, with a `backend`, what the server has installed and what `auto` would pick under the
+/// Quality preference `q`.
+fn models_json(backend: Option<&dyn GenerativeBackend>, allow_research: bool, q: &str, eta_for: Option<(u32, u32, u32, u32)>) -> Value {
     let health = backend.map(|b| b.health());
     let online = health.as_ref().is_some_and(|h| h.ok);
     let mut folders: BTreeMap<String, Option<Vec<String>>> = BTreeMap::new();
@@ -2496,9 +2528,10 @@ fn models_json(backend: Option<&dyn GenerativeBackend>, allow_research: bool, et
     json!({
         "server": health, "templates": templates,
         "device": device, "blackwell": photocraft_genai::is_blackwell(&device),
-        "autoFill": auto(AUTO_FILL_ORDER, DEFAULT_FILL_TEMPLATE),
-        "autoExpand": auto(AUTO_EXPAND_ORDER, DEFAULT_EXPAND_TEMPLATE),
-        "autoEdit": auto(AUTO_EDIT_ORDER, DEFAULT_EDIT_TEMPLATE),
+        "quality": q,
+        "autoFill": auto(auto_order(FILL, q), DEFAULT_FILL_TEMPLATE),
+        "autoExpand": auto(auto_order(EXPAND, q), DEFAULT_EXPAND_TEMPLATE),
+        "autoEdit": auto(auto_order(EDIT, q), DEFAULT_EDIT_TEMPLATE),
         "autoMatte": auto_matte,
     })
 }
@@ -2563,10 +2596,11 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
     }
     // An expand layer's area is regenerated as a fill (its canvas is already there); edits and
     // fills run as what they were.
+    let q = quality(s);
     let (command, auto, auto_order, template_id) = match info.command.as_str() {
-        c if c == EDIT => (EDIT, false, AUTO_EDIT_ORDER, info.template.clone()),
-        c if c == FILL => (FILL, false, AUTO_FILL_ORDER, info.template.clone()),
-        _ => (FILL, true, AUTO_FILL_ORDER, DEFAULT_FILL_TEMPLATE.to_string()),
+        c if c == EDIT => (EDIT, false, auto_order(EDIT, q), info.template.clone()),
+        c if c == FILL => (FILL, false, auto_order(FILL, q), info.template.clone()),
+        _ => (FILL, true, auto_order(FILL, q), DEFAULT_FILL_TEMPLATE.to_string()),
     };
     let refs = crate::generate_refs::Refs { images: crate::generate_refs::resolve(s, &info.references)?, specs: info.references.clone() };
     let backend = backend(s)?;

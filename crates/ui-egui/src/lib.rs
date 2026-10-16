@@ -97,6 +97,7 @@ pub mod move_ui;
 pub mod native_menu;
 pub mod new_doc_ui;
 pub mod notices;
+pub mod object_select;
 mod opacity_keys;
 pub mod outline;
 pub mod paint_mouse;

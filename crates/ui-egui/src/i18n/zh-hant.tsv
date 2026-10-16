@@ -2280,3 +2280,21 @@ cameraRaw	Blending	混合
 	close-up	特寫
 	CREATE	建立
 	EDIT	編輯
+	Best	最佳
+	Balanced	均衡
+	Auto takes the full-step model and keeps the 4-bit weights off	自動使用完整步數的模型，不使用 4 位元權重
+	Auto takes the 8-step Lightning tier when the server has it	伺服器有 8 步 Lightning 層級時自動使用
+	Auto takes the 4-step tier where there is one	有 4 步層級時自動使用
+	Object finder	物件搜尋器
+	Show what a click would select while the pointer rests	指標停留時顯示點按會選取的內容
+	Refine edge	調整邊緣
+	Soften the detector's hard edge from the pixels (hair, fur)	依像素柔化偵測器的硬邊緣（頭髮、毛髮）
+	Click or drag a box around an object; Ctrl-click a spot to exclude it	點按物件或拖曳出方框圍住它；按住 Ctrl 點按可排除某處
+	Object Finder	物件搜尋器
+	Select by Box	方框選取
+	Refine	細修
+	Click or drag a box around an object	點按物件或拖曳出方框圍住它
+	Click a spot the object must include; Alt-click one it must not	點按物件應包含的位置；按住 Alt 點按要排除的位置
+	Click to include a spot, Alt-click to exclude one	點按可包含某處，按住 Alt 點按可排除某處
+	Click an object, or drag a box around it	點按物件，或拖曳出方框圍住它
+	Fast	快速

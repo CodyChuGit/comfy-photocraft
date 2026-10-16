@@ -2721,3 +2721,20 @@ cameraRaw	Blending	Pembauran
 	close-up	close-up
 	CREATE	BUAT
 	EDIT	EDIT
+	Best	Terbaik
+	Balanced	Seimbang
+	Auto takes the full-step model and keeps the 4-bit weights off	Otomatis memakai model langkah penuh dan tidak memakai bobot 4-bit
+	Auto takes the 8-step Lightning tier when the server has it	Otomatis memakai tingkat Lightning 8 langkah jika server memilikinya
+	Auto takes the 4-step tier where there is one	Otomatis memakai tingkat 4 langkah jika ada
+	Object finder	Pencari objek
+	Show what a click would select while the pointer rests	Tampilkan apa yang akan dipilih klik saat penunjuk diam
+	Refine edge	Haluskan tepi
+	Soften the detector's hard edge from the pixels (hair, fur)	Lembutkan tepi keras detektor dari piksel (rambut, bulu)
+	Click or drag a box around an object; Ctrl-click a spot to exclude it	Klik atau seret kotak di sekeliling objek; Ctrl-klik titik untuk mengecualikannya
+	Object Finder	Pencari Objek
+	Select by Box	Pilih dengan Kotak
+	Refine	Perhalus
+	Click or drag a box around an object	Klik atau seret kotak di sekeliling objek
+	Click a spot the object must include; Alt-click one it must not	Klik titik yang harus termasuk objek; Alt-klik titik yang tidak
+	Click to include a spot, Alt-click to exclude one	Klik untuk menyertakan titik, Alt-klik untuk mengecualikan
+	Click an object, or drag a box around it	Klik objek, atau seret kotak di sekelilingnya

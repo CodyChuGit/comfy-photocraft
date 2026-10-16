@@ -117,7 +117,8 @@ pub fn job_in_view(app: &PhotocraftApp) -> Option<JobInfo> {
     if let Some(j) = app.jobs.focus.and_then(|j| app.session.job(j)) {
         return Some(j);
     }
-    app.session.active_job().or_else(|| app.session.jobs().pop())
+    // The object finder's probes are quiet: never the status bar's job.
+    app.session.active_job().or_else(|| app.session.jobs().into_iter().rev().find(|j| j.command != "select.probe"))
 }
 
 /// Cancel job `id` (the status bar's ×, the dialog's Cancel, Esc, closing an opening tab).
@@ -153,6 +154,8 @@ fn on_event(app: &mut PhotocraftApp, e: JobEvent) {
     crate::generations_panel::on_event(app, &e);
     // Window › Generate: its own run and the wand.
     crate::generate_panel::on_event(app, &e);
+    // The Object Selection tool's finder probe.
+    crate::object_select::on_event(app, &e);
     // Camera Raw's open-time re-develop and its final step.
     if crate::camera_raw_ui::on_redevelop_event(app, &e) {
         return;
@@ -185,7 +188,7 @@ fn on_event(app: &mut PhotocraftApp, e: JobEvent) {
         }
         // The model pickers' background check of the server stays quiet either way (the badges
         // show its answer; a generative run reports an unreachable server itself).
-        JobOutcome::Done(_) | JobOutcome::Failed(_) if e.command == "generate.models" => {}
+        JobOutcome::Done(_) | JobOutcome::Failed(_) if e.command == "generate.models" || e.command == "select.probe" => {}
         JobOutcome::Done(_) => {
             app.sync_views();
             app.ui.status = e.label;

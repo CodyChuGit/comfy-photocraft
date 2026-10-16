@@ -2885,3 +2885,21 @@ cameraRaw	Color	색상
 	close-up	클로즈업
 	CREATE	만들기
 	EDIT	편집
+	Best	최고
+	Balanced	균형
+	Auto takes the full-step model and keeps the 4-bit weights off	자동은 전체 단계 모델을 사용하고 4비트 가중치를 끕니다
+	Auto takes the 8-step Lightning tier when the server has it	자동은 서버에 있으면 8단계 Lightning 등급을 사용합니다
+	Auto takes the 4-step tier where there is one	자동은 4단계 등급이 있으면 사용합니다
+	Object finder	개체 찾기
+	Show what a click would select while the pointer rests	포인터가 멈춰 있는 동안 클릭하면 선택될 영역 표시
+	Refine edge	가장자리 다듬기
+	Soften the detector's hard edge from the pixels (hair, fur)	검출기의 딱딱한 가장자리를 픽셀 기준으로 부드럽게 (머리카락, 털)
+	Click or drag a box around an object; Ctrl-click a spot to exclude it	개체를 클릭하거나 주위에 상자를 드래그하세요. Ctrl+클릭으로 제외할 지점 지정
+	Object Finder	개체 찾기
+	Select by Box	상자로 선택
+	Refine	다듬기
+	Click or drag a box around an object	개체를 클릭하거나 주위에 상자를 드래그하세요
+	Click a spot the object must include; Alt-click one it must not	포함할 지점을 클릭하고, 제외할 지점은 Alt+클릭
+	Click to include a spot, Alt-click to exclude one	클릭으로 지점 포함, Alt+클릭으로 제외
+	Click an object, or drag a box around it	개체를 클릭하거나 주위에 상자를 드래그하세요
+	Fast	빠름
