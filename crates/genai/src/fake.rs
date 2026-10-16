@@ -38,6 +38,9 @@ pub struct Options {
     /// What a detector graph (`SAM3_Detect`) "finds": one mask image per rectangle, given as
     /// normalised `[x0, y0, x1, y1]` of the uploaded image. Empty = nothing found.
     pub segments: Vec<[f32; 4]>,
+    /// What the detector finds for a given text prompt instead (`CLIPTextEncode`'s text), so a
+    /// test can make one phrase find nothing and the next find something.
+    pub segments_for: Vec<(String, Vec<[f32; 4]>)>,
     /// Model files left out of `/models/<folder>` (by default every built-in template's files
     /// are "installed"); e.g. a Lightning LoRA, to exercise the `auto` fallback.
     pub missing_files: Vec<String>,
@@ -67,6 +70,7 @@ impl Default for Options {
             missing_node: None,
             websocket: true,
             segments: vec![[0.25, 0.25, 0.75, 0.75]],
+            segments_for: Vec::new(),
             missing_files: Vec::new(),
             matte: None,
             enhanced_text: None,
@@ -401,9 +405,15 @@ fn route(method: &str, path: &str, body: &[u8], ctype: &str, opts: &Options, sta
                     })
                     .collect()
             } else if graph_text.contains("SAM3_Detect") {
-                // A detector: one mask image per configured segment (none = nothing found).
+                // A detector: one mask image per configured segment (none = nothing found); a
+                // prompt listed in `segments_for` gets its own list.
                 let (w, h) = size;
-                opts.segments
+                let segments = opts
+                    .segments_for
+                    .iter()
+                    .find(|(t, _)| graph_text.contains(&format!("\"text\":\"{t}\"")) || graph_text.contains(&format!("\"text\": \"{t}\"")))
+                    .map_or(&opts.segments, |(_, s)| s);
+                segments
                     .iter()
                     .enumerate()
                     .map(|(i, r)| {

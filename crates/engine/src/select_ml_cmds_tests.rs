@@ -216,10 +216,48 @@ fn select_subject_ml_uses_a_fixed_phrase() {
     s.execute(SUBJECT_ML, json!({})).unwrap();
     s.execute(SUBJECT_ML, json!({"what": "sky", "mode": "add"})).unwrap();
     let st = fake.state();
+    assert_eq!(st.prompts.len(), 2, "the main subject found at once: no fallback asked");
     assert_eq!(st.prompts[0].1["3"]["inputs"]["text"], "the main subject");
     assert_eq!(st.prompts[1].1["3"]["inputs"]["text"], "sky");
     drop(st);
     assert!(matches!(s.execute(SUBJECT_ML, json!({"what": "banana"})), Err(EngineError::BadParams { .. })));
+}
+
+#[test]
+fn select_subject_falls_back_through_the_kinds_of_thing_a_picture_is_of_and_drops_specks() {
+    // "the main subject" and "the foreground object" find nothing; "person" finds a figure and
+    // a speck beside it.
+    let fake = FakeComfy::start_with(Options {
+        segments_for: vec![
+            ("the main subject".into(), vec![]),
+            ("the foreground object".into(), vec![]),
+            ("person".into(), vec![[0.25, 0.25, 0.75, 0.75], [0.9, 0.9, 0.92, 0.92]]),
+        ],
+        ..Options::default()
+    })
+    .unwrap();
+    let mut s = session(&fake.url);
+    let r = s.execute(SUBJECT_ML, json!({})).unwrap();
+    let asked: Vec<String> = fake.state().prompts.iter().map(|p| p.1["3"]["inputs"]["text"].as_str().unwrap_or_default().to_string()).collect();
+    assert_eq!(asked, ["the main subject", "the foreground object", "person"]);
+    assert_eq!(r["count"], 1, "the speck beside the figure is dropped: {r}");
+    assert_eq!(selection_bounds(&s), Some(Rect::new(16, 12, 48, 36)));
+    // Asked for by number, a speck stays an instance.
+    let r = s.execute(BY_TEXT, json!({"prompt": "person", "instance": 2})).unwrap();
+    assert_eq!(r["count"], 2);
+    // Nothing anywhere: one clear error after the whole chain, the selection untouched.
+    let none = FakeComfy::start_with(Options { segments: vec![], ..Options::default() }).unwrap();
+    let mut s2 = session(&none.url);
+    let e = s2.execute(SUBJECT_ML, json!({})).unwrap_err().to_string();
+    assert!(e.contains("nothing matching"), "{e}");
+    assert_eq!(none.state().prompts.len(), SUBJECT_FALLBACKS.len(), "every fallback was tried");
+    assert!(s2.active().unwrap().doc.selection.is_none());
+    // The server's own words for an empty mask batch read as "nothing found".
+    let bad =
+        FakeComfy::start_with(Options { fail: Some("SaveImage: index 0 is out of bounds for dimension 0 with size 0".into()), ..Options::default() }).unwrap();
+    let mut s3 = session(&bad.url);
+    let e = s3.execute(BY_TEXT, json!({"prompt": "unicorn"})).unwrap_err().to_string();
+    assert!(e.contains("nothing matching \"unicorn\""), "{e}");
 }
 
 #[test]

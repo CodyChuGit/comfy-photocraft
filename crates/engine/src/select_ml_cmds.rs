@@ -299,6 +299,9 @@ fn detect(
     let resp = match generate_cmds::run_switching(backend, server, &req, &JobProgress::new(ctx)) {
         Ok(r) => r,
         Err(photocraft_genai::Error::NoOutput(_)) => return Err(EngineError::Other(format!("nothing matching \"{shown}\" was found"))),
+        // No instance at all: the official graph's SaveImage then gets an empty mask batch and
+        // the server reports that as an index error.
+        Err(e) if found_nothing(&e.to_string()) => return Err(EngineError::Other(format!("nothing matching \"{shown}\" was found"))),
         Err(e) => return Err(gen_err(e)),
     };
     ctx.check()?;
@@ -309,6 +312,47 @@ fn detect(
         masks.push(red);
     }
     Ok((masks, resp.elapsed_ms))
+}
+
+/// The server's way of saying the detector found no instance (ComfyUI 0.39's SaveImage on an
+/// empty mask batch).
+fn found_nothing(message: &str) -> bool {
+    let m = message.to_ascii_lowercase();
+    m.contains("out of bounds for dimension 0 with size 0") || m.contains("nothing matching")
+}
+
+/// Ask with `prompts` in turn until one finds something (Select Subject's fallbacks); the
+/// masks and the prompt that found them.
+fn detect_any(
+    backend: &dyn photocraft_genai::GenerativeBackend,
+    server: &str,
+    image: &Rgba8,
+    canvas: Rect,
+    pr: &Prompting,
+    prompts: &[String],
+    ctx: &JobCtx,
+) -> Result<(Vec<Gray8>, u64, String)> {
+    let mut last = None;
+    for (i, p) in prompts.iter().enumerate() {
+        ctx.check()?;
+        let mut attempt = pr.clone();
+        attempt.prompt = p.clone();
+        match detect(backend, server, image.clone(), canvas, &attempt, ctx) {
+            Ok((masks, ms)) if !masks.is_empty() => return Ok((masks, ms, p.clone())),
+            Ok(_) => last = Some(EngineError::Other(format!("nothing matching \"{p}\" was found"))),
+            Err(e) if found_nothing(&e.to_string()) && i + 1 < prompts.len() => last = Some(e),
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last.unwrap_or_else(|| EngineError::Other("nothing was found".into())))
+}
+
+/// Drop specks: instances under 2 % of the largest (a stray 80-pixel "person" beside the real
+/// one), unless the caller asked for one by number.
+fn without_specks(mut instances: Vec<(Vec<f32>, Rect, u64)>) -> Vec<(Vec<f32>, Rect, u64)> {
+    let largest = instances.iter().map(|(_, _, n)| *n).max().unwrap_or(0);
+    instances.retain(|(_, _, n)| *n * 50 >= largest);
+    instances
 }
 
 /// Soften a detector's hard mask with the classical edge refinement (a narrow smart radius, a
@@ -430,6 +474,13 @@ fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Resu
         label_prefix.to_string()
     };
     let shown = pr.prompt.clone();
+    // Select Subject asks for the main subject and, finding none, for the kinds of thing a
+    // picture is usually of.
+    let prompts: Vec<String> = if cmd == SUBJECT_ML && pr.prompt == subject_prompt("subject").unwrap_or_default() {
+        SUBJECT_FALLBACKS.iter().map(|p| (*p).to_string()).collect()
+    } else {
+        vec![pr.prompt.clone()]
+    };
     crate::jobs::edit_job(
         s,
         &label,
@@ -438,9 +489,12 @@ fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Resu
             let area = doc.bounds();
             let n = area.width() as usize * area.height() as usize;
             let (image, _) = detector_image(doc, *active, all_layers, MAX_SEGMENT_REQUEST_PIXELS)?;
-            let (masks, ms) = detect(backend.as_ref(), &server, image, area, &pr, ctx)?;
+            let (masks, ms, _) = detect_any(backend.as_ref(), &server, &image, area, &pr, &prompts, ctx)?;
             ctx.progress(0.95, "Selecting");
-            let instances = instances_of(&masks, area)?;
+            let mut instances = instances_of(&masks, area)?;
+            if instance.is_none() {
+                instances = without_specks(instances);
+            }
             if instances.is_empty() {
                 return Err(EngineError::Other(format!("nothing matching \"{shown}\" was found")));
             }
@@ -459,6 +513,12 @@ fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Resu
 fn run_by_text(s: &mut Session, p: &Value) -> Result<Value> {
     run_select(s, BY_TEXT, p, "Select by Text")
 }
+
+/// What Select Subject asks for, in turn, until something is found: the main subject, then
+/// the kinds of thing a picture is usually of (checked live 2026-10-16 on seven pictures: "the
+/// main subject" found the fox, a face, a balloon, a lighthouse; "subject" alone failed on
+/// three of them).
+pub const SUBJECT_FALLBACKS: &[&str] = &["the main subject", "the foreground object", "person", "animal", "object"];
 
 /// What `select.subjectML` asks the model for, by `what`.
 fn subject_prompt(what: &str) -> Option<&'static str> {

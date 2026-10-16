@@ -61,6 +61,19 @@ can pick up.
   Refine mode and its undo depth, mode switching; the finder in a kittest harness with the inline
   fake; no server and the menu's Select Subject) and `retouch_ui`'s updated test. Gates: clippy,
   fmt, layers, wasm, parity, scorecard 57 of 156 unread (the new preference is read).
+- **Select Subject, after the owner said it "sucks"**: a sweep of seven phrasings over seven
+  pictures (through the CLI) showed "the main subject" finding the fox, a sideways face, a
+  balloon and a lighthouse tower, while "subject" alone failed on three pictures with the
+  server's raw `SaveImage: index 0 is out of bounds` (an empty mask batch), and "person" on a
+  seascape returned an 83-pixel speck. So `select.subjectML` now asks in turn: "the main
+  subject", "the foreground object", "person", "animal", "object" (one detector call each,
+  ~0.5 s warm, stopping at the first hit); instances under 2 % of the largest are dropped unless
+  one is asked for by number; the server's empty-batch error reads as "nothing matching"; and
+  every Select Subject entry point (the Select menu, the Properties quick action, both options
+  bars) goes through the detector with Refine edge. Before this build the menu and the Quick
+  Selection bar still ran the classical `select.subject`, which on the lighthouse picture selects
+  the whole lower half: most likely what the owner saw. The fake server gained `segments_for`
+  (per-prompt answers) to test the chain.
 - **Open**: the sidecar (report step 2) is not started; SAM's box-on-a-part weakness could be
   helped by sending the box crop at full resolution; the finder could pre-warm the checkpoint on
   tool selection (the first probe after a cold server takes ~19 s, the model load).
