@@ -86,6 +86,14 @@ can pick up.
   fragmented fox, and a CLI sweep of the same stroke with 1, 2, 4, 8, 16 spots gave 344 k, 335 k,
   337 k, 292 k and 164 k pixels: SAM 3.1's mask degrades as positive points pile up, so 4 it is
   (whole fox, 0.9 s warm; a second stroke adds, an ⌥ stroke over the tail subtracts it).
+- **One checkout from now on.** The owner had been testing the taskbar-pinned app, which was
+  `C:\Users\5090\Projects\comfy-photocraft\target\release\photocraft.exe` built 2026-10-15 02:12,
+  i.e. none of this week's work; that explained "Select Subject is really bad". PhotoshopEX
+  (`C:\Users\5090\Documents\PhotoshopEX`, branch `photoshopex`) is the main line; the other
+  checkout was fast-forwarded to the same commit and its three uncommitted local-build tweaks
+  (wheel = zoom default, no Discord button in the title bar, the Ps-style tile in
+  `assets/app-icon/ps/`, from its 2026-10-15 entry below) were ported here by patch. The pin now
+  points at this checkout's binary. The old checkout is to be deleted by the owner.
 - **Open**: the sidecar (report step 2) is not started; SAM's box-on-a-part weakness could be
   helped by sending the box crop at full resolution; the finder could pre-warm the checkpoint on
   tool selection (the first probe after a cold server takes ~19 s, the model load).
@@ -422,6 +430,31 @@ The owner branched the fork into their own version: this checkout,
 Open here: the product name (the window title and `--help` still say PhotoCraft; "Photoshop" is
 Adobe's trademark, so the published name is the owner's call), and everything in the entries
 below.
+
+## 2026-10-15: local-build look and feel (wheel zoom, no Discord button, Ps tile)
+
+The user's three asks for the local build. Hotkeys were already Photoshop's (`shortcuts.rs`,
+no overrides in `preferences.json`); the one that felt off was the wheel: Photoshop's default
+is wheel = scroll, Alt + wheel = zoom, which upstream copies, and the user wants wheel = zoom.
+
+**Landed**
+
+- `General::zoom_with_scroll_wheel` defaults to `true` in the fork (`prefs.rs`); the saved
+  `preferences.json` on this PC was flipped by hand too, since serde writes every field and a
+  stored `false` would have won over the new default. Alt + wheel now scrolls (`wheel_nav.rs`
+  swaps the two; untouched).
+- The title bar's Discord button is gone (`panels.rs`: the block and `DISCORD_ROOM`); Help ›
+  Discord stays, so `links.rs` and its tests are untouched. The `titlebar.rs` width test now
+  asserts the button is absent at every width; `docs/ui-design.md` says the same.
+- A Photoshop-style "Ps" tile (`assets/app-icon/ps/`, README there) in place of the kitsune in
+  the title bar (`brand.rs`), the window/taskbar icon (`app_icon.rs`, non-macOS) and the exe
+  resource (`build.rs`). New files, three path edits; the kitsune assets are untouched for
+  merges. Personal build only: it must never ship (`upstream.md` brand checklist).
+
+**Open**
+
+- The fork is 1,728 commits behind upstream (2026-10-15), which closes ~1,200 issues a week,
+  many of them parity fixes. A merge is the next big lever on "feels unlike Photoshop".
 
 ## 2026-10-09 (night): the prompt enhancer
 

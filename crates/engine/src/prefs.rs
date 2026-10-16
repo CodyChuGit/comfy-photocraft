@@ -187,7 +187,8 @@ impl Default for General {
             export_clipboard: true,
             resize_image_during_place: true,
             always_create_smart_objects_when_placing: true,
-            zoom_with_scroll_wheel: false,
+            // Fork: on by default (upstream follows Photoshop's off; Alt + wheel then zooms).
+            zoom_with_scroll_wheel: true,
             animated_zoom: true,
             zoom_resizes_windows: false,
             use_legacy_free_transform: false,
