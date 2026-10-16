@@ -74,6 +74,18 @@ can pick up.
   Selection bar still ran the classical `select.subject`, which on the lighthouse picture selects
   the whole lower half: most likely what the owner saw. The fake server gained `segments_for`
   (per-prompt answers) to test the chain.
+- **Quick Selection through SAM 3.1** (owner: "make quick select use sam also"): a stroke of the
+  Quick Selection tool, when the server answers, is one `select.byPoint` with at most 4 spots
+  spread evenly along the stroke's samples (`retouch_ui::stroke_prompt`: whole pixels inside the
+  canvas, no repeats), `mode` add (⌥: subtract, so the object under the stroke comes out) and
+  `refine` = the bar's Enhance Edge; the classical `select.quick` stays for no server, a server
+  that is down, or a stroke off the canvas. The options bar says "Paint over an object to select
+  it" when a server is configured (×13). Tests: `quick_selection_strokes_ask_the_detector_when_a_server_answers`
+  (fake server; no server / down server → `select.quick`) and `stroke_prompt_spreads_a_few_whole_pixel_spots_inside_the_canvas`.
+  The cap was 16 first; the live script (`bench/scripts/quick-select-live.ps1`) showed a hatched,
+  fragmented fox, and a CLI sweep of the same stroke with 1, 2, 4, 8, 16 spots gave 344 k, 335 k,
+  337 k, 292 k and 164 k pixels: SAM 3.1's mask degrades as positive points pile up, so 4 it is
+  (whole fox, 0.9 s warm; a second stroke adds, an ⌥ stroke over the tail subtracts it).
 - **Open**: the sidecar (report step 2) is not started; SAM's box-on-a-part weakness could be
   helped by sending the box crop at full resolution; the finder could pre-warm the checkpoint on
   tool selection (the first probe after a cold server takes ~19 s, the model load).

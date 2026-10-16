@@ -63,6 +63,10 @@ pub fn finish_stroke(app: &mut PhotocraftApp, tool: Tool, points: &[[f64; 3]], m
         Tool::QuickSelection => {
             let size = app.session.tools.brush.size;
             let mode = if mods.alt { "subtract" } else { "add" };
+            // comfy-photocraft: with a server that answers the stroke is SAM 3.1's prompt.
+            if quick_select_detector(app, points, mode) {
+                return true;
+            }
             let xy: Vec<[f64; 2]> = points.iter().map(|q| [q[0], q[1]]).collect();
             let _ = app
                 .run("select.quick", json!({"points": xy, "size": size, "mode": mode, "enhanceEdge": o.enhance_edge, "sampleAllLayers": o.sample_all_layers}));
@@ -83,6 +87,59 @@ pub fn finish_stroke(app: &mut PhotocraftApp, tool: Tool, points: &[[f64; 3]], m
             app.ui.status = e;
             app.ui.status_error = true;
         }
+    }
+    true
+}
+
+/// comfy-photocraft: how many spots along a Quick Selection stroke the detector gets. SAM 3.1
+/// reads several positive points as one object, but the mask degrades as they pile up (the fox
+/// picture, 2026-10-16: 1–4 spots along a stroke give the whole fox, ~340 k pixels; 8 give
+/// 292 k; 16 give a fragmented 164 k), so the stroke's ends and two spots between them say which
+/// object.
+pub(crate) const QUICK_STROKE_POINTS: usize = 4;
+
+/// The spots along a Quick Selection stroke that go to the detector: at most
+/// [`QUICK_STROKE_POINTS`], evenly spaced along the stroke's samples, whole pixels inside the
+/// `canvas` (width, height), no repeats.
+pub(crate) fn stroke_prompt(points: &[[f64; 3]], canvas: [f64; 2]) -> Vec<[f64; 2]> {
+    let inside: Vec<[f64; 2]> = points
+        .iter()
+        .map(|p| [p[0].round(), p[1].round()])
+        .filter(|p| p[0].is_finite() && p[1].is_finite() && p[0] >= 0.0 && p[1] >= 0.0 && p[0] < canvas[0] && p[1] < canvas[1])
+        .collect();
+    let n = inside.len();
+    let k = n.min(QUICK_STROKE_POINTS);
+    let mut out: Vec<[f64; 2]> = Vec::with_capacity(k);
+    for i in 0..k {
+        let idx = if k < 2 { 0 } else { i * (n - 1) / (k - 1) };
+        if let Some(p) = inside.get(idx).copied()
+            && !out.contains(&p)
+        {
+            out.push(p);
+        }
+    }
+    out
+}
+
+/// comfy-photocraft: a Quick Selection stroke through SAM 3.1 when the server answers. The spots
+/// along the stroke are one point prompt (`select.byPoint`), so painting over an object selects
+/// the object rather than the similar-coloured region; ⌥ subtracts the object under the stroke;
+/// Enhance Edge is the detector's edge refinement. False, the classical `select.quick`, without
+/// a server, with one that is down, or for a stroke entirely off the canvas.
+fn quick_select_detector(app: &mut PhotocraftApp, points: &[[f64; 3]], mode: &str) -> bool {
+    let now = app.last_frame_time;
+    if !crate::object_select::online(app, now) {
+        return false;
+    }
+    let Some(canvas) = app.session.active().map(|d| [f64::from(d.doc.size.width), f64::from(d.doc.size.height)]) else { return false };
+    let pts = stroke_prompt(points, canvas);
+    if pts.is_empty() {
+        return false;
+    }
+    let o = &app.ui.tool_options;
+    let q = json!({"points": pts, "mode": mode, "sampleAllLayers": o.sample_all_layers, "refine": o.enhance_edge});
+    if let Err(e) = app.run("select.byPoint", q) {
+        crate::notices::error(app, e);
     }
     true
 }
@@ -326,6 +383,10 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
         Tool::QuickSelection => {
             crate::widgets::checkbox(ui, &mut o.sample_all_layers, tl!("Sample All Layers"));
             crate::widgets::checkbox(ui, &mut o.enhance_edge, tl!("Enhance Edge"));
+            // With a generative server the stroke goes to SAM 3.1 (`quick_select_detector`).
+            if server {
+                opt(ui, tl!("Paint over an object to select it"));
+            }
             opt(ui, &crate::i18n::fmt(tl!("{key} to subtract"), &[("key", &crate::shortcuts::pretty("Alt"))]));
             crate::widgets::vline(ui, 22.0);
             if crate::widgets::secondary_button(ui, tl!("Select Subject"), 0.0).clicked() {
@@ -475,6 +536,71 @@ mod tests {
         tool_event(&mut app, ToolEvent::Up { x: 40.0, y: 30.0 }, none);
         assert_ne!(app.session.journal.last().map(|(id, _)| id.as_str()), Some("select.byPoint"), "a server that is down: no point prompt");
         assert!(!app.ui.status_error, "{}", app.ui.status);
+    }
+
+    /// comfy-photocraft: a Quick Selection stroke is SAM 3.1's point prompt when a server answers
+    /// (spots along the stroke, ⌥ subtracts, Enhance Edge is the refinement); without one, or with
+    /// one that is down, it stays the classical `select.quick`.
+    #[test]
+    fn quick_selection_strokes_ask_the_detector_when_a_server_answers() {
+        let fake = photocraft_genai::fake::FakeComfy::start().unwrap();
+        let mut app = app();
+        app.ui.tool = Tool::QuickSelection;
+        app.ui.tool_options.enhance_edge = false;
+        let none = egui::Modifiers::NONE;
+        let stroke = |app: &mut PhotocraftApp, mods: egui::Modifiers| {
+            tool_event(app, ToolEvent::Down { x: 10.0, y: 30.0, pressure: 1.0 }, mods);
+            for x in (12..=50).step_by(2) {
+                tool_event(app, ToolEvent::Move { x: f64::from(x), y: 30.0, pressure: 1.0 }, mods);
+            }
+            tool_event(app, ToolEvent::Up { x: 50.0, y: 30.0 }, mods);
+            assert!(!app.ui.status_error, "{}", app.ui.status);
+        };
+        // No server: the classical quick selection.
+        app.session.edit_prefs(|p| p.integrations.comfy_server.clear());
+        stroke(&mut app, none);
+        assert_eq!(app.session.journal.last().map(|(id, _)| id.as_str()), Some("select.quick"));
+        assert!(fake.state().prompts.is_empty());
+        // A server: the stroke's spots become the detector's positive points, mode add.
+        app.session.edit_prefs(|p| p.integrations.comfy_server = fake.url.clone());
+        app.ui.tool_options.enhance_edge = true;
+        stroke(&mut app, none);
+        let (id, p) = app.session.journal.last().map(|(id, p)| (id.clone(), p.clone())).unwrap();
+        assert_eq!(id, "select.byPoint");
+        assert_eq!((p["mode"].as_str(), p["refine"].as_bool()), (Some("add"), Some(true)));
+        let pts = p["points"].as_array().unwrap();
+        assert!(pts.len() > 1 && pts.len() <= QUICK_STROKE_POINTS, "{} spots", pts.len());
+        assert_eq!((pts.first().cloned(), pts.last().cloned()), (Some(json!([10.0, 30.0])), Some(json!([50.0, 30.0]))), "the stroke's ends are in");
+        {
+            let st = fake.state();
+            assert_eq!(st.prompts.len(), 1);
+            let coords = st.prompts[0].1["4"]["inputs"]["positive_coords"].as_str().unwrap_or_default();
+            assert!(coords.contains("\"x\":10") && coords.contains("\"x\":50"), "{coords}");
+        }
+        assert!(app.session.active().unwrap().doc.selection.is_some());
+        // ⌥: the object under the stroke is subtracted.
+        stroke(&mut app, egui::Modifiers::ALT);
+        assert_eq!(app.session.journal.last().map(|(_, p)| p["mode"].as_str()), Some(Some("subtract")));
+        assert_eq!(fake.state().prompts.len(), 2);
+        // A server that is down: the classical path again, quietly.
+        app.session.edit_prefs(|p| p.integrations.comfy_server = "http://127.0.0.1:9".into());
+        stroke(&mut app, none);
+        assert_eq!(app.session.journal.last().map(|(id, _)| id.as_str()), Some("select.quick"));
+    }
+
+    #[test]
+    fn stroke_prompt_spreads_a_few_whole_pixel_spots_inside_the_canvas() {
+        let canvas = [100.0, 60.0];
+        // A long stroke is thinned to the cap, ends kept, in order.
+        let long: Vec<[f64; 3]> = (0..200).map(|i| [f64::from(i) * 0.4, 20.4, 1.0]).collect();
+        let p = stroke_prompt(&long, canvas);
+        assert_eq!(p.len(), QUICK_STROKE_POINTS);
+        assert_eq!((p[0], p[p.len() - 1]), ([0.0, 20.0], [80.0, 20.0]));
+        assert!(p.windows(2).all(|w| w[0][0] < w[1][0]));
+        // Points off the canvas are dropped, repeats merged, a dot is one spot.
+        assert_eq!(stroke_prompt(&[[-3.0, 5.0, 1.0], [5.2, 5.2, 1.0], [4.8, 4.9, 1.0], [120.0, 5.0, 1.0]], canvas), vec![[5.0, 5.0]]);
+        assert!(stroke_prompt(&[[-1.0, -1.0, 1.0], [f64::NAN, 2.0, 1.0]], canvas).is_empty());
+        assert!(stroke_prompt(&[], canvas).is_empty());
     }
 
     #[test]

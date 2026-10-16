@@ -2304,3 +2304,4 @@ cameraRaw	Color	カラー
 	Click to include a spot, Alt-click to exclude one	クリックで場所を含め、Alt+クリックで除外
 	Click an object, or drag a box around it	オブジェクトをクリックするか、周りをドラッグして枠で囲みます
 	Fast	高速
+	Paint over an object to select it	オブジェクトの上をなぞると選択されます

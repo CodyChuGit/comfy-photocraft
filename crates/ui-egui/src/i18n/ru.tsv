@@ -2596,3 +2596,4 @@ cameraRaw	Roughness	Неровность
 	Click a spot the object must include; Alt-click one it must not	Щёлкните точку, которую объект должен включать; Alt+щелчок — исключить
 	Click to include a spot, Alt-click to exclude one	Щелчок включает точку, Alt+щелчок исключает
 	Click an object, or drag a box around it	Щёлкните объект или обведите его рамкой
+	Paint over an object to select it	Проведите по объекту, чтобы выделить его

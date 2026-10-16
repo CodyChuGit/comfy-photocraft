@@ -117,6 +117,10 @@ server) with the models you installed there; the app ships no weights.
   grow or trim the last object: click a spot it must include, ⌥-click one it must not. **Refine
   edge** softens the detector's edge from the pixels (hair, fur). Select › Subject uses the
   detector too.
+- **The Quick Selection tool (W) with SAM 3.1**: paint over an object and the detector selects
+  the object under the stroke (a handful of spots along it are the point prompt), not the
+  similar-coloured region; another stroke adds, ⌥ subtracts the object under the stroke; **Enhance
+  Edge** is the detector's edge refinement. Without a server it is the classical quick selection.
 - **Preferences › Alerts**: a short sound when a run finishes (`done`) or also when it fails
   (`doneAndFailed`); the Windows and macOS packages are built with the `alerts` feature.
 
