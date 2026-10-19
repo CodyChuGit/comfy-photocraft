@@ -2315,7 +2315,7 @@ dependencies = [
 [[package]]
 name = "gn-engine"
 version = "0.1.0"
-source = "git+https://github.com/CodyChuGit/genai-native.git?rev=2b2b1417c1c144743d324d8a999f792c0331a401#2b2b1417c1c144743d324d8a999f792c0331a401"
+source = "git+https://github.com/CodyChuGit/genai-native.git?rev=5202e614cc885e0904e42ba75e27d7a3ab191960#5202e614cc885e0904e42ba75e27d7a3ab191960"
 dependencies = [
  "serde",
  "serde_json",
@@ -2324,7 +2324,7 @@ dependencies = [
 [[package]]
 name = "gn-perception"
 version = "0.1.0"
-source = "git+https://github.com/CodyChuGit/genai-native.git?rev=2b2b1417c1c144743d324d8a999f792c0331a401#2b2b1417c1c144743d324d8a999f792c0331a401"
+source = "git+https://github.com/CodyChuGit/genai-native.git?rev=5202e614cc885e0904e42ba75e27d7a3ab191960#5202e614cc885e0904e42ba75e27d7a3ab191960"
 dependencies = [
  "gn-engine",
  "ort",

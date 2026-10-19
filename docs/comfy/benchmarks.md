@@ -430,23 +430,26 @@ opening and the first-call autotune):** 16 of 16 at parity, bounds IoU 0.99–1.
 `kishanstar2003` SAM 3 export reached 11 of 16 (text prompts only;
 `bench/sam-ort-hf-compare-2026-10-19.md`). Engine times on the fox picture, warm:
 
-| SAM 3.1 route | ComfyUI node (fp16, torch SDPA) | ORT fp32, first call | ORT fp32, warm | ORT fp16, warm (`--fp16`, the default set now) |
-|---|---:|---:|---:|---:|
-| Picture embedding (vision trunk + both FPNs + CLS), once per picture | inside the node | 470–490 ms | 198 ms | **133 ms** |
-| Text (`select.byText`), one detection with 2 refinement passes, after the embedding | 154 ms whole node | 750 ms | 276 ms (text 5 + decoder 51 + crop vision 197 + heads 2× 23) | **202 ms** (5 + 41 + 133 + 23) |
-| Point (`select.byPoint`), 2 passes, after the embedding | 94 ms whole node | 140 ms | 21 ms | **22 ms** |
-| Box, after the embedding | ≈ 90 ms | 137 ms | 21 ms | 22 ms |
+| SAM 3.1 route | ComfyUI node (fp16, torch SDPA) | ORT fp32, first call | ORT fp32, warm | ORT fp16, warm | ORT fp16 + fused attention + device-resident features, warm (**the default set**) |
+|---|---:|---:|---:|---:|---:|
+| Picture embedding (vision trunk + both FPNs + CLS), once per picture | inside the node | 470–490 ms | 198 ms | 133 ms | **66 ms** (squash 8 + run 56) |
+| Text (`select.byText`), one detection with 2 refinement passes, after the embedding | 154 ms whole node | 750 ms | 276 ms | 202 ms | **132 ms** (text 5 + decoder 36 + crop vision 66 + heads 2× 7) |
+| Point (`select.byPoint`), 2 passes, after the embedding | 94 ms whole node | 140 ms | 21 ms | 22 ms | **10 ms** |
+| Box, after the embedding | ≈ 90 ms | 137 ms | 21 ms | 22 ms | 10 ms |
 
 Reading: the masks are ComfyUI's (fox: 344 133 vs 344 125 pixels by point, 344 151 vs 344 045 by
-text, 142 239 vs 141 856 by box; fp16 16/16 at parity too, 344 142 by text). Per prompt on an
-embedded picture the native path is already **4× faster than ComfyUI's node** (22 ms against
-94 ms: the node re-runs the trunk every time, the worker keeps the embedding), which is the
-object finder's case; a fresh picture costs 133 + 22 = 155 ms by point and 335 ms by text
-against the node's 94 / 154 ms, because ORT's exported attention is the unfused
-MatMul-Softmax-MatMul chain (the ViTDet trunk is ≈ 2.5× torch's SDPA). Tried and dropped:
-opset 23 (the exporter emits the fused `Attention` op, but ORT 1.31's CUDA provider ran that
-graph in 2.7 s). Next levers: ORT's contrib `MultiHeadAttention` through the fusion optimizer,
-keeping the FPN tensors on the device between graphs (IoBinding), CUDA graphs for the heads.
+text, 142 239 vs 141 856 by box; every variant 16/16 at parity). The two steps that mattered
+after fp16: **the feature maps stay on the device** (ORT IoBinding: the vision graph's 220 MB of
+outputs no longer cross to the host and back for every prompt; "copy out" went from 25 ms to
+0 and a heads call from 22 to 10 ms), and **the exporter's attention replaced by ORT's fused
+`MultiHeadAttention`** (`export_sam31.py --mha`, a custom translation of
+`scaled_dot_product_attention`; the trunk's run 71 → 56 ms). ORT's profile of the trunk shows
+2 010 kernels per run and ≈ 37 ms of node time, so the remaining ≈ 20 ms is launch overhead: a
+CUDA graph for the vision session is the next lever. Against ComfyUI's node a fresh picture is
+now **79 ms by point (the node: 94)** and 198 ms by text (the node: 154; the crop refinement
+re-runs the trunk, as the node does). Tried and dropped: opset 23's `Attention` op (ORT 1.31's
+CUDA provider ran it in 2.7 s); ORT's offline transformers optimizer (fused BiasGelu and
+SkipLayerNorm only; RoPE and the window layout defeat its attention patterns).
 
 Parity yardsticks and thresholds: `genai-native/docs/PARITY.md`. The SAM suite compares
 instance bounds until an engine returns masks (Phase 1). The gates these numbers set for later

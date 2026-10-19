@@ -431,9 +431,10 @@ node's text, point and box routes including its crop refinement. 16/16 SAM cases
 0.99–1.00 against the ComfyUI references (`bench/sam-ort-comfy-compare-2026-10-19.md`). **Wired
 into the app the same day**: `PerceptionEngine` serves the worker, `integrations.runtimePath` /
 `modelsPath` + `engine = native` make `select.byPoint/byText` native (the fox's masks match the
-references exactly; 22 ms per prompt on an embedded picture, 133 ms for a new picture with the
-fp16 graphs). Not yet: on-device tensors, ORT's fused attention (the trunk is ≈ 2.5× torch's
-SDPA), the TensorRT provider; see 6.2 and the dev log.
+references exactly; with the fp16 graphs, ORT's fused attention and the feature maps kept on the
+device: 10 ms per prompt on an embedded picture, 66 ms for a new picture, against the ComfyUI
+node's 94 ms per point). Not yet: a CUDA graph for the trunk, the TensorRT provider; see 6.2 and
+the dev log.
 
 ### 6.1 Artifacts
 

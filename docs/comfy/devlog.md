@@ -345,8 +345,23 @@ can pick up.
     click applies it without a new detection (bounds 75,123,742,878), Alt-click refinement
     excludes the tail (90,124,726,876), the box prompt selects the head, Select › Subject runs
     through `select.subjectML` natively. Screenshots in the session's scratch folder.
-  - **Open after this**: on-device tensors (IoBinding) and ORT's fused attention for the trunk,
-    a tracker-only vision graph for the refinement crops, the licence/export notes
+  - **Device-resident features and fused attention** (`genai-native` `5202e61`): ORT's per-node
+    profile of the trunk (`gn-sam --profile`) showed ≈ 37 ms of node time inside an 82 ms run and
+    2 010 kernels, i.e. launch-bound, plus 25 ms of copying 220 MB of outputs to the host and
+    ≈ 10 ms per prompt uploading them again. Two changes: the vision session runs through an
+    `IoBinding` with its seven feature maps bound to the device's memory (they stay there as
+    `Tensor<f32>` values in the `Frame`; the decoder, geometry and heads sessions read them in
+    place; only the 256-number CLS token comes to the host), and `export_sam31.py --mha`
+    translates `scaled_dot_product_attention` to ORT's contrib `MultiHeadAttention` (a custom
+    translation table; the contrib op's schema is registered on the fly so onnxscript resolves
+    it). ORT's offline transformers optimizer could not fuse the attention itself (RoPE and the
+    window layout defeat its patterns; it fused BiasGelu and SkipLayerNorm only, no gain).
+    Warm: **vision 66 ms** (was 133), **heads 10 ms** (was 22), text route after the embedding
+    **132 ms** (was 202); a fresh picture by point 79 ms against the node's 94, by text 198
+    against 154. 16/16 at parity again (`runs/2026-10-19-sam-ort-comfy-fp16-mha`). The fused
+    fp16 set is now `_eval\native-models\sam3.1`; PhotoshopEX pinned to `5202e61`.
+  - **Open after this**: a CUDA graph for the vision session (the remaining ≈ 20 ms is launch
+    overhead), a tracker-only vision graph for the refinement crops, the licence/export notes
     (`gn-perception/docs/EXPORT.md`), a Preferences screenshot scrolled to the two new fields
     (the page renders; the fields sit below the fold at 900 pt).
 
