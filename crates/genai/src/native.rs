@@ -4,7 +4,9 @@
 //! one program; a CUDA fault ends the worker, never a document, and the next call starts a
 //! fresh one.
 //!
-//! Until the native models exist the worker serves `gn-engine`'s fake engine, which is enough to
+//! With a runtime folder and a model root configured (`integrations.runtimePath`,
+//! `integrations.modelsPath`) the worker serves `gn-perception`'s engine: SAM 3.1 through ONNX
+//! Runtime (plan Phase 1). Without them it serves `gn-engine`'s fake engine, which is enough to
 //! route a request end to end (and to test the editor without a GPU). Pixels cross as binary
 //! frames; everything else is the same `Request`/`Response` the ComfyUI backend speaks.
 
@@ -42,10 +44,18 @@ impl NativeBackend {
         Self { program, args, token: gn_engine::client::new_token(), client: Mutex::new(None), attached: false }
     }
 
-    /// This executable with `--engine` (the editor and the CLI both answer it).
-    pub fn this_executable() -> Result<Self> {
+    /// This executable with `--engine` (the editor and the CLI both answer it) and `extra` flags
+    /// for the worker ([`worker_args`]).
+    pub fn this_executable(extra: &[String]) -> Result<Self> {
         let exe = std::env::current_exe().map_err(|e| Error::Unavailable(format!("cannot find this executable: {e}")))?;
-        Ok(Self::new(exe, vec![ENGINE_FLAG.to_string()]))
+        let mut args = vec![ENGINE_FLAG.to_string()];
+        args.extend(extra.iter().cloned());
+        Ok(Self::new(exe, args))
+    }
+
+    /// The worker's command line after the program.
+    pub fn args(&self) -> &[String] {
+        &self.args
     }
 
     /// A backend over a worker already listening (tests serve `gn_engine::fake::FakeEngine` on
@@ -215,10 +225,22 @@ impl GenerativeBackend for NativeBackend {
     }
 }
 
-/// `photocraft --engine [--token T] [--step-ms N]`: this process becomes the worker. Reads the
-/// token from `GN_ENGINE_TOKEN` when not given, binds a loopback port, prints the port line,
-/// serves until the editor says quit. Returns the exit code. Serves the fake engine until the
-/// native models land.
+/// The worker flags the preferences translate into: `--runtime <dir;dir>` (where ONNX Runtime
+/// and the CUDA / cuDNN libraries live) and `--models <dir>` (the native model root, one
+/// subfolder per model). Empty preferences give no flags, and the worker serves the fake engine.
+pub fn worker_args(runtime_path: &str, models_path: &str) -> Vec<String> {
+    let (r, m) = (runtime_path.trim(), models_path.trim());
+    if r.is_empty() || m.is_empty() {
+        return Vec::new();
+    }
+    vec!["--runtime".into(), r.to_string(), "--models".into(), m.to_string()]
+}
+
+/// `photocraft --engine [--token T] [--step-ms N] [--runtime <dir;dir> --models <dir>] [--cpu]`:
+/// this process becomes the worker. Reads the token from `GN_ENGINE_TOKEN` when not given, binds
+/// a loopback port, prints the port line, serves until the editor says quit. Returns the exit
+/// code. With `--runtime` and `--models` it serves the perception engine (SAM 3.1 through ONNX
+/// Runtime); otherwise the fake engine.
 pub fn engine_main(args: &[String]) -> i32 {
     let mut token = std::env::var("GN_ENGINE_TOKEN").unwrap_or_default();
     let mut step_ms = 5u64;
@@ -250,8 +272,14 @@ pub fn engine_main(args: &[String]) -> i32 {
     let port = listener.local_addr().map(|a| a.port()).unwrap_or(0);
     println!("{}", gn_engine::server::port_line(port));
     let _ = std::io::Write::flush(&mut std::io::stdout());
-    let mut engine = gn_engine::fake::FakeEngine { step_ms, installed: template::builtin().iter().map(|t| t.meta.id.clone()).collect(), ..Default::default() };
-    match gn_engine::server::serve(&listener, &token, &mut engine) {
+    let served = match gn_perception::engine::from_args(args) {
+        Some(mut engine) => gn_engine::server::serve(&listener, &token, &mut engine),
+        None => {
+            let mut engine = gn_engine::fake::FakeEngine { step_ms, installed: template::builtin().iter().map(|t| t.meta.id.clone()).collect(), ..Default::default() };
+            gn_engine::server::serve(&listener, &token, &mut engine)
+        }
+    };
+    match served {
         Ok(()) => 0,
         Err(e) => {
             eprintln!("--engine: {e}");

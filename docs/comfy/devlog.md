@@ -278,10 +278,34 @@ can pick up.
     refines detector masks through the tracker; the Hugging Face layout stays in `sam3.rs` as a
     bring-up fallback. Python additions to ComfyUI's embedded interpreter for the export:
     `onnx` 1.23.2, `onnxscript` 0.7.2, `onnxruntime` 1.31.0 (CPU, verification only).
-  - **Open after this**: wire `Task::Segment` through the worker (`engine_main` gets a real
-    engine; prefs for the runtime and model directories; `select_ml_cmds` unchanged), the fp16
-    export and the on-device tensors, the licence/export notes (`gn-perception/docs/EXPORT.md`),
-    a lighter tracker-only vision graph for the refinement crops.
+  - **The app runs SAM 3.1 natively (same day; `genai-native` `2b2b141`).**
+    `gn_perception::engine::PerceptionEngine` is the worker-side `Engine` (feature `engine`):
+    it answers `sam3.1/segment`, `-point` and `-box` with the params PhotoshopEX's `select.*`
+    commands already send (`threshold`, `points` / `negatives` as JSON strings of `{x, y}`,
+    `bx by bw bh`), loads the runtime and the graphs on the first request, keeps them resident,
+    caches the last picture's embedding by content hash (the probe that follows the pointer pays
+    only the prompt), returns one 1-channel coverage blob per instance, and maps every failure
+    to the protocol's `ErrorKind`s. PhotoshopEX: `engine_main` serves it when the worker gets
+    `--runtime <dir;dir> --models <dir>` (the fake engine otherwise); two preferences,
+    `integrations.runtimePath` (`;`-separated folders holding ONNX Runtime and the CUDA / cuDNN
+    libraries; nothing from `PATH`) and `integrations.modelsPath` (the model root, `sam3.1/`
+    inside), become those flags through `native::worker_args`; `generate_cmds::native_backend`
+    keeps one `NativeBackend` per flag set and stops the worker when the folders change
+    (tests route through `NATIVE_OVERRIDE` instead). `select_ml_cmds.rs` is untouched: a
+    coverage blob arrives as the grey picture the ComfyUI route delivers. Labels "Native runtime
+    folders" / "Native models folder" ×13; `architecture.md` rows; README how-to. **Live through
+    `photocraft-cli run` with `engine = native` and the two folders set**, on the fox:
+    `select.byPoint` [69, 123, 747, 877] / 344 133 px in 4.4 s (sessions + first-call autotune),
+    `select.byText "fox"` [75, 123, 741, 877] / 344 151 px in 0.51 s, `select.byPoint` with a
+    box [90, 125, 617, 759] / 142 239 px in **34 ms** (the cached embedding: this is the probe's
+    cost from now on), `generate.health` = `native/ort` on `cuda:0`; the reference bounds exactly,
+    the pixel counts within 0.03 %; no worker left behind. Tests: genai 25 + 12 + 3, engine
+    native/prefs/select/generate subset 88, `prefs_usage` 4, clippy clean. Model files live at
+    `_eval\native-models\sam3.1` on this PC.
+  - **Open after this**: the fp16 export and on-device tensors (ComfyUI's node is still 3–5×
+    faster per call), a tracker-only vision graph for the refinement crops, the licence/export
+    notes (`gn-perception/docs/EXPORT.md`), `object_select.rs`'s shorter probe delay when the
+    engine reports `native`, the Preferences page screenshot with the two new fields.
 
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 

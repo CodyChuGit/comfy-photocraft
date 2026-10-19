@@ -2317,3 +2317,5 @@ cameraRaw	Blending	混合
 	Engine	引擎
 	Native	原生
 	ComfyUI	ComfyUI
+	Native runtime folders	原生執行階段資料夾
+	Native models folder	原生模型資料夾

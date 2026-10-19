@@ -132,8 +132,12 @@ server) with the models you installed there; the app ships no weights.
   the reason; the dot's menu has Start / Stop / Restart / Show log). No console window.
 - **Preferences › AI Integrations › Engine**: `Auto` (today the ComfyUI route), `ComfyUI`, or
   `Native` — the in-process worker (`photocraft --engine`, started on first use, restarted if
-  it dies). Until the native models land the worker paints placeholder pictures; it exists so
-  the whole path is exercised end to end.
+  it dies). With **Native runtime folders** (where ONNX Runtime and the CUDA / cuDNN libraries
+  live, `;`-separated) and a **Native models folder** (one subfolder per model; `sam3.1/` holds
+  the graphs `genai-native/tools/export_sam31.py` writes from your own checkpoint) set, the
+  worker runs SAM 3.1 itself: Select by Text, Select Subject, the Object Selection tool's
+  prompts and Quick Selection work with ComfyUI off and give the same masks. Without them the
+  worker paints placeholder pictures, so the path is exercised end to end on any machine.
 
 ## Status
 

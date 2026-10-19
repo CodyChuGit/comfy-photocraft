@@ -476,27 +476,43 @@ pub fn engine_mode(s: &Session) -> &'static str {
     }
 }
 
-/// The native engine's backend for this process: one worker (`photocraft --engine`), started
-/// on first use, shared by every command (plan-native-engine §3.4).
+/// The native engine's backend for this process: one worker (`photocraft --engine …`), started
+/// on first use, shared by every command (plan-native-engine §3.4). A change of the runtime or
+/// model folders (`integrations.runtimePath`, `integrations.modelsPath`) stops the worker so the
+/// next call starts one with the new flags.
 #[cfg(not(target_arch = "wasm32"))]
-static NATIVE: std::sync::OnceLock<std::sync::Mutex<Option<Arc<dyn GenerativeBackend>>>> = std::sync::OnceLock::new();
+static NATIVE: std::sync::OnceLock<std::sync::Mutex<Option<Arc<photocraft_genai::native::NativeBackend>>>> = std::sync::OnceLock::new();
+
+/// Tests: what `native` routes to instead (a fake engine served in-process).
+#[cfg(all(test, not(target_arch = "wasm32")))]
+static NATIVE_OVERRIDE: std::sync::OnceLock<std::sync::Mutex<Option<Arc<photocraft_genai::native::NativeBackend>>>> = std::sync::OnceLock::new();
 
 #[cfg(not(target_arch = "wasm32"))]
-pub(crate) fn native_backend() -> Result<Arc<dyn GenerativeBackend>> {
+pub(crate) fn native_backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> {
+    #[cfg(test)]
+    if let Some(b) = NATIVE_OVERRIDE.get_or_init(|| std::sync::Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        return Ok(Arc::clone(b) as Arc<dyn GenerativeBackend>);
+    }
+    let integrations = &s.prefs().integrations;
+    let wanted = photocraft_genai::native::worker_args(&integrations.runtime_path, &integrations.models_path);
     let slot = NATIVE.get_or_init(|| std::sync::Mutex::new(None));
     let mut g = slot.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(b) = g.as_ref() {
-        return Ok(Arc::clone(b));
+        // The flags after `--engine` are the preferences; a change restarts the worker.
+        if b.args().get(1..).unwrap_or(&[]) == wanted.as_slice() {
+            return Ok(Arc::clone(b) as Arc<dyn GenerativeBackend>);
+        }
+        b.stop();
+        *g = None;
     }
-    let b: Arc<dyn GenerativeBackend> = Arc::new(photocraft_genai::native::NativeBackend::this_executable().map_err(gen_err)?);
+    let b = Arc::new(photocraft_genai::native::NativeBackend::this_executable(&wanted).map_err(gen_err)?);
     *g = Some(Arc::clone(&b));
     Ok(b)
 }
 
-/// Tests: what `native` routes to (a fake engine served in-process).
 #[cfg(all(test, not(target_arch = "wasm32")))]
-pub(crate) fn set_native_backend(b: Arc<dyn GenerativeBackend>) {
-    let slot = NATIVE.get_or_init(|| std::sync::Mutex::new(None));
+pub(crate) fn set_native_backend(b: Arc<photocraft_genai::native::NativeBackend>) {
+    let slot = NATIVE_OVERRIDE.get_or_init(|| std::sync::Mutex::new(None));
     *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(b);
 }
 
@@ -506,7 +522,7 @@ pub(crate) fn set_native_backend(b: Arc<dyn GenerativeBackend>) {
 pub(crate) fn backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> {
     #[cfg(not(target_arch = "wasm32"))]
     if engine_mode(s) == "native" {
-        return native_backend();
+        return native_backend(s);
     }
     let integrations = &s.prefs().integrations;
     let url = integrations.comfy_server.trim();

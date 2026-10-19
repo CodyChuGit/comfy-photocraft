@@ -343,6 +343,8 @@ no new section, menu row or dialog page is needed:
 | `engineStartOnLaunch` | false | `engine_ui::on_launch` (`generate_engine_cmds::start_on_launch`) | **implemented 2026-10-18** |
 | `engineStopOnQuit` | true | `engine_ui::on_quit` (eframe `on_exit`) → `generate.engine.stop` | **implemented 2026-10-18** |
 | `engine` | `auto` | `generate_cmds::engine_mode` / `backend`: `native` → one process-wide `photocraft_genai::native::NativeBackend` (the worker `photocraft --engine`, `gn-engine`'s channel), `comfy` → the ComfyUI server, `auto` → the ComfyUI route until a native model is faster at parity (plan-native-engine §3.3) | **implemented 2026-10-19 (the worker serves the fake engine until the native models land)** |
+| `runtimePath` | `""` | `generate_cmds::native_backend` → the worker's `--runtime` flag (`;`-separated folders holding ONNX Runtime and the CUDA / cuDNN libraries; `gn_perception::runtime` loads them from there, never from `PATH`) | **plan-native-engine Phase 1, implemented 2026-10-19** |
+| `modelsPath` | `""` | `generate_cmds::native_backend` → the worker's `--models` flag (the native model root; `sam3.1/` holds the graphs `tools/export_sam31.py` exports) | **implemented 2026-10-19** |
 | `generativePreviews` | true | task bar overlay | Phase 2 |
 | `freeVramAfterRun` | false | client (`POST /free`) | Phase 2 |
 | `generativeContentFilter` | true | the moderation hook required by community licences | Phase 2 |

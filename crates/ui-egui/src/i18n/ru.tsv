@@ -2615,3 +2615,5 @@ cameraRaw	Roughness	Неровность
 	Engine	Движок
 	Native	Встроенный
 	ComfyUI	ComfyUI
+	Native runtime folders	Папки нативной среды выполнения
+	Native models folder	Папка нативных моделей

@@ -781,6 +781,13 @@ pub struct Integrations {
     /// takes a model over when it is faster at parity), `native` (the in-process worker,
     /// `photocraft --engine`), `comfy` (the ComfyUI server). See `generate_cmds::backend`.
     pub engine: String,
+    /// The native worker's runtime folders, `;`-separated: where ONNX Runtime
+    /// (`onnxruntime.dll` / `libonnxruntime.so` and its providers) and the CUDA and cuDNN
+    /// libraries live. Nothing is read from `PATH`. Empty = the worker serves no native model.
+    pub runtime_path: String,
+    /// The native worker's model root: one subfolder per model (`sam3.1/` holds the ONNX graphs
+    /// `tools/export_sam31.py` writes). Empty = the worker serves no native model.
+    pub models_path: String,
 }
 
 impl Default for Integrations {
@@ -810,6 +817,8 @@ impl Default for Integrations {
             engine_start_on_launch: false,
             engine_stop_on_quit: true,
             engine: "auto".into(),
+            runtime_path: String::new(),
+            models_path: String::new(),
         }
     }
 }

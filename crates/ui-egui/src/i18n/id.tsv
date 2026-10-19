@@ -2757,3 +2757,5 @@ cameraRaw	Blending	Pembauran
 	Engine	Mesin
 	Native	Native
 	ComfyUI	ComfyUI
+	Native runtime folders	Folder runtime native
+	Native models folder	Folder model native

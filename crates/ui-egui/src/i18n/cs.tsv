@@ -2340,3 +2340,5 @@ cameraRaw	Color	Barvy
 	Engine	Engine
 	Native	Nativní
 	ComfyUI	ComfyUI
+	Native runtime folders	Složky nativního běhového prostředí
+	Native models folder	Složka nativních modelů

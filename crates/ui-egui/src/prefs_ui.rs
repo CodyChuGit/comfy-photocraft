@@ -781,6 +781,13 @@ fn humanize(key: &str) -> String {
     if key == "comfyArgs" {
         return "ComfyUI launch flags".into();
     }
+    // The native worker (plan-native-engine Phase 1).
+    if key == "runtimePath" {
+        return "Native runtime folders".into();
+    }
+    if key == "modelsPath" {
+        return "Native models folder".into();
+    }
     let mut s = String::new();
     for (i, ch) in key.chars().enumerate() {
         if i == 0 {
