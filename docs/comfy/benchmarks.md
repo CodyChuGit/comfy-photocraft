@@ -461,10 +461,12 @@ SageAttention2, one process per picture):
 | Qwen-Image-2.1 at 1024², 25 steps | Per step | 25 steps | Text encoder | VAE decode | Per picture, resident | Per picture, cold process |
 |---|---:|---:|---:|---:|---:|---:|
 | ComfyUI (`best`, server warm) | ≈ 0.15 s | ≈ 3.7 s | inside | ≈ 0.2 s | 4.4–5.0 s engine time | 44 s the first (loads) |
-| qwen-image-rs on the 5090 (4090-tuned tiles) | **0.14 s** | **3.5 s** | 17 s to load (bf16, 16 GB) | 2.1 s (tiled: 11 GB free) | — (no resident mode in its `generate`) | 26–45 s (16 GB encoder load + DiT quantise 20 s) |
+| qwen-image-rs on the 5090 (4090-tuned tiles), first run | 0.14 s | 3.5 s | 17 s to load (bf16, 16 GB) | 2.1 s (tiled: 11 GB free) | — (no resident mode in its `generate`) | 45 s (16 GB encoder load + DiT quantise 20 s) |
+| the same, page cache and INT8 cache warm (`genai-native/crates/qir`) | **0.116 s** | **2.9 s** | ≈ 5 s to load | 0.43 s | — | **11–13 s** (DiT cache 3 s + encoder 5 s + 2.9 + 0.4) |
 
-Reading: the port's kernels are correct on sm_120 at exactly their 4090 speed (the authors'
-0.148 s/step), so the Python-free lane is at ComfyUI's speed, not ahead; the gap to close is
+Reading: the port's kernels are correct on sm_120 at the authors' 4090 speed or a little better
+(0.116–0.14 s/step against their 0.148), so the Python-free lane is at ComfyUI's speed (≈ 0.15),
+not ahead; the gap to close is
 tuning (tile plans for 170 SMs / 96 MB L2, Blackwell block-scaled GEMMs) and residency. Pictures
 match ComfyUI's at scene level only (0 of 24 at seed parity, PSNR 5–17 dB): the noise source and
 the schedule differ, which `gn-models` fixes by construction (ComfyUI's CPU noise and `simple`

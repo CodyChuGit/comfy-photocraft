@@ -69,6 +69,8 @@ things upstream never met, all environment, no source change:
 | CCCL: "MSVC/cl.exe with traditional preprocessor is used" then "libcu++ requires at least C++ 17" | CUDA 13.4's headers under MSVC | `set NVCC_APPEND_FLAGS=-Xcompiler /Zc:preprocessor -Xcompiler /MD -std=c++17` (nvcc reads it for every call, including the ones `cc` and `bindgen_cuda` make) |
 | `nvcc fatal: Failed to preprocess host compiler properties` / `Access is denied` | `NVCC_PREPEND_FLAGS=-ccbin "…"` keeps the quotes; and `vcvars64.bat` fails silently when `vswhere.exe` is not on PATH | no prepend flag; put `C:\Program Files (x86)\Microsoft Visual Studio\Installer` on PATH before `call vcvars64.bat` so cl, INCLUDE and LIB are set |
 | `LNK2038: mismatch detected for 'RuntimeLibrary'` (candle-kernels' `libmoe.a` is `/MT`, `cc`'s objects `/MD`) | nvcc's default host CRT is static | the `/MD` in the append flags above, and `cargo clean -p candle-kernels --release` so it recompiles |
+| the same for `esaxx_rs` (tokenizers' `esaxx_fast`) | its build script forces the static CRT | `tokenizers = { default-features = false, features = ["onig"] }` in the importing crate |
+| the DiT forward sits at step 0 for minutes at 100 % GPU | a Rust profile with `debug = 1` makes `cc` pass nvcc `-G` (device debug) | `cc::Build::debug(false).opt_level(3)` for the kernels (done in `crates/qir/build.rs`); device code never follows the Rust profile |
 
 The working batch (`CUTLASS_DIR` is a shallow clone of NVIDIA/cutlass main at `_eval\cutlass\include`):
 

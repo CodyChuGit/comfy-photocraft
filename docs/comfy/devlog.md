@@ -412,6 +412,16 @@ can pick up.
     without `esaxx_fast` (its C++ is built with the static CRT whatever the target and cannot
     link beside the CUDA objects), the cache-write fix; the root `NOTICE` lists the import, the
     vendored SageAttention, the SGLang reference file, CUTLASS, cuDNN, candle.
+  - **A stall and its cause.** Built inside the workspace the same crate sat at "denoising
+    step=0" for minutes at 100 % GPU, alone, with and without the cache, with one codegen unit,
+    with cudarc pinned to upstream's 0.19.9 (the standalone build in `_eval` kept working). The
+    difference was the workspace profile's `debug = 1`: the `cc` crate turns it into nvcc `-G`
+    (device debug, every optimisation off) for the kernels it compiles. `build.rs` now sets
+    `.debug(false).opt_level(3)` whatever the profile (`genai-native` `dfd35b4`). With that and
+    the cache write fixed, one process per picture is **11–13 s**: cache hit, DiT loaded in 3 s,
+    the bf16 text encoder in ≈ 5 s from the page cache, **25 steps in 2.9 s (0.116 s/step)**,
+    VAE decode 0.43 s untiled. Lesson for `gn-kernels`: device code gets its own flags, never the
+    Rust profile's.
   - **Next (plan §7.1)**: kernels into `gn-kernels` behind the `Kernels` trait with prebuilt
     fatbins, the DiT/encoder/VAE into `gn-blocks` + `gn-models/qwen_image_21.rs`, ComfyUI's
     `simple` schedule and CPU noise for seed-level parity with the reference, residency in the
