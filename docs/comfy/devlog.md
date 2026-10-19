@@ -332,6 +332,19 @@ can pick up.
     `select.byText` through the fake worker). A first attempt let the test override stand in for
     the folders and every `select_ml` test in the binary went native: the opt-in is the
     preferences, as in production.
+    Live with the real binaries and ComfyUI stopped, `engine = auto` + the two folders:
+    `select.byPoint` native (344 125 px), `generate.health {template: sam3.1/segment-point}` =
+    `native/ort`, `{template: krea2-turbo/image}` and plain health = ComfyUI (unreachable, as it
+    should say). **The real preferences now carry the two folders** (`%APPDATA%\Photocraft\
+    preferences.json`, backup `.bak-2026-10-19`; `engine` left at `auto`), so the pinned app
+    selects with native SAM 3.1 and still fills and generates through ComfyUI.
+  - **Phase 1's "done when" (plan §6.4), ComfyUI stopped**: `object-select-live.ps1 -Native`
+    (the switch sets the two folders in the script's own session; `engine` stays `auto`) passes
+    all five steps through the native worker: the finder's probe 3.3 s after the pointer rests
+    (worker start + sessions + the first-call autotune; later probes are the 22 ms kind), the
+    click applies it without a new detection (bounds 75,123,742,878), Alt-click refinement
+    excludes the tail (90,124,726,876), the box prompt selects the head, Select › Subject runs
+    through `select.subjectML` natively. Screenshots in the session's scratch folder.
   - **Open after this**: on-device tensors (IoBinding) and ORT's fused attention for the trunk,
     a tracker-only vision graph for the refinement crops, the licence/export notes
     (`gn-perception/docs/EXPORT.md`), a Preferences screenshot scrolled to the two new fields

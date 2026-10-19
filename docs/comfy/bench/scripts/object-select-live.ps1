@@ -2,14 +2,20 @@ param(
     [string]$Exe = "$PSScriptRoot\..\..\..\..\target\release\photocraft.exe",
     [string]$Images = "$PSScriptRoot\..\images",
     [int]$Port = 7884,
-    [string]$Work = "$env:TEMP\pex-object-select-live"
+    [string]$Work = "$env:TEMP\pex-object-select-live",
+    # -Native: SAM 3.1 through the native worker (plan-native-engine Phase 1): the session gets
+    # the runtime and model folders (`integrations.runtimePath` / `modelsPath`, `engine` stays
+    # `auto`), so ComfyUI may be off.
+    [switch]$Native,
+    [string]$RuntimePath = "C:/Users/5090/Documents/_eval/onnxruntime-cuda13/onnxruntime-win-x64-gpu_cuda13-1.31.0/lib;C:/Users/5090/scoop/apps/cuda/current/bin/x64;C:/Users/5090/ComfyUI/ComfyUI_windows_portable/python_embeded/Lib/site-packages/torch/lib",
+    [string]$ModelsPath = "C:/Users/5090/Documents/_eval/native-models"
 )
 # The Object Selection tool's SAM 3.1 mode, live: the release GUI (its own config folder under
 # $Work) with the fox picture; the object finder's probe appears when the pointer rests over the
 # fox (ui.move, then ui.inspect.objectSelect.probe); a click applies it without a new detection;
 # a box around the fox's head selects through the box prompt; Refine mode excludes a spot;
 # Select › Subject runs the detector. Screenshots land in $Work. Needs ComfyUI on 127.0.0.1:8188
-# with the SAM 3.1 checkpoint and krea2-fox.png in $Images.
+# with the SAM 3.1 checkpoint and krea2-fox.png in $Images, or -Native with the ONNX graphs.
 $ErrorActionPreference = "Stop"
 $config = Join-Path $Work "config"
 $token = Join-Path $Work "control.token"
@@ -71,6 +77,12 @@ function Prompts { (Exec "generate.jobs" @{ limit = 50; status = "done" }).jobs 
 
 $app = Start-App
 try {
+    if ($Native) {
+        $null = Exec "prefs.set" @{ path = "integrations.runtimePath"; value = $RuntimePath }
+        $null = Exec "prefs.set" @{ path = "integrations.modelsPath"; value = $ModelsPath }
+        $h = Exec "generate.health" @{ template = "sam3.1/segment-point" }
+        Write-Host ("0. SAM 3.1 backend: {0} ({1})" -f $h.backend, $h.device)
+    }
     $null = Call "app.open" @{ path = "krea2-fox.png" }
     $null = Call "ui.set" @{ tool = "ObjectSelection" }
     Start-Sleep -Milliseconds 800
