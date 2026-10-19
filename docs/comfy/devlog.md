@@ -208,6 +208,16 @@ can pick up.
   - `gn-engine` fix on the way: a worker whose greeted client leaves without `Quit` (a crashed
     editor) exits by itself; a refused greeting does not end it; tested with a hand-spawned
     worker.
+  - **Live through the real binaries**: `photocraft-cli run … prefs.set engine=native …
+    generate.image` spawned `photocraft-cli.exe --engine` as its worker, `generate.health` said
+    `native/fake`, the picture came back as a layer, no worker left behind. Suites after the
+    wiring: engine 921 (+1), UI all but the baseline `eyedropper`, wasm engine build green.
+  - **VS 2022 Build Tools installed on the second attempt** (17.14.42, MSVC 14.44; the UAC
+    prompt accepted this time) and **nvcc 13.4 compiles for `sm_120a` with it**: a one-kernel
+    smoke test built in 3.1 s and ran on the 5090 (cc 12.0). The kernel toolchain for
+    `gn-kernels` exists on this PC (`dev-environment-windows.md` › CUDA kernels); the
+    qwen-image-rs bring-up can be attempted here before WSL2 (its build script is POSIX-leaning,
+    so WSL2 stays the fallback).
 
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 

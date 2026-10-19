@@ -21,6 +21,9 @@ the Windows-specific layer on top of it.
 | rustup | 1.29.1 | `scoop install rustup` (2026-10-08) | `C:\Users\5090\scoop\apps\rustup\current` |
 | Rust | stable 1.99.0 (b940084d7 2026-09-28), host `x86_64-pc-windows-msvc` | installed by rustup-init | `CARGO_HOME=C:\Users\5090\scoop\persist\rustup\.cargo`, `RUSTUP_HOME=C:\Users\5090\scoop\persist\rustup\.rustup` |
 | MSVC | Visual Studio 2019 Build Tools with the VC x64/x86 tools and a Windows 10 SDK | pre-existing | `C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools` (found via `vswhere -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64`) |
+| MSVC 2022 | Visual Studio 2022 Build Tools 17.14.42, `Microsoft.VisualStudio.Workload.VCTools` (MSVC 14.44) | `winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"` (2026-10-19; the installer needs the UAC prompt accepted, exit 1602 = it was not) | `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`; CUDA 13's host compiler |
+| CUDA Toolkit | 13.4.3 (nvcc V13.4.92) | `scoop install cuda` (2026-10-19; user-level, no admin) | `C:\Users\5090\scoop\apps\cuda\current` (`bin` and `bin\x64` on the user PATH for new shells) |
+| CMake | 4.4.4 | `scoop install cmake` (2026-10-18) | scoop shim |
 | gh | 2.102.0 | `scoop install gh` (2026-10-08) | scoop shim; **not yet authenticated** (`gh auth login`) |
 | Python | none (only the Microsoft Store stub on PATH) | — | needed only for ComfyUI, which brings its own |
 | Node | none | — | not needed (the project is Rust only, by rule) |
@@ -38,6 +41,21 @@ them; either open a new terminal or prepend for the session:
 ```powershell
 $env:PATH = "C:\Users\5090\scoop\persist\rustup\.cargo\bin;$env:PATH"
 ```
+
+### CUDA kernels (the native engine, `genai-native`)
+
+`nvcc` wants VS 2022's `cl.exe` as its host compiler; name it explicitly (the 2019 one is first
+in `vswhere`'s order and nvcc 13 refuses it). Checked 2026-10-19 with a one-kernel smoke test:
+compiled for `sm_120a` in 3.1 s and ran on the 5090 (compute capability 12.0).
+
+```powershell
+$env:PATH = "C:\Users\5090\scoop\apps\cuda\current\bin;$env:PATH"
+$cl = (Get-ChildItem "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe" | Select-Object -First 1).FullName
+nvcc -arch=sm_120a -ccbin "$cl" -o kernel.exe kernel.cu
+```
+
+stable-diffusion.cpp's prebuilt CUDA 12 build (arch list includes 120) lives in
+`C:\Users\5090\Documents\_eval\sdcpp-bin` with its `cudart` zip; it needs no toolkit.
 
 ## Build and run
 

@@ -397,10 +397,10 @@ status dot; Preferences › AI Integrations › Engine. Live script `sidecar-liv
 repository (`gn-harness`, `gn-bench`; the ComfyUI baseline is recorded in `benchmarks.md` §8);
 §5.3's first row is in (sd.cpp Krea 2 Turbo Q8: 1.45× ComfyUI's step, the "lane, flagged for
 the kernel track" band; the `--engine sdcpp` harness runner and the Qwen-Image-2.1 row follow);
-§5.2 moves to WSL2 or the Linux box
-(qwen-image-rs builds its kernels with nvcc + a Linux cuDNN wheel, see the review note); §5.3 can
-use sd.cpp's prebuilt Windows CUDA 12.8 zip with arch 120 (no local toolkit needed); this PC has
-no CUDA toolkit, nvcc or VS 2022 yet (installs need the owner's go).
+§5.2 is attempted on this PC first (CUDA 13.4 + VS 2022 Build Tools installed 2026-10-19, nvcc
+`sm_120a` smoke test green), WSL2 or the Linux box as the fallback (qwen-image-rs's build script
+is POSIX-leaning and wants a Linux cuDNN wheel, see the review note); §5.3 runs from sd.cpp's
+prebuilt Windows CUDA 12.8 zip (arch 120).
 
 ### 5.5 Done when
 
