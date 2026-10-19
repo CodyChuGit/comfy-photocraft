@@ -262,6 +262,11 @@ address space:
 
 This is the one decision that is expensive to change later; §15 asks the owner to confirm it.
 
+**Status (2026-10-19):** built as `genai-native/crates/gn-engine` (protocol, server, client,
+fake engine, binary; child-process tests pass). Transport: loopback TCP with a token (one code
+path on all platforms, as the control channel), behind a transport-agnostic protocol. The
+editor's `NativeBackend` follows once PhotoshopEX can depend on the repository (§4).
+
 ### 3.5 Platforms: Windows and Linux first, macOS as a backend later
 
 The owner's requirement (2026-10-18): cross-platform, **Windows and Linux first**, macOS after.

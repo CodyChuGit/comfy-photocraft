@@ -146,6 +146,25 @@ can pick up.
   + F8 block scales `[out, in/16]` + F32 `weight_scale_2`. Krea 2's own naming (`blocks.N.attn.
   {wq,wk,wv,wo,gate}`, `txtfusion`, width 6144, text width 2560), 2.1's `modulation` prefix and
   hidden 4096 against 2511's 3072. Tests: 5 (+ a local-files test that runs only on this PC).
+- **`gn-engine` (plan §3.4, the worker process), in `genai-native`**: the protocol (`Request`/
+  `Reply` as JSON, pixels as binary blob frames preceding the message that names them, 256 MB
+  frame cap, `check_blobs`), the server loop (loopback TCP with a random port printed as the
+  first stdout line and a token from `GN_ENGINE_TOKEN`; one client at a time with a reader
+  thread so `Cancel` reaches a running engine; a second client is refused at once instead of
+  waiting in the backlog), the client (`spawn`/`connect`, a resumable `FrameReader` that keeps
+  partial bytes across the 200 ms cancel polls — `read_exact` under a read timeout would lose
+  them —, a 10 s greeting timeout, `quit`/`kill`/`alive`, a `Drop` that never leaves a worker
+  behind), a `FakeEngine` (solid pictures from the seed, tinted edits, a disc for segment,
+  typed `ModelMissing`), the `gn-engine` binary. Integration tests drive the real child
+  process: progress and residency, free, index, a typed error without a dead worker, cancel
+  within a second of a 10 s run, a killed worker noticed on the next call, a 1 MP picture both
+  ways, a mismatched blob refused before sending, a wrong token turned away while the first
+  client stays connected (the case that hung the first version). Transport note: TCP on
+  loopback was chosen over named pipes / Unix sockets because it is one code path on all three
+  platforms with the standard library alone and is what the app's control channel already
+  does; the protocol is transport-agnostic. The editor side (`NativeBackend`) waits on how
+  PhotoshopEX depends on `genai-native` (a path dependency breaks clean clones; a git dependency
+  needs the repository published — the owner's call).
 
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 
