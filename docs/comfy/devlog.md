@@ -368,9 +368,13 @@ can pick up.
     exhaustive search on and off. The code falls back to the plain session automatically (one
     slow picture, 1.4 s) and is **off by default**; the remaining ≈ 20 ms of launch overhead in
     the 56 ms trunk run waits for a later ORT or for our own kernels.
-  - **Open after this**: a tracker-only vision graph for the refinement crops, the
-    licence/export notes (`gn-perception/docs/EXPORT.md`), a Preferences screenshot scrolled to
-    the two new fields (the page renders; the fields sit below the fold at 900 pt).
+  - **Tracker-only vision graph for the crops: measured, left out.** `export_sam31.py --parts
+    tracker` writes `vision-tracker.onnx` (trunk + tracker FPN) and `sam31` uses it for the
+    refinement crops when present: 66 → 61 ms per crop, for 0.9 GB more on disk and in VRAM (the
+    trunk is the cost either way). Not in the default set. `gn-perception/docs/EXPORT.md` holds
+    the export, licence and reproducibility notes.
+  - **Open after this**: a Preferences screenshot scrolled to the two new fields (the page
+    renders; the fields sit below the fold at 900 pt); then plan Phase 2.
 
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 
