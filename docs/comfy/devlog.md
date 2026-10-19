@@ -126,11 +126,26 @@ can pick up.
   652 s (`auto` under Quality best = `qwen-edit-2511/edit`, 40 steps: 67 s each, 120 s with a
   reference picture); fill 8/8 in 383 s (44–48 s each, 60 s for the removal case); sam 16/16 in
   8 s. Every later engine is compared against these folders with `gn-bench compare`.
-- **Open**: the owner's decisions (§15: worker process, separate repo, Linux GPU box, ~46 GB of
-  test weights, the CUDA/VS 2022 installs on this PC); the §5.3 sd.cpp benchmark can run from the
-  prebuilt zip once the GGUF downloads are approved; the SAM suite's mask-level metrics (the
-  engines report bounds today; masks come with the native SAM in Phase 1); LPIPS (needs a small
-  VGG ONNX) when the first native pictures exist.
+- **2026-10-19, `gn-weights` (plan layer 4, the BYOM loader), in `genai-native`** (`69d1367`):
+  a hardened safetensors reader (header length capped, every offset and byte count checked
+  against the file and the dtype, unknown dtypes indexed but refused on read; only the header is
+  read on open, tensors come as checked ranges on demand through a seekable `RangeFile`, so a
+  20 GB repack costs milliseconds and no `unsafe` mmap), a GGUF v2/v3 reader (growing-prefix
+  header parse, all metadata value types, ggml block-type sizes incl. the NVFP4 id sd.cpp
+  declares, alignment, ranges checked), `DType` across both, writers for fixtures, `ModelIndex`
+  over ComfyUI's folder layout, and `identify` from the tensors alone (never the file name). The
+  `gn-inspect` tool read the owner's 16 real files and **all are identified**: Krea 2 (fp8-scaled
+  686 tensors, NVFP4 942), Qwen-Image 20B (2511 and Layered fp8mixed), Qwen-Image-2.1 (INT8
+  convrot), Qwen3-VL 4B/8B and Qwen2.5-VL 7B encoders by `model.embed_tokens` shape, the Wan,
+  Layered (RGBA head) and 2.1 (`modelspec.architecture`) VAEs, SAM 3.1 (`detector`/`tracker`),
+  the Lightning LoRAs. What the files taught, in `genai-native/docs/MODELS-ON-DISK.md`:
+  ComfyUI's repacks are self-describing (`_quantization_metadata` per layer in the header, a
+  `comfy_quant` JSON tensor per layer): `float8_e4m3fn` = F8 weight + per-tensor F32
+  `weight_scale` (+ `input_scale` in "fp8mixed"); `int8_tensorwise` + `convrot` group 256 = I8
+  weight + per-row `[out, 1]` scales (the 8B encoder's embedding too); `nvfp4` = U8 `[out, in/2]`
+  + F8 block scales `[out, in/16]` + F32 `weight_scale_2`. Krea 2's own naming (`blocks.N.attn.
+  {wq,wk,wv,wo,gate}`, `txtfusion`, width 6144, text width 2560), 2.1's `modulation` prefix and
+  hidden 4096 against 2511's 3072. Tests: 5 (+ a local-files test that runs only on this PC).
 
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 

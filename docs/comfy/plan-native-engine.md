@@ -471,13 +471,19 @@ definition); its safetensors loading into `gn-weights`. Compile fatbins for `sm_
 
 ### 7.2 The loader
 
-`gn-weights`: mmap safetensors with a hardened header parser (bounded sizes, no allocation from
+`gn-weights`: safetensors with a hardened header parser (bounded sizes, no allocation from
 untrusted lengths, fuzz target); GGUF reader (header, tensor info, the quant types we accept:
 Q8_0, Q4_K_M, Q6_K first; dequantize to bf16 on load until quantized kernels exist); key maps
 per model for **official**, **ComfyUI repack** (`qwen_image_2.1_int8_convrot.safetensors`,
 `qwen3vl_8b_int8_convrot.safetensors`, the dedicated VAE) and **GGUF** layouts; a `ModelIndex`
 that scans a folder tree (the ComfyUI layout `diffusion_models/ text_encoders/ vae/ loras/` and
 flat folders) and reports what fits which slot, feeding `generate.models`.
+
+**Status (2026-10-19):** the readers, the index and family identification from the tensors
+exist (`genai-native/crates/gn-weights`, `gn-inspect`); all 16 files of the owner's install are
+identified and their repack conventions recorded in `genai-native/docs/MODELS-ON-DISK.md`. Key
+maps and dequantisation come with the first definition (§7.4); ranges are read on demand
+through a seekable file rather than an `unsafe` mmap.
 
 ### 7.3 The worker and the editor side
 
