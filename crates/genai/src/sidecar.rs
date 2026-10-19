@@ -10,13 +10,23 @@
 //! of failing with "cannot reach the server".
 //!
 //! Cross-platform by construction (§3.5): the interpreter is found per layout (the Windows
-//! portable build's `python_embeded`, a `venv`, the system `python3`), the child gets the
-//! platform's no-window flag on Windows and its own process group on Unix, and paths are
-//! `PathBuf`s throughout. Nothing here is reachable on wasm.
+//! portable build's `python_embeded`, a `venv`, the system `python3`), paths are `PathBuf`s
+//! throughout, and the child is created so that it outlives nothing of ours:
+//!
+//! - **Windows**: `std::process::Command` creates children with handle inheritance on, so a
+//!   server started from `photocraft-cli` (or the MCP bridge on stdio) would hold the caller's
+//!   pipes open for as long as it lives and hang whatever waits for EOF on them. The sidecar
+//!   therefore launches through PowerShell's `Start-Process` (ShellExecute, no inheritance),
+//!   `cmd.exe /c` doing the log redirection, hidden; the child is tracked by PID (`tasklist`,
+//!   `taskkill /T`).
+//! - **Unix**: a plain spawn in its own process group; Rust's file descriptors are
+//!   close-on-exec, so nothing leaks.
+//!
+//! Nothing here is reachable on wasm.
 
 use std::io::{Read as _, Seek as _, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -81,8 +91,48 @@ const PROBE_EVERY: Duration = Duration::from_millis(1000);
 /// How much of the log a failure message carries.
 const TAIL_BYTES: u64 = 2048;
 
+/// The child we started: a handle where the platform's spawn is safe, a PID where the child was
+/// created detached from our handles.
+enum Proc {
+    #[cfg_attr(windows, allow(dead_code))]
+    Child(std::process::Child),
+    #[cfg_attr(unix, allow(dead_code))]
+    Pid(u32),
+}
+
+impl Proc {
+    fn id(&self) -> u32 {
+        match self {
+            Self::Child(c) => c.id(),
+            Self::Pid(p) => *p,
+        }
+    }
+
+    /// `Ok(None)` while it runs, `Ok(Some(how it ended))` once it is gone.
+    fn exited(&mut self) -> std::result::Result<Option<String>, String> {
+        match self {
+            Self::Child(c) => match c.try_wait() {
+                Ok(None) => Ok(None),
+                Ok(Some(code)) => Ok(Some(format!("{code}"))),
+                Err(e) => Err(format!("lost the engine process: {e}")),
+            },
+            Self::Pid(p) => Ok(if pid_alive(*p) { None } else { Some("exited".into()) }),
+        }
+    }
+
+    fn kill(&mut self) {
+        match self {
+            Self::Child(c) => {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+            Self::Pid(p) => kill_tree(*p),
+        }
+    }
+}
+
 struct Inner {
-    child: Option<Child>,
+    child: Option<Proc>,
     started: Option<Instant>,
     failed: Option<String>,
     /// The interpreter the child runs with (status detail).
@@ -178,37 +228,124 @@ pub fn log_tail(path: &Path, n: u64) -> String {
     text.lines().map(str::trim_end).filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n")
 }
 
-fn open_log(path: &Path) -> std::io::Result<std::fs::File> {
+/// Make sure the log can be appended to; start it over past [`LOG_LIMIT`].
+fn prepare_log(path: &Path) -> std::result::Result<(), String> {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
     if std::fs::metadata(path).map(|m| m.len() > LOG_LIMIT).unwrap_or(false) {
         let _ = std::fs::remove_file(path);
     }
-    std::fs::OpenOptions::new().create(true).append(true).open(path)
+    std::fs::OpenOptions::new().create(true).append(true).open(path).map(|_| ()).map_err(|e| format!("cannot write the engine log {}: {e}", path.display()))
 }
 
-fn spawn(launch: &Launch) -> std::result::Result<(Child, PathBuf), String> {
+/// `cmd.exe`'s quoting: a token with a space or a quote is wrapped in quotes (quotes doubled).
+#[cfg(windows)]
+pub(crate) fn cmd_quote(s: &str) -> String {
+    if s.is_empty() || s.contains([' ', '"', '&', '|', '<', '>', '^', '(', ')']) { format!("\"{}\"", s.replace('"', "\"\"")) } else { s.to_string() }
+}
+
+/// The PowerShell script that launches `inner` under a hidden `cmd.exe /d /c` in `cwd` without
+/// handle inheritance and prints the PID.
+#[cfg(windows)]
+pub(crate) fn start_process_script(inner: &str, cwd: &Path) -> String {
+    let ps = |s: &str| format!("'{}'", s.replace('\'', "''"));
+    // `/c "<inner>"`: cmd strips the outer quotes when the first character is one, so the inner
+    // command keeps its own quoting intact.
+    let arguments = ps(&format!("/d /c \"{inner}\""));
+    format!(
+        "$ErrorActionPreference = 'Stop'; $p = Start-Process -FilePath 'cmd.exe' -ArgumentList {arguments} -WorkingDirectory {cwd} -WindowStyle Hidden -PassThru; $p.Id",
+        cwd = ps(&cwd.to_string_lossy())
+    )
+}
+
+#[cfg(windows)]
+fn spawn(launch: &Launch) -> std::result::Result<(Proc, PathBuf), String> {
+    use std::os::windows::process::CommandExt as _;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let (python, args, cwd) = command_line(launch)?;
-    let log = open_log(&launch.log).map_err(|e| format!("cannot write the engine log {}: {e}", launch.log.display()))?;
+    prepare_log(&launch.log)?;
+    let inner = format!(
+        "{} {} >> {} 2>&1",
+        cmd_quote(&python.to_string_lossy()),
+        args.iter().map(|a| cmd_quote(a)).collect::<Vec<_>>().join(" "),
+        cmd_quote(&launch.log.to_string_lossy())
+    );
+    let script = start_process_script(&inner, &cwd);
+    let out = Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &script])
+        .env("PYTHONUNBUFFERED", "1")
+        .stdin(Stdio::null())
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+        .map_err(|e| format!("cannot run PowerShell to start the engine: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let pid: u32 = stdout.trim().lines().last().and_then(|l| l.trim().parse().ok()).ok_or_else(|| {
+        let err = String::from_utf8_lossy(&out.stderr);
+        format!("cannot start {} in {}: {}", python.display(), launch.root.display(), err.lines().next().unwrap_or("PowerShell gave no process id"))
+    })?;
+    Ok((Proc::Pid(pid), python))
+}
+
+#[cfg(not(windows))]
+fn spawn(launch: &Launch) -> std::result::Result<(Proc, PathBuf), String> {
+    let (python, args, cwd) = command_line(launch)?;
+    prepare_log(&launch.log)?;
+    let log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&launch.log)
+        .map_err(|e| format!("cannot write the engine log {}: {e}", launch.log.display()))?;
     let err = log.try_clone().map_err(|e| format!("cannot write the engine log {}: {e}", launch.log.display()))?;
     let mut cmd = Command::new(&python);
     cmd.args(&args).current_dir(&cwd).stdin(Stdio::null()).stdout(Stdio::from(log)).stderr(Stdio::from(err));
     // Unbuffered Python output reaches the log as it happens.
     cmd.env("PYTHONUNBUFFERED", "1");
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt as _;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt as _;
         cmd.process_group(0);
     }
     let child = cmd.spawn().map_err(|e| format!("cannot start {} ({e}); is Python installed in {}?", python.display(), launch.root.display()))?;
-    Ok((child, python))
+    Ok((Proc::Child(child), python))
+}
+
+/// Is a process with this id alive? (`tasklist`, Windows only; the PID path is not used
+/// elsewhere.)
+fn pid_alive(pid: u32) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let Ok(out) = Command::new("tasklist.exe")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
+            .stdin(Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+        else {
+            return false;
+        };
+        String::from_utf8_lossy(&out.stdout).contains(&format!("\"{pid}\""))
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pid;
+        false
+    }
+}
+
+/// End a process and everything it started (`taskkill /T`, Windows only).
+fn kill_tree(pid: u32) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let _ = Command::new("taskkill.exe").args(["/T", "/F", "/PID", &pid.to_string()]).stdin(Stdio::null()).creation_flags(CREATE_NO_WINDOW).output();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = pid;
+    }
 }
 
 /// Start the sidecar. Already running → its status; the URL already served by something else →
@@ -217,7 +354,7 @@ fn spawn(launch: &Launch) -> std::result::Result<(Child, PathBuf), String> {
 pub fn start(launch: &Launch) -> std::result::Result<Status, String> {
     let mut g = lock();
     if let Some(child) = g.child.as_mut()
-        && matches!(child.try_wait(), Ok(None))
+        && matches!(child.exited(), Ok(None))
     {
         drop(g);
         return Ok(status(launch));
@@ -256,44 +393,26 @@ pub fn stop(launch: &Launch) -> Status {
 pub fn stop_if_owned() {
     let mut g = lock();
     if let Some(mut child) = g.child.take() {
-        let _ = child.kill();
-        let _ = child.wait();
+        child.kill();
     }
     g.started = None;
     g.failed = None;
     g.probed = None;
 }
 
-/// Where the sidecar is now: polls the child (an exit becomes `Failed` with the log's last
-/// line) and probes the URL at most once a second.
+/// Where the sidecar is now: probes the URL at most once a second; a child that does not answer
+/// is checked for having exited (which becomes `Failed` with the log's last line).
 pub fn status(launch: &Launch) -> Status {
     let mut g = lock();
     let base = |state: State, g: &Inner, detail: String| Status {
         state,
-        pid: g.child.as_ref().map(Child::id),
+        pid: g.child.as_ref().map(Proc::id),
         url: launch.url.clone(),
         root: launch.root.to_string_lossy().into_owned(),
         log: launch.log.to_string_lossy().into_owned(),
         detail,
         since_ms: g.started.map(|t| t.elapsed().as_millis() as u64),
     };
-    // A child that exited is a failure (ComfyUI does not stop by itself).
-    if let Some(child) = g.child.as_mut() {
-        match child.try_wait() {
-            Ok(Some(code)) => {
-                let last = log_tail(&launch.log, TAIL_BYTES).lines().last().unwrap_or("").to_string();
-                g.child = None;
-                g.started = None;
-                g.failed = Some(if last.is_empty() { format!("the engine exited ({code})") } else { format!("the engine exited ({code}): {last}") });
-            }
-            Ok(None) => {}
-            Err(e) => {
-                g.child = None;
-                g.started = None;
-                g.failed = Some(format!("lost the engine process: {e}"));
-            }
-        }
-    }
     if let Some(f) = g.failed.clone() {
         return base(State::Failed, &g, f);
     }
@@ -303,15 +422,34 @@ pub fn status(launch: &Launch) -> Status {
         g.probed = Some((launch.url.clone(), Instant::now(), ok));
         ok
     });
-    if g.child.is_some() {
-        let py = g.python.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-        if ok {
-            return base(State::Ready, &g, py);
-        }
-        let waited = g.started.map(|t| t.elapsed().as_secs()).unwrap_or(0);
-        return base(State::Starting, &g, if waited > START_TIMEOUT.as_secs() { format!("still not answering after {waited} s; see the log") } else { py });
+    if g.child.is_none() {
+        return if ok {
+            base(State::External, &g, "a ComfyUI started outside PhotoshopEX serves this URL".into())
+        } else {
+            base(State::Stopped, &g, String::new())
+        };
     }
-    if ok { base(State::External, &g, "a ComfyUI started outside PhotoshopEX serves this URL".into()) } else { base(State::Stopped, &g, String::new()) }
+    let py = g.python.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    if ok {
+        return base(State::Ready, &g, py);
+    }
+    // Not answering: still starting, or gone (ComfyUI does not stop by itself).
+    let gone = match g.child.as_mut().map(Proc::exited) {
+        Some(Ok(None)) | None => None,
+        Some(Ok(Some(how))) => {
+            let last = log_tail(&launch.log, TAIL_BYTES).lines().last().unwrap_or("").to_string();
+            Some(if last.is_empty() { format!("the engine exited ({how})") } else { format!("the engine exited ({how}): {last}") })
+        }
+        Some(Err(e)) => Some(e),
+    };
+    if let Some(reason) = gone {
+        g.child = None;
+        g.started = None;
+        g.failed = Some(reason.clone());
+        return base(State::Failed, &g, reason);
+    }
+    let waited = g.started.map(|t| t.elapsed().as_secs()).unwrap_or(0);
+    base(State::Starting, &g, if waited > START_TIMEOUT.as_secs() { format!("still not answering after {waited} s; see the log") } else { py })
 }
 
 /// Make the server reachable before a generation: nothing to do when it answers; otherwise start
@@ -423,6 +561,32 @@ mod tests {
         // A folder that is not an install cannot start, with a sentence.
         let bad = Launch { root: d.join("nothing-here"), ..closed };
         assert!(start(&bad).unwrap_err().contains("not a ComfyUI install"));
+        let _ = std::fs::remove_dir_all(d);
+    }
+
+    /// Windows: the detached launch (PowerShell `Start-Process` → hidden `cmd.exe`) really starts
+    /// a process without handing it our handles, `tasklist` sees it, `taskkill /T` ends it, and
+    /// the log receives the redirected output.
+    #[cfg(windows)]
+    #[test]
+    fn a_detached_child_is_tracked_by_pid_and_leaves_no_handle_behind() {
+        assert_eq!(cmd_quote("plain"), "plain");
+        assert_eq!(cmd_quote("C:\\Program Files\\x.exe"), "\"C:\\Program Files\\x.exe\"");
+        assert_eq!(cmd_quote("say \"hi\""), "\"say \"\"hi\"\"\"");
+        let script = start_process_script("echo hi", Path::new("C:\\it's"));
+        assert!(script.contains("'/d /c \"echo hi\"'") && script.contains("'C:\\it''s'"), "{script}");
+        let d = temp("detached");
+        let log = d.join("child.log");
+        // A child that lives a few seconds: `ping` is on every Windows.
+        let inner = format!("ping -n 4 127.0.0.1 >> {} 2>&1", cmd_quote(&log.to_string_lossy()));
+        let out = Command::new("powershell.exe").args(["-NoProfile", "-NonInteractive", "-Command", &start_process_script(&inner, &d)]).output().unwrap();
+        let pid: u32 = String::from_utf8_lossy(&out.stdout).trim().lines().last().unwrap().trim().parse().unwrap();
+        assert!(pid_alive(pid), "pid {pid} should be alive");
+        std::thread::sleep(Duration::from_millis(1500));
+        assert!(std::fs::read_to_string(&log).map(|s| s.contains("127.0.0.1")).unwrap_or(false), "the log receives the child's output");
+        kill_tree(pid);
+        std::thread::sleep(Duration::from_millis(500));
+        assert!(!pid_alive(pid), "taskkill ended it");
         let _ = std::fs::remove_dir_all(d);
     }
 }

@@ -94,9 +94,37 @@ can pick up.
   broke with the ported wheel = zoom default (`9e75bf4`); they now pin the preference.
   `append-translations.ps1` pointed at the retired checkout; fixed. `CLAUDE.md`, README's
   how-to, `architecture.md` (commands, preferences) updated.
+- **The harness (plan §5.1) exists**: a separate repository `C:\Users\5090\Documents\genai-native`
+  (the recommended split; `gn-harness` first, the other crates to come): fixtures as JSON with
+  geometry in fractions of the picture (`t2i` 28 cases: 12 prompts × 2 seeds at 1024² + 4 other
+  aspects; `edit` 8, two with references; `fill` 8; `sam` 16: text, point, negative point,
+  box over the bench pictures), an `Engine` trait with `ComfyCli` (PhotoshopEX's CLI with the
+  same templates and seeds the product uses; `--comfy-path` sets `integrations.comfyPath` at the
+  head of every invocation so the sidecar brings the server up), metrics (PSNR, SSIM on luma,
+  mask IoU, boundary F at a pixel tolerance, bounds IoU for the SAM suite while engines report
+  bounds), `Verdict` with the plan's thresholds, run folders (`<case>.png` + `<case>.json` +
+  `summary.md`), `gn-bench run|compare|summary`. 7 tests; clippy clean under the same never-crash
+  lints. Docs: README, ARCHITECTURE, PARITY, PORTING, NOTICE, licences.
+- **A real bug the harness found in the sidecar.** On Windows `std::process::Command` creates
+  children with handle inheritance on, so ComfyUI started from `photocraft-cli` inherited the
+  shell's (and `gn-bench`'s) stdout pipe and held it open for as long as it lived: `gn-bench`
+  waited for EOF on the first case forever, and the same would hang the MCP bridge on stdio and
+  any script. The GUI was unaffected. Fix: on Windows the sidecar launches through PowerShell's
+  `Start-Process` (ShellExecute, no inheritance) running a hidden `cmd.exe /d /c "<python> …
+  >> log 2>&1"`, and tracks the child by PID (`tasklist`, `taskkill /T`; the liveness check runs
+  only while the URL does not answer, so the status poll stays cheap); Unix keeps the plain
+  spawn in its own process group (Rust's descriptors are close-on-exec). A Windows unit test
+  starts a `ping` that way, sees it in `tasklist`, reads its redirected output and ends it.
+  Re-verified live after the change: `sidecar-live.ps1` ready in 10.1 s (warm disk), auto-start
+  before a detector call in 14.7 s; and the **first reference run**, the SAM suite on the ComfyUI
+  route: 16 of 16 cases, 8.0 s wall in total (0.3–0.8 s per case warm, engine time 0.2–0.7 s),
+  the shell pipeline returning at once. Reference folder:
+  `genai-native\references\2026-10-18-comfy-sam\` (ignored; `summary.md` there).
 - **Open**: the owner's decisions (§15: worker process, separate repo, Linux GPU box, ~46 GB of
   test weights, the CUDA/VS 2022 installs on this PC); the §5.3 sd.cpp benchmark can run from the
-  prebuilt zip once the GGUF downloads are approved; the harness (§5.1) is next.
+  prebuilt zip once the GGUF downloads are approved; the t2i/edit/fill reference runs (minutes
+  each on the 5090) and the SAM suite's mask-level metrics (the engines report bounds today;
+  masks come with the native SAM in Phase 1).
 
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 
