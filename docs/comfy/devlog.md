@@ -360,10 +360,17 @@ can pick up.
     **132 ms** (was 202); a fresh picture by point 79 ms against the node's 94, by text 198
     against 154. 16/16 at parity again (`runs/2026-10-19-sam-ort-comfy-fp16-mha`). The fused
     fp16 set is now `_eval\native-models\sam3.1`; PhotoshopEX pinned to `5202e61`.
-  - **Open after this**: a CUDA graph for the vision session (the remaining ≈ 20 ms is launch
-    overhead), a tracker-only vision graph for the refinement crops, the licence/export notes
-    (`gn-perception/docs/EXPORT.md`), a Preferences screenshot scrolled to the two new fields
-    (the page renders; the fields sit below the fold at 900 pt).
+  - **CUDA graph for the trunk: tried, parked** (`genai-native`, next commit after `5202e61`):
+    the vision session can be opened with `enable_cuda_graph`, fixed device buffers for its
+    input and eight outputs, and replayed (`Sam31::open_with(…, true)`, `gn-sam --graph`), but
+    ORT 1.31's CUDA provider fails the capture on this model ("operation failed due to a previous
+    error during capture") with the exporter's attention and with the fused one, with cuDNN's
+    exhaustive search on and off. The code falls back to the plain session automatically (one
+    slow picture, 1.4 s) and is **off by default**; the remaining ≈ 20 ms of launch overhead in
+    the 56 ms trunk run waits for a later ORT or for our own kernels.
+  - **Open after this**: a tracker-only vision graph for the refinement crops, the
+    licence/export notes (`gn-perception/docs/EXPORT.md`), a Preferences screenshot scrolled to
+    the two new fields (the page renders; the fields sit below the fold at 900 pt).
 
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 

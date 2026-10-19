@@ -444,8 +444,9 @@ outputs no longer cross to the host and back for every prompt; "copy out" went f
 0 and a heads call from 22 to 10 ms), and **the exporter's attention replaced by ORT's fused
 `MultiHeadAttention`** (`export_sam31.py --mha`, a custom translation of
 `scaled_dot_product_attention`; the trunk's run 71 → 56 ms). ORT's profile of the trunk shows
-2 010 kernels per run and ≈ 37 ms of node time, so the remaining ≈ 20 ms is launch overhead: a
-CUDA graph for the vision session is the next lever. Against ComfyUI's node a fresh picture is
+2 010 kernels per run and ≈ 37 ms of node time, so the remaining ≈ 20 ms is launch overhead; a
+CUDA graph would remove it, but ORT 1.31's CUDA provider fails the capture on this model (the
+path exists, off by default, `gn-sam --graph`). Against ComfyUI's node a fresh picture is
 now **79 ms by point (the node: 94)** and 198 ms by text (the node: 154; the crop refinement
 re-runs the trunk, as the node does). Tried and dropped: opset 23's `Attention` op (ORT 1.31's
 CUDA provider ran it in 2.7 s); ORT's offline transformers optimizer (fused BiasGelu and
