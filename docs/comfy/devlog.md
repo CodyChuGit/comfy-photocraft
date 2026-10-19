@@ -218,6 +218,24 @@ can pick up.
     `gn-kernels` exists on this PC (`dev-environment-windows.md` › CUDA kernels); the
     qwen-image-rs bring-up can be attempted here before WSL2 (its build script is POSIX-leaning,
     so WSL2 stays the fallback).
+  - **The sd.cpp runner in the harness** (`gn-bench run --engine sdcpp`, `97b3d86` there) and
+    the whole t2i suite through it: 28/28, 0.41× ComfyUI's wall per picture, **9 of 28 at
+    seed-level parity**, the misses being the same scene with detail drift (encoder-level
+    divergence: Q8 GGUF Qwen3-VL-4B + sd.cpp's chat template vs ComfyUI's fp8 repack + template).
+    `benchmarks.md` §8 and `bench/sdcpp-t2i-{summary,compare}-2026-10-19.md`. Lesson for the
+    native engine: ComfyUI-identical pictures need ComfyUI-identical conditioning; the encoder
+    path is ours to port, not to borrow.
+  - **SAM 3 ONNX on Hugging Face (for Phase 1)**: no HF token on this PC and `facebook/sam3.1`
+    is gated, but **`Comfy-Org/sam3.1` is not** (the same `sam3.1_multiplex_fp16.safetensors`
+    we already have), and community SAM 3 exports exist: `kishanstar2003/SAM3_ONNX_FP16`
+    (vision 1.76 GB, text 1.35 GB, geometry 31 MB, decoder 92 MB, tokenizer; Meta SAM 3 licence;
+    downloaded to `_eval\sam3-onnx-fp16`), `onnx-community/sam3-tracker-ONNX` (vision + prompt
+    encoder/mask decoder, the point/box tracker), `danilobukvic/sam3-text-onnx` (text path with
+    its export and validation scripts, saved to `_eval\sam3-export-scripts` as the reference for
+    our own 3.1 export later), `wkentaro/sam3-onnx-models-v0.3.0` (image/language encoders +
+    decoder). ONNX Runtime 1.31.0 ships a **CUDA 13** Windows GPU build (295 MB) that pairs with
+    the toolkit here, and cuDNN 9 already lives in ComfyUI's torch (`torch\lib\cudnn*64_9.dll`,
+    `cudart64_13.dll`); the `ort` crate is at 2.0.0-rc.15.
 
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 

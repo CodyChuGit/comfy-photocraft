@@ -406,6 +406,22 @@ backend are the lever); the whole-image gap (2.3×) is mostly per-call weight lo
 slower text encoder, both of which the worker's residency removes. The picture is correct (the
 fox, `_eval/sdcpp-out/krea2-gguf-q8-warm2.png`).
 
+**The whole t2i suite through sd.cpp** (`gn-bench run --engine sdcpp`, same 28 cases, seeds and
+sizes as the baseline; tables in `bench/sdcpp-t2i-summary-2026-10-19.md` and
+`bench/sdcpp-t2i-compare-2026-10-19.md`): 28 of 28 ran, 311 s wall; per picture
+`generate_image` 9.2–13.6 s (median 9.8), sampling 7.5–11.1 s (median 8.1), condition 1.1 s,
+decode 0.58 s; **0.41× ComfyUI's wall per picture** (2.4×), the first picture apart (ComfyUI's
+own cold start made that one 1.55× in sd.cpp's favour). **Parity at equal seed: 9 of 28** pass
+the picture gate (PSNR ≥ 30 dB or SSIM ≥ 0.90; typography-s11 33.4 dB, animal-s7 30.9 dB,
+product-s7 30.2 dB, landscape-s11 30.5 dB), 19 fall short at 14–29 dB. The misses are the same
+scene and composition with detail drift (the street-wide pair: the same café window, umbrellas
+and crossing), i.e. the noise path matches (`--rng cpu`) and the divergence is at the encoder
+(the Q8 GGUF Qwen3-VL-4B and sd.cpp's own chat template against ComfyUI's fp8 repack and
+template), amplified by 8 Turbo steps. Two consequences: the harness's seed-level parity gate
+works across engines, and an engine that wants ComfyUI-identical output needs ComfyUI-identical
+conditioning, which argues for our own encoder path in the native engine rather than borrowing
+sd.cpp's.
+
 Parity yardsticks and thresholds: `genai-native/docs/PARITY.md`. The SAM suite compares
 instance bounds until an engine returns masks (Phase 1). The gates these numbers set for later
 rows: sd.cpp within 1.3× of a row keeps that model on the Python-free lane without further work;
