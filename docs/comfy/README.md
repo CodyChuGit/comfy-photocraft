@@ -130,14 +130,17 @@ server) with the models you installed there; the app ships no weights.
   launch**), and stops it when you quit (**Stop engine on quit**). Grey = stopped, amber =
   starting, green = ready, blue = a ComfyUI you started yourself, red = failed (the tooltip has
   the reason; the dot's menu has Start / Stop / Restart / Show log). No console window.
-- **Preferences › AI Integrations › Engine**: `Auto` (today the ComfyUI route), `ComfyUI`, or
-  `Native` — the in-process worker (`photocraft --engine`, started on first use, restarted if
-  it dies). With **Native runtime folders** (where ONNX Runtime and the CUDA / cuDNN libraries
-  live, `;`-separated) and a **Native models folder** (one subfolder per model; `sam3.1/` holds
-  the graphs `genai-native/tools/export_sam31.py` writes from your own checkpoint) set, the
-  worker runs SAM 3.1 itself: Select by Text, Select Subject, the Object Selection tool's
-  prompts and Quick Selection work with ComfyUI off and give the same masks. Without them the
-  worker paints placeholder pictures, so the path is exercised end to end on any machine.
+- **Preferences › AI Integrations › Engine**: `Auto`, `ComfyUI`, or `Native` — the in-process
+  worker (`photocraft --engine`, started on first use, restarted if it dies). With **Native
+  runtime folders** (where ONNX Runtime and the CUDA / cuDNN libraries live, `;`-separated) and
+  a **Native models folder** (one subfolder per model; `sam3.1/` holds the graphs
+  `genai-native/tools/export_sam31.py` writes from your own checkpoint) set, the worker runs
+  SAM 3.1 itself: Select by Text, Select Subject, the Object Selection tool's prompts and Quick
+  Selection work with ComfyUI off and give the same masks. **`Auto` sends each request where it
+  runs best today**: SAM 3.1 to the native worker when those two folders are set, everything
+  else (Fill, Image, Edit, Expand…) to ComfyUI. `Native` sends everything to the worker, which
+  today serves SAM 3.1 only; without the folders the worker paints placeholder pictures, so the
+  path is exercised end to end on any machine.
 
 ## Status
 

@@ -550,6 +550,43 @@ pub(crate) fn backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> {
     }
 }
 
+/// The model-set key of the native worker's runs (`run_switching`): its own, so a native run
+/// never counts as a model switch on the ComfyUI server.
+pub(crate) const NATIVE_SERVER_KEY: &str = "native";
+
+/// The backend one template's request goes to, with the key its model set is remembered under:
+/// `native` and `comfy` as the preference says; under `auto`, the native worker when it serves
+/// this template and the ComfyUI server otherwise (plan-native-engine §3.3: a model moves under
+/// `auto` once the native route beats its row at parity, which SAM 3.1 did on 2026-10-19).
+pub(crate) fn backend_for(s: &Session, template: &str) -> Result<(Arc<dyn GenerativeBackend>, String)> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        if engine_mode(s) == "native" {
+            return Ok((native_backend(s)?, NATIVE_SERVER_KEY.to_string()));
+        }
+        if engine_mode(s) == "auto"
+            && let Some(b) = native_serving(s, template)
+        {
+            return Ok((b, NATIVE_SERVER_KEY.to_string()));
+        }
+    }
+    Ok((backend(s)?, server_key(s)))
+}
+
+/// Under `auto`: the native worker, when the preferences give it its folders and its index lists
+/// `template` (today the SAM 3.1 templates). A worker that cannot start or does not serve the
+/// template is `None`, and the ComfyUI route stands.
+#[cfg(not(target_arch = "wasm32"))]
+fn native_serving(s: &Session, template: &str) -> Option<Arc<dyn GenerativeBackend>> {
+    let i = &s.prefs().integrations;
+    let configured = !i.runtime_path.trim().is_empty() && !i.models_path.trim().is_empty();
+    if !configured || !template::find(template).is_ok_and(|t| t.meta.family == "sam3.1") {
+        return None;
+    }
+    let b = native_backend(s).ok()?;
+    b.model_files("").ok()?.iter().any(|m| m == template).then_some(b)
+}
+
 pub(crate) fn web_unavailable() -> std::result::Result<(), String> {
     if cfg!(target_arch = "wasm32") { Err("not available in the web build yet".into()) } else { Ok(()) }
 }
@@ -2467,8 +2504,14 @@ fn run_free(s: &mut Session, _p: &Value) -> Result<Value> {
     Ok(json!({"freed": true}))
 }
 
-fn run_health(s: &mut Session, _p: &Value) -> Result<Value> {
-    let h = match backend(s) {
+/// `generate.health [{template}]`: the backend the preferences point at, or, with a template id,
+/// the one that template's requests would go to (under `auto` the native worker may serve some).
+fn run_health(s: &mut Session, p: &Value) -> Result<Value> {
+    let chosen = match p.get("template").and_then(Value::as_str).filter(|t| !t.trim().is_empty()) {
+        Some(t) => backend_for(s, t).map(|(b, _)| b),
+        None => backend(s),
+    };
+    let h = match chosen {
         Ok(b) => b.health(),
         Err(e) => Health { backend: "comfyui".into(), url: s.prefs().integrations.comfy_server.clone(), error: Some(e.to_string()), ..Health::default() },
     };
@@ -2918,7 +2961,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Server Status",
             menu: &[],
             shortcut: None,
-            params: r#"{} → {"ok","backend","url","version","vramTotal","vramFree","queueRemaining","error"?}"#,
+            params: r#"{"template"?:string} → {"ok","backend","url","version","vramTotal","vramFree","queueRemaining","error"?} (with a template id: the backend that template's requests go to; under `auto` the native worker serves SAM 3.1 when its folders are set)"#,
             enabled: always,
             run: run_health,
             journal: false,

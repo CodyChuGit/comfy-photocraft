@@ -319,6 +319,19 @@ can pick up.
     `native` it asks for the two folders, not a ComfyUI URL), the finder's online check is keyed
     by engine + folders, and the rest delay before a probe drops from 0.25 s to 0.08 s when the
     engine is native (the worker keeps the picture's embedding, so a probe is ≈ 22 ms).
+  - **`auto` routes SAM 3.1 natively** (plan §3.3's rule applied for the first time):
+    `generate_cmds::backend_for(s, template)` answers per template: `native` and `comfy` as the
+    preference says; under `auto` the native worker when the two folders are set, the template's
+    family is `sam3.1` and the worker's index lists it, the ComfyUI route otherwise. Native runs
+    remember their model set under their own key (`native`), so they never count as a model
+    switch that would purge ComfyUI. `select_ml_cmds` (`run_select`, `run_probe`) asks for the
+    template's backend; `generate.health {template}` reports the backend one template would use,
+    and the selection tools' online check asks about `sam3.1/segment-point`, so Object Selection
+    works under `auto` with ComfyUI off and the worker on (`server_configured` / `native_engine`
+    follow the same rule). The engine test extends to `auto` (no folders → ComfyUI; folders →
+    `select.byText` through the fake worker). A first attempt let the test override stand in for
+    the folders and every `select_ml` test in the binary went native: the opt-in is the
+    preferences, as in production.
   - **Open after this**: on-device tensors (IoBinding) and ORT's fused attention for the trunk,
     a tracker-only vision graph for the refinement crops, the licence/export notes
     (`gn-perception/docs/EXPORT.md`), a Preferences screenshot scrolled to the two new fields

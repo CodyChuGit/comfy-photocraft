@@ -220,23 +220,37 @@ pub fn finish_object_selection(app: &mut PhotocraftApp, start: [f64; 2], end: [f
 /// is whether the worker has its runtime and model folders.
 pub fn server_configured(app: &PhotocraftApp) -> bool {
     let i = &app.session.prefs().integrations;
-    if native_engine(app) {
-        return !i.runtime_path.trim().is_empty() && !i.models_path.trim().is_empty();
+    let native = !i.runtime_path.trim().is_empty() && !i.models_path.trim().is_empty();
+    match i.engine.trim() {
+        "native" => native,
+        "comfy" => !i.comfy_server.trim().is_empty(),
+        // `auto`: either route can answer a SAM 3.1 request.
+        _ => native || !i.comfy_server.trim().is_empty(),
     }
-    !i.comfy_server.trim().is_empty()
 }
 
-/// Does the native worker answer generative requests (`integrations.engine = native`)? Its SAM
-/// 3.1 keeps a picture's embedding, so the object finder can ask sooner after the pointer rests.
+/// Could SAM 3.1 requests go to the native worker (`integrations.engine` `native`, or `auto`
+/// with the worker's folders set)? Its SAM 3.1 keeps a picture's embedding, so the object finder
+/// can ask sooner after the pointer rests.
 pub fn native_engine(app: &PhotocraftApp) -> bool {
-    app.session.prefs().integrations.engine.trim() == "native"
+    let i = &app.session.prefs().integrations;
+    match i.engine.trim() {
+        "native" => true,
+        "comfy" => false,
+        _ => !i.runtime_path.trim().is_empty() && !i.models_path.trim().is_empty(),
+    }
 }
 
-/// Is the configured server answering right now (`generate.health`, one quick request; a closed
-/// local port answers at once)? A click or Select Subject goes to SAM 3.1 only then, so a
-/// machine without ComfyUI keeps the classical behaviour instead of collecting errors.
+/// The template the selection tools' health check asks about: under `auto` its backend is the
+/// native worker when that serves SAM 3.1, the ComfyUI server otherwise.
+const HEALTH_TEMPLATE: &str = "sam3.1/segment-point";
+
+/// Is the backend SAM 3.1 would use answering right now (`generate.health`, one quick request; a
+/// closed local port answers at once)? A click or Select Subject goes to SAM 3.1 only then, so a
+/// machine without ComfyUI or the native graphs keeps the classical behaviour instead of
+/// collecting errors.
 pub fn server_online(app: &mut PhotocraftApp) -> bool {
-    server_configured(app) && app.run("generate.health", json!({})).is_ok_and(|h| h["ok"].as_bool() == Some(true))
+    server_configured(app) && app.run("generate.health", json!({"template": HEALTH_TEMPLATE})).is_ok_and(|h| h["ok"].as_bool() == Some(true))
 }
 
 /// The Object Selection options bar's "Select by text" field: the phrase through SAM 3.1

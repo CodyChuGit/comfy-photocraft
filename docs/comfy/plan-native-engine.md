@@ -221,6 +221,11 @@ Burn is not used (training-oriented; dropped its candle backend; attention kerne
 
 ### 3.3 Routing and the day-0 lane
 
+**Status (2026-10-19):** `generate_cmds::backend_for(s, template)` exists with `auto | native |
+comfy`; under `auto` the SAM 3.1 templates go to the native worker when `runtimePath` and
+`modelsPath` are set and the worker's index lists them, everything else to ComfyUI. `sdcpp` and
+the per-model `engineFor` map come with the engines that need them.
+
 A model can be served by up to three engines; a request picks one:
 
 - `integrations.engine` = `auto | native | sdcpp | comfy` (default `auto`), and a per-model

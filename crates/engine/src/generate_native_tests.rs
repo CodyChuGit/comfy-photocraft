@@ -10,7 +10,7 @@ use crate::generate_cmds::{engine_mode, set_native_backend};
 
 #[test]
 fn the_engine_preference_routes_to_the_native_worker() {
-    let (port, token) = photocraft_genai::native::serve_fake(vec!["krea2-turbo/image".into(), "qwen-edit-2511/edit".into()], 1).unwrap();
+    let (port, token) = photocraft_genai::native::serve_fake(vec!["krea2-turbo/image".into(), "qwen-edit-2511/edit".into(), "sam3.1/segment".into()], 1).unwrap();
     set_native_backend(Arc::new(photocraft_genai::native::NativeBackend::attached(port, &token).unwrap()));
     let mut s = Session::new();
     assert_eq!(engine_mode(&s), "auto");
@@ -37,4 +37,18 @@ fn the_engine_preference_routes_to_the_native_worker() {
     // Back to the ComfyUI route: health now reports that backend.
     s.execute("prefs.set", json!({"path": "integrations.engine", "value": "comfy"})).unwrap();
     assert_eq!(s.execute("generate.health", json!({})).unwrap()["backend"], "comfyui");
+    // Under `auto`, a template the worker serves (SAM 3.1) goes native once the worker has its
+    // folders, the rest stay on ComfyUI.
+    s.execute("prefs.set", json!({"path": "integrations.engine", "value": "auto"})).unwrap();
+    assert_eq!(s.execute("generate.health", json!({"template": "sam3.1/segment"})).unwrap()["backend"], "comfyui", "no folders: ComfyUI");
+    s.execute("prefs.set", json!({"path": "integrations.runtimePath", "value": "runtime"})).unwrap();
+    s.execute("prefs.set", json!({"path": "integrations.modelsPath", "value": "models"})).unwrap();
+    assert_eq!(s.execute("generate.health", json!({})).unwrap()["backend"], "comfyui");
+    assert_eq!(s.execute("generate.health", json!({"template": "sam3.1/segment"})).unwrap()["backend"], "native/fake");
+    assert_eq!(s.execute("generate.health", json!({"template": "krea2-turbo/image"})).unwrap()["backend"], "comfyui");
+    let sel = s.execute("select.byText", json!({"prompt": "fox"})).unwrap();
+    assert_eq!((sel["count"].as_u64(), sel["selected"].as_bool()), (Some(1), Some(true)), "{sel}");
+    // The fake's coverage is a centred disc: the selection's bounds sit inside the 128×64 picture.
+    let b = &sel["instances"][0]["bounds"];
+    assert!(b[0].as_i64().unwrap_or(-1) >= 40 && b[2].as_i64().unwrap_or(0) <= 48, "{sel}");
 }

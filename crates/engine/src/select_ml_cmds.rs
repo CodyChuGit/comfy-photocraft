@@ -462,9 +462,8 @@ fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Resu
         let inst = json!([{"index": 1, "bounds": [bounds.x0, bounds.y0, bounds.width(), bounds.height()], "pixels": count}]);
         return Ok(json!({"selected": selected, "count": 1, "instances": inst, "ms": 0, "probe": true}));
     }
-    let backend = generate_cmds::backend(s)?;
-    let server = generate_cmds::server_key(s);
     let pr = prompting(&plan);
+    let (backend, server) = generate_cmds::backend_for(s, &pr.template_id)?;
     let Plan { mode, instance, all_layers, points, bbox, refine, .. } = plan;
     let label = if bbox.is_some() {
         "Select by Box".to_string()
@@ -575,9 +574,8 @@ fn run_subject(s: &mut Session, p: &Value) -> Result<Value> {
 fn run_probe(s: &mut Session, p: &Value) -> Result<Value> {
     let q = point_params(PROBE, p)?;
     let plan = plan(s, PROBE, &q)?;
-    let backend = generate_cmds::backend(s)?;
-    let server = generate_cmds::server_key(s);
     let pr = prompting(&plan);
+    let (backend, server) = generate_cmds::backend_for(s, &pr.template_id)?;
     let st = s.active().ok_or(EngineError::NoDocument)?;
     let (base, active, doc_id, past_len) = (Arc::clone(&st.doc), st.active_layer, st.doc.id, st.history.past_len());
     let all_layers = plan.all_layers;
