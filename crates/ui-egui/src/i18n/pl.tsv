@@ -3375,3 +3375,6 @@ cameraRaw	Roughness	Chropowatość
 	ComfyUI launch flags	Flagi uruchomienia ComfyUI
 	Engine start on launch	Uruchom silnik przy starcie
 	Engine stop on quit	Zatrzymaj silnik przy zamknięciu
+	Engine	Silnik
+	Native	Natywny
+	ComfyUI	ComfyUI

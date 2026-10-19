@@ -2337,3 +2337,6 @@ cameraRaw	Color	Barvy
 	ComfyUI launch flags	Parametry spuštění ComfyUI
 	Engine start on launch	Spustit engine při startu
 	Engine stop on quit	Zastavit engine při ukončení
+	Engine	Engine
+	Native	Nativní
+	ComfyUI	ComfyUI

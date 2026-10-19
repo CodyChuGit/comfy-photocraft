@@ -777,6 +777,10 @@ pub struct Integrations {
     pub engine_start_on_launch: bool,
     /// Stop the engine the app started when the app quits.
     pub engine_stop_on_quit: bool,
+    /// Which engine runs generative requests: `auto` (today the ComfyUI route; the native engine
+    /// takes a model over when it is faster at parity), `native` (the in-process worker,
+    /// `photocraft --engine`), `comfy` (the ComfyUI server). See `generate_cmds::backend`.
+    pub engine: String,
 }
 
 impl Default for Integrations {
@@ -805,9 +809,13 @@ impl Default for Integrations {
             comfy_args: "--fast fp8_matrix_mult".into(),
             engine_start_on_launch: false,
             engine_stop_on_quit: true,
+            engine: "auto".into(),
         }
     }
 }
+
+/// `integrations.engine`: see [`Integrations::engine`].
+pub const ENGINE_MODES: &[&str] = &["auto", "native", "comfy"];
 
 /// `integrations.showGenerativeBar`: see [`Integrations::show_generative_bar`].
 pub const GENERATIVE_BAR_MODES: &[&str] = &["auto", "always", "never"];
@@ -1034,6 +1042,7 @@ pub fn choices(path: &str) -> Option<&'static [&'static str]> {
         "integrations.variationsStrip" => VARIATIONS_STRIP_PLACES,
         "integrations.quality" => QUALITY_MODES,
         "integrations.alerts" => ALERT_MODES,
+        "integrations.engine" => ENGINE_MODES,
         _ => return None,
     })
 }

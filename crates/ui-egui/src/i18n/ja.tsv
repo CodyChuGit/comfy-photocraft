@@ -2320,3 +2320,6 @@ cameraRaw	Color	カラー
 	ComfyUI launch flags	ComfyUI 起動フラグ
 	Engine start on launch	起動時にエンジンを開始
 	Engine stop on quit	終了時にエンジンを停止
+	Engine	エンジン
+	Native	ネイティブ
+	ComfyUI	ComfyUI

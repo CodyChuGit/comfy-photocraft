@@ -130,6 +130,10 @@ server) with the models you installed there; the app ships no weights.
   launch**), and stops it when you quit (**Stop engine on quit**). Grey = stopped, amber =
   starting, green = ready, blue = a ComfyUI you started yourself, red = failed (the tooltip has
   the reason; the dot's menu has Start / Stop / Restart / Show log). No console window.
+- **Preferences › AI Integrations › Engine**: `Auto` (today the ComfyUI route), `ComfyUI`, or
+  `Native` — the in-process worker (`photocraft --engine`, started on first use, restarted if
+  it dies). Until the native models land the worker paints placeholder pictures; it exists so
+  the whole path is exercised end to end.
 
 ## Status
 

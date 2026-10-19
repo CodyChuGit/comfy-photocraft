@@ -2754,3 +2754,6 @@ cameraRaw	Blending	Pembauran
 	ComfyUI launch flags	Opsi peluncuran ComfyUI
 	Engine start on launch	Mulai mesin saat aplikasi dibuka
 	Engine stop on quit	Hentikan mesin saat keluar
+	Engine	Mesin
+	Native	Native
+	ComfyUI	ComfyUI

@@ -263,9 +263,12 @@ address space:
 This is the one decision that is expensive to change later; §15 asks the owner to confirm it.
 
 **Status (2026-10-19):** built as `genai-native/crates/gn-engine` (protocol, server, client,
-fake engine, binary; child-process tests pass). Transport: loopback TCP with a token (one code
-path on all platforms, as the control channel), behind a transport-agnostic protocol. The
-editor's `NativeBackend` follows once PhotoshopEX can depend on the repository (§4).
+fake engine, binary; child-process tests pass; a worker exits when its greeted client leaves).
+Transport: loopback TCP with a token (one code path on all platforms, as the control channel),
+behind a transport-agnostic protocol. The editor side is in: `photocraft_genai::native::
+NativeBackend`, `photocraft --engine` / `photocraft-cli --engine` as the worker, the
+`integrations.engine` preference and routing in `generate_cmds::backend`; the repository is
+published (private) and pinned by rev. The worker serves the fake engine until §7.
 
 ### 3.5 Platforms: Windows and Linux first, macOS as a backend later
 
@@ -390,9 +393,11 @@ port conflict handling, "engine stopped" notices; `generate.engine.start/stop/st
 status dot; Preferences › AI Integrations › Engine. Live script `sidecar-live.ps1` (spawn → ready
 → fill → stop).
 
-**Status (2026-10-18):** §5.4 done and live (dev log); §5.1 built in the `genai-native`
-repository (`gn-harness`, `gn-bench`; the ComfyUI route runs, sd.cpp and native engines follow
-their phases); §5.2 moves to WSL2 or the Linux box
+**Status (2026-10-18/19):** §5.4 done and live (dev log); §5.1 built in the `genai-native`
+repository (`gn-harness`, `gn-bench`; the ComfyUI baseline is recorded in `benchmarks.md` §8);
+§5.3's first row is in (sd.cpp Krea 2 Turbo Q8: 1.45× ComfyUI's step, the "lane, flagged for
+the kernel track" band; the `--engine sdcpp` harness runner and the Qwen-Image-2.1 row follow);
+§5.2 moves to WSL2 or the Linux box
 (qwen-image-rs builds its kernels with nvcc + a Linux cuDNN wheel, see the review note); §5.3 can
 use sd.cpp's prebuilt Windows CUDA 12.8 zip with arch 120 (no local toolkit needed); this PC has
 no CUDA toolkit, nvcc or VS 2022 yet (installs need the owner's go).

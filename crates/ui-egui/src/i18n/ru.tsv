@@ -2612,3 +2612,6 @@ cameraRaw	Roughness	Неровность
 	ComfyUI launch flags	Флаги запуска ComfyUI
 	Engine start on launch	Запускать движок при старте
 	Engine stop on quit	Останавливать движок при выходе
+	Engine	Движок
+	Native	Встроенный
+	ComfyUI	ComfyUI

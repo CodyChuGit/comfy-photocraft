@@ -2345,3 +2345,6 @@ cameraRaw	Blending	混合
 	ComfyUI launch flags	ComfyUI 启动参数
 	Engine start on launch	启动时启动引擎
 	Engine stop on quit	退出时停止引擎
+	Engine	引擎
+	Native	原生
+	ComfyUI	ComfyUI

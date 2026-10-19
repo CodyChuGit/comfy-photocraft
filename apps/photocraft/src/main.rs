@@ -131,6 +131,12 @@ mod control_port_tests {
 }
 
 fn main() -> eframe::Result {
+    // comfy-photocraft: `photocraft --engine …` is the native engine's worker process (no
+    // window, no logger of its own): the editor starts this very executable that way.
+    if std::env::args_os().nth(1).is_some_and(|a| a == photocraft_genai::native::ENGINE_FLAG) {
+        let args: Vec<String> = std::env::args_os().skip(2).map(|a| a.to_string_lossy().into_owned()).collect();
+        std::process::exit(photocraft_genai::native::engine_main(&args));
+    }
     // First, so the panic hook and every start-up warning are recorded (`logging`).
     let logger = logging::install();
     crash_guard::install_hook();

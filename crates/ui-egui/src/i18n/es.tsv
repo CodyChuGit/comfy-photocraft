@@ -2408,3 +2408,6 @@ cameraRaw	Amount	Cantidad
 	ComfyUI launch flags	Opciones de inicio de ComfyUI
 	Engine start on launch	Iniciar motor al abrir
 	Engine stop on quit	Detener motor al salir
+	Engine	Motor
+	Native	Nativo
+	ComfyUI	ComfyUI

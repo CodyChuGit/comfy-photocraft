@@ -58,6 +58,13 @@ By hand: `powershell -File C:\Users\5090\ComfyUI\start-comfyui-fast.ps1`
 [`docs/comfy/comfyui-setup.md`](docs/comfy/comfyui-setup.md). Live timings come from
 `docs/comfy/bench/bench-fill.ps1`.
 
+The native engine lives in a second repository, **`C:\Users\5090\Documents\genai-native`**
+(github.com/CodyChuGit/genai-native, private; harness, loader, worker): `crates/genai` depends on
+its `gn-engine` crate by git rev, fetched with the system git (`.cargo/config.toml`); after
+pushing there, bump the rev in `crates/genai/Cargo.toml`. `photocraft --engine` /
+`photocraft-cli --engine` run this executable as the engine worker; Preferences › AI
+Integrations › Engine = Native routes generative commands to it.
+
 ## Conventions specific to the fork
 
 - Generative code lives in `crates/genai` (L4, register in `xtask/src/layers.rs`) and

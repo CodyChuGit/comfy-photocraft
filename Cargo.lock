@@ -2185,6 +2185,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "gn-engine"
+version = "0.1.0"
+source = "git+https://github.com/CodyChuGit/genai-native.git?rev=4a06b15ff1222b5eede5c562f4d31a5889b7805e#4a06b15ff1222b5eede5c562f4d31a5889b7805e"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "gpu-allocator"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3810,6 +3819,7 @@ dependencies = [
  "photocraft-doc",
  "photocraft-engine",
  "photocraft-format",
+ "photocraft-genai",
  "photocraft-geom",
  "photocraft-io",
  "photocraft-raster",
@@ -3865,6 +3875,7 @@ dependencies = [
  "photocraft-codecs",
  "photocraft-engine",
  "photocraft-format",
+ "photocraft-genai",
  "photocraft-io",
  "serde_json",
  "tokio",
@@ -3987,6 +3998,7 @@ name = "photocraft-genai"
 version = "0.5.0"
 dependencies = [
  "getrandom 0.3.4",
+ "gn-engine",
  "photocraft-codecs",
  "serde",
  "serde_json",

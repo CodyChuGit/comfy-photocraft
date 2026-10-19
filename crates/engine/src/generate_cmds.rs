@@ -467,8 +467,47 @@ pub(crate) fn gen_err(e: photocraft_genai::Error) -> EngineError {
     }
 }
 
-/// The backend the preferences point at. The web build has none yet.
+/// `integrations.engine`, normalised: `auto`, `native` or `comfy` (anything else is `auto`).
+pub fn engine_mode(s: &Session) -> &'static str {
+    match s.prefs().integrations.engine.trim() {
+        "native" => "native",
+        "comfy" => "comfy",
+        _ => "auto",
+    }
+}
+
+/// The native engine's backend for this process: one worker (`photocraft --engine`), started
+/// on first use, shared by every command (plan-native-engine §3.4).
+#[cfg(not(target_arch = "wasm32"))]
+static NATIVE: std::sync::OnceLock<std::sync::Mutex<Option<Arc<dyn GenerativeBackend>>>> = std::sync::OnceLock::new();
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn native_backend() -> Result<Arc<dyn GenerativeBackend>> {
+    let slot = NATIVE.get_or_init(|| std::sync::Mutex::new(None));
+    let mut g = slot.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(b) = g.as_ref() {
+        return Ok(Arc::clone(b));
+    }
+    let b: Arc<dyn GenerativeBackend> = Arc::new(photocraft_genai::native::NativeBackend::this_executable().map_err(gen_err)?);
+    *g = Some(Arc::clone(&b));
+    Ok(b)
+}
+
+/// Tests: what `native` routes to (a fake engine served in-process).
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub(crate) fn set_native_backend(b: Arc<dyn GenerativeBackend>) {
+    let slot = NATIVE.get_or_init(|| std::sync::Mutex::new(None));
+    *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(b);
+}
+
+/// The backend the preferences point at: the native worker under `integrations.engine =
+/// native`, the ComfyUI server otherwise (`auto` is the ComfyUI route until a native model is
+/// faster at parity; plan-native-engine §3.3). The web build has none yet.
 pub(crate) fn backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> {
+    #[cfg(not(target_arch = "wasm32"))]
+    if engine_mode(s) == "native" {
+        return native_backend();
+    }
     let integrations = &s.prefs().integrations;
     let url = integrations.comfy_server.trim();
     if url.is_empty() {
@@ -2896,6 +2935,9 @@ mod template_tests;
 #[cfg(test)]
 #[path = "generate_matte_tests.rs"]
 mod matte_tests;
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "generate_native_tests.rs"]
+mod native_tests;
 
 #[cfg(test)]
 #[path = "generate_edit_tests.rs"]

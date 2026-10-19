@@ -2376,3 +2376,6 @@
 	ComfyUI launch flags	ComfyUI-Startparameter
 	Engine start on launch	Engine beim Start starten
 	Engine stop on quit	Engine beim Beenden stoppen
+	Engine	Engine
+	Native	Nativ
+	ComfyUI	ComfyUI

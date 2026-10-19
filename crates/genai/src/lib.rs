@@ -20,6 +20,8 @@
 pub mod comfy;
 #[cfg(all(feature = "fake-server", not(target_arch = "wasm32")))]
 pub mod fake;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod native;
 pub mod png;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod sidecar;

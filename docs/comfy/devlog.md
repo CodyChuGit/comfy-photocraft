@@ -165,6 +165,49 @@ can pick up.
   does; the protocol is transport-agnostic. The editor side (`NativeBackend`) waits on how
   PhotoshopEX depends on `genai-native` (a path dependency breaks clean clones; a git dependency
   needs the repository published — the owner's call).
+- **Owner: "yes" to all four** (publish, installs, downloads, decisions). Done in this order:
+  - `genai-native` pushed to **github.com/CodyChuGit/genai-native (private)**; PhotoshopEX
+    depends on `gn-engine` by git rev (`crates/genai/Cargo.toml`), fetched with the system git
+    (`.cargo/config.toml` `[net] git-fetch-with-cli = true`, so the gh credential helper serves
+    the private repo). Pinned at `4a06b15`.
+  - **CUDA Toolkit 13.4.3 installed through scoop** (user-level, `~\scoop\apps\cuda\current`,
+    on PATH for new shells). **VS 2022 Build Tools failed with 1602** (= the UAC prompt was not
+    accepted; winget's installer needs a click): rerun
+    `winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"`
+    with the owner at the keyboard. nvcc 13 wants VS 2022 as its host compiler.
+  - **Downloads** (into ComfyUI's model folders, so both engines see them): the Wan 2.1 VAE
+    (`wan_2.1_vae.safetensors`, 254 MB), `Krea-2-Turbo-Q8_0.gguf` (13.0 GB, `realrebelai/
+    KREA-2_GGUFs`), `Qwen3VL-4B-Instruct-Q8_0.gguf` (4.1 GB, Qwen's official GGUF), and
+    sd.cpp's prebuilt `sd-master-95b3090-bin-win-cuda12-x64` + its `cudart` zip into
+    `Documents\_eval\sdcpp-bin` (CUDA 12.8, arch list includes 120: no local toolkit needed).
+    The ~30 GB Qwen-Image-2.1 bf16 oracle download waits until the qwen-image-rs bring-up has a
+    Linux/WSL2 home.
+  - **The first sd.cpp number (plan §5.3)**, `benchmarks.md` §8: Krea 2 Turbo GGUF Q8 at
+    1024², 8 steps, flash attention on: **0.59 s per step (1.69 it/s), sampling 8.0 s, encode
+    1.1 s, decode 0.57 s, 9.7 s per `generate_image`**, 17.3 GB in VRAM; the fp8 repack through
+    sd.cpp 15.7 s (dequantised, no tensor cores). Against ComfyUI's ≈0.41 s/step: **1.45× per
+    step**, the plan's "the lane, flagged for the kernel track" band; the 2.3× per picture is
+    mostly sd-cli loading the DiT inside every call (3.1 s) and a slower encoder, which a
+    resident worker removes. The fox is correct. sd.cpp loaded both the GGUF and the ComfyUI
+    fp8 repack files as they are.
+  - **The editor talks to a worker (plan §3.4 editor side):** `photocraft_genai::native::
+    NativeBackend` implements `GenerativeBackend` over `gn-engine`'s client (spawns
+    `photocraft[-cli] --engine` on first use, respawns after a death, maps `Request` → blobs +
+    `RunRequest`, progress and `Progress::cancelled` → `Cancel`, blobs → `Rgba8`, coverage →
+    grey pictures as the ComfyUI route delivers masks, `ClientError` → `Error`); `engine_main`
+    makes either executable the worker (serving the fake engine until the native models land,
+    "installed" = the built-in template ids); both `main`s branch on `--engine` first.
+    `integrations.engine` = `auto | native | comfy` (`auto` is the ComfyUI route until a native
+    model is faster at parity; "Engine", "Native", "ComfyUI" ×13); `generate_cmds::backend`
+    routes, one process-wide `NativeBackend` shared by every command; `generate.health` reports
+    `native/fake`. Tests: `native::tests` (in-process fake worker: health, image, edit round
+    trip, coverage, typed missing model, cancel) and the engine's
+    `the_engine_preference_routes_to_the_native_worker` (`prefs.set` validation, health,
+    `generate.image` into a new document, `generate.edit`, a missing template as a sentence,
+    back to ComfyUI). 187 generate/select tests still green.
+  - `gn-engine` fix on the way: a worker whose greeted client leaves without `Quit` (a crashed
+    editor) exits by itself; a refused greeting does not end it; tested with a hand-spawned
+    worker.
 
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 

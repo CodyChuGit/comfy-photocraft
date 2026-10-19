@@ -390,6 +390,22 @@ first case.
 | `fill` | 8 | `qwen-edit-2511/fill` (40 steps) | 44.1–47.8 s; 59.5 s for the removal case (a 50 % rect) | 383 s |
 | `sam` | 16 | `sam3.1/segment`, `-point`, `-box` | 0.2–0.7 s (text, point, negative point, box) | 8 s |
 
+**sd.cpp, first rows (2026-10-19, prebuilt `sd-master-95b3090-bin-win-cuda12-x64`, arch 120,
+flash attention on, `--rng cpu`, the fox prompt of `t2i-animal-s7` at 1024², 8 steps, CFG 1,
+seed 7; `sd-cli` loads weights inside every call, which a resident worker would not):**
+
+| Krea 2 Turbo through sd.cpp | Per step | Sampling (8) | Encode | Decode | `generate_image` | Weights in VRAM |
+|---|---:|---:|---:|---:|---:|---:|
+| GGUF Q8_0 DiT + Qwen3-VL-4B Q8_0 + Wan VAE (warm page cache) | 0.59 s (1.69 it/s) | 8.0 s | 1.1 s | 0.57 s (4.3 s the first time: graph build) | 9.7 s (+3.1 s DiT load inside the call) | 17.3 GB |
+| The ComfyUI fp8 repack DiT + fp8 encoder (sd.cpp dequantises fp8; no tensor-core path) | ≈1.2 s | — | — | 0.7 s | 15.7–16.5 s | 16.8 GB |
+| ComfyUI fp8, same prompt (row above, resident models) | ≈0.41 s | ≈3.3 s | ≈0.3 s | ≈0.3 s | 4.0–4.4 s | — |
+
+Reading: sd.cpp's Q8 sampling step is **1.45×** ComfyUI's fp8 step on this card (the 1.3–2× band:
+the Python-free lane stands, flagged for the kernel track — FP8/NVFP4 GEMMs in ggml's CUDA
+backend are the lever); the whole-image gap (2.3×) is mostly per-call weight loading and a
+slower text encoder, both of which the worker's residency removes. The picture is correct (the
+fox, `_eval/sdcpp-out/krea2-gguf-q8-warm2.png`).
+
 Parity yardsticks and thresholds: `genai-native/docs/PARITY.md`. The SAM suite compares
 instance bounds until an engine returns masks (Phase 1). The gates these numbers set for later
 rows: sd.cpp within 1.3× of a row keeps that model on the Python-free lane without further work;

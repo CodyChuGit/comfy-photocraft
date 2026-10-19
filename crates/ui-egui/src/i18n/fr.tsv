@@ -2767,3 +2767,6 @@ cameraRaw	Blending	Fusion
 	ComfyUI launch flags	Options de lancement de ComfyUI
 	Engine start on launch	Démarrer le moteur au lancement
 	Engine stop on quit	Arrêter le moteur à la fermeture
+	Engine	Moteur
+	Native	Natif
+	ComfyUI	ComfyUI

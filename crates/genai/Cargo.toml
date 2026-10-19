@@ -27,3 +27,6 @@ thiserror = { workspace = true }
 getrandom = { workspace = true }
 ureq = { version = "3.4", default-features = false }
 tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
+# The native engine's worker channel (plan-native-engine §3.4), pinned by commit; the
+# repository is private for now, so `.cargo/config.toml` fetches it with the system git.
+gn-engine = { git = "https://github.com/CodyChuGit/genai-native.git", rev = "4a06b15ff1222b5eede5c562f4d31a5889b7805e" }
