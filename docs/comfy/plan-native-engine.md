@@ -68,6 +68,9 @@ upstream files, the per-phase gate list, how the CLI and the live scripts are dr
    prompt enhancer) rides a rented engine until it earns a port.
 4. Quality first, then speed (Quality mode `best` is the default; the native engine must match
    it before it may replace it).
+5. **Cross-platform: Windows and Linux first, macOS after** (§3.5). Nothing platform-specific
+   outside the few places §3.5 names; every phase closes on both platforms.
+6. Build it out (2026-10-18): Phase 0 started on this PC.
 
 **Decisions this plan needs from the owner** (§15 lists them with recommendations): the
 engine-process model, a second GPU box, the repository split, the test-weight downloads.
@@ -258,6 +261,37 @@ address space:
   an optional dependency); the engine build stays green.
 
 This is the one decision that is expensive to change later; §15 asks the owner to confirm it.
+
+### 3.5 Platforms: Windows and Linux first, macOS as a backend later
+
+The owner's requirement (2026-10-18): cross-platform, **Windows and Linux first**, macOS after.
+What that means for each layer, decided now so nothing is written Windows-only by accident:
+
+- **Kernels (layer 1):** CUDA is the first `Kernels` implementation and it serves Windows and
+  Linux identically (same `.cu`, same fatbins; nvcc + MSVC on Windows, nvcc + gcc/clang on
+  Linux). macOS is a second implementation of the same trait (Metal via candle-metal or MLX;
+  Apple's unified memory changes the residency policy, not the API). No kernel code may
+  assume a platform; CI builds both.
+- **Worker process (§3.4):** transport is a named pipe on Windows and a Unix domain socket on
+  Linux/macOS behind one `Channel` type; the worker is spawned with the platform's "no console"
+  flag on Windows and a process group on Unix so a cancel kills the whole tree; child discovery
+  by the parent's own executable path on both.
+- **Sidecar (§5.4):** `integrations.comfyPath` points at a ComfyUI checkout; the launcher finds
+  the interpreter per platform (the portable `python_embeded` on Windows, a `venv/bin/python`
+  or `python3` on Linux), builds the same flags, and reads readiness the same way.
+- **Perception (layer 5):** ONNX Runtime ships CUDA and TensorRT providers for both; macOS gets
+  the CoreML provider later. Engine caches are per platform + driver.
+- **Loader (layer 4):** paths are `PathBuf`s, case-sensitive on Linux (the ComfyUI repack names
+  are matched case-insensitively on purpose), mmap through `memmap2` on all three.
+- **Packaging (§10):** a Windows installer and a Linux tarball + AppImage (`.deb` when the
+  runtime folder is settled), each with its platform's CUDA redistributables and ORT; one
+  `packaging/` script per platform, same manifest. Linux is also where the GPU build box runs
+  CI and the nightly harness (§15), because the CUDA toolchain is simpler there.
+- **Gates:** every phase's "done" includes a Linux build of `genai-native` and of PhotoshopEX
+  with the engine, and the harness run on both when a Linux GPU exists; a phase does not close
+  on one platform.
+- **Dev machines:** this PC (Windows 11, RTX 5090) and the recommended second box, which
+  should be **Linux** (Ubuntu 24.04, CUDA 13) so both platforms are exercised daily.
 
 ---
 
@@ -736,9 +770,10 @@ serve it today at good speed), keeping SAM + 2.1 native; or drop GGUF reading fr
    VRAM hygiene and one code path for all engines. This is the hardest thing to change later.
 2. **Separate repository `genai-native`** (§4) consumed by PhotoshopEX, vs a crate in-tree.
    *Recommendation: separate.*
-3. **A second GPU box for agents** (a used 4090 is enough and also gives sm89 coverage).
-   *Recommendation: yes before Phase 2;* without it, the timeline's parallel tracks collapse to
-   about two.
+3. **A second GPU box for agents**, running **Linux** (Ubuntu 24.04, CUDA 13; a used 4090 is
+   enough and also gives sm89 coverage). *Recommendation: yes before Phase 2;* it is the Linux
+   platform gate (§3.5), the CI/nightly-harness runner, and without it the timeline's parallel
+   tracks collapse to about two.
 4. **Test-weight downloads on this machine** (never shipped): Qwen-Image-2.1 bf16 + Qwen3-VL 8B
    (~30 GB, research licence, for the parity oracle and qwen-image-rs), Krea 2 Turbo GGUF Q8
    (~12 GB), Qwen3-VL-4B GGUF (~4 GB), the SAM 3.1 ONNX exports (owner's HF token).
