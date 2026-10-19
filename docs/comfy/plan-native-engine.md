@@ -491,6 +491,11 @@ qwen-image-rs that survive review.
 
 ### 7.1 Fork and restructure
 
+**Status (2026-10-19):** imported as `genai-native/crates/qir` by `git subtree` (history and
+attribution kept, Apache-2.0, root `NOTICE`), building on Windows with CUDA 13.4 for sm_120 and
+running on the 5090 at 0.14 s/step (the authors' 4090 speed; ComfyUI's INT8 path is ≈ 0.15);
+`gn-bench --engine qir` drives it. The restructuring below is next.
+
 Fork `umag/qwen-image-rs` into `genai-native` (keep history and attribution in `NOTICE`). Move
 its CUDA kernels into `gn-kernels` behind the `Kernels` trait (bf16 GEMM, INT8 ConvRot GEMM,
 SageAttention v1/v2, fused LayerNorm/RMSNorm/SwiGLU/RoPE, the cuDNN convs for the VAE); its

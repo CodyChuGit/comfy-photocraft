@@ -374,7 +374,48 @@ can pick up.
     trunk is the cost either way). Not in the default set. `gn-perception/docs/EXPORT.md` holds
     the export, licence and reproducibility notes.
   - **Open after this**: a Preferences screenshot scrolled to the two new fields (the page
-    renders; the fields sit below the fold at 900 pt); then plan Phase 2.
+    renders; the fields sit below the fold at 900 pt).
+- **Plan Phase 2 opened (2026-10-19, evening): qwen-image-rs runs on this PC, imported as
+  `genai-native/crates/qir`.**
+  - **Weights**: the official `Qwen/Qwen-Image-2.1` snapshot (ungated, Qwen Research licence;
+    7.1 B parameters: DiT ≈ 14 GB bf16, Qwen3-VL-8B text encoder ≈ 16 GB, the VAE) downloaded
+    to `_eval\weights\qwen-image-2.1` in 6 min (31 GB; `huggingface_hub` from ComfyUI's Python).
+  - **The ComfyUI reference for the 2.1 template** (`gn-bench run --engine comfy --template
+    qwen-2.1/image --pref integrations.allowResearchModels=true`, a new `--pref` flag): 28/28,
+    4.4–5.0 s engine time per 1024² picture (25 steps, euler/simple, CFG 1, the INT8 ConvRot
+    repack), `references/2026-10-19-comfy-t2i-qwen21`.
+  - **Building qwen-image-rs on Windows** took four environment fixes and no source change
+    (table in `dev-environment-windows.md`): `CUDARC_CUDA_VERSION=13030` (cudarc 0.19 stops at
+    13.3), `NVCC_APPEND_FLAGS=-Xcompiler /Zc:preprocessor -Xcompiler /MD -std=c++17` (CUDA 13.4's
+    CCCL under MSVC; the dynamic CRT so candle-kernels' `libmoe.a` links beside `cc`'s objects,
+    after `cargo clean -p candle-kernels --release`), the VS Installer folder on PATH before
+    `vcvars64.bat` (vswhere), and no quoted `NVCC_PREPEND_FLAGS` (nvcc keeps the quotes, "Access
+    is denied"). Features `cuda,convrot,sage,sage2,fusednorm`, `CUDA_COMPUTE_CAP=120`, CUTLASS
+    from a shallow clone; no cuDNN (the wheel has no import library; candle's own conv serves).
+  - **First picture on the 5090** (`generate`, the fox prompt, 1024², 25 steps, seed 7, CFG 1,
+    `--convrot`): **0.14 s per step, 25 steps in 3.5 s**, VAE decode 2.1 s (tiled: the bf16
+    text encoder's 16 GB left 11 GB free), 45 s wall of which ≈ 40 s loading (16 GB text encoder
+    from disk, the DiT rotated and quantised on load because the cache write failed:
+    `sync_all` on a read-only handle is "Access is denied" on Windows, fixed in the import). The
+    per-step time equals the authors' 4090 number, i.e. the kernels run correctly on sm_120 but
+    nothing is Blackwell-tuned yet (plan risk 1); ComfyUI's INT8 ConvRot + SageAttention path
+    does 25 steps in ≈ 3.7 s on the same card, so the Python-free port is at speed parity with
+    ComfyUI today and not ahead. The fox is photographic (scratch `qir-out/fox-s7.png`).
+  - **The square t2i cases through it** (`gn-bench run --engine qir`, a new runner; 24 of 28,
+    the four non-square sizes refused since its CLI takes one `--size`): every picture correct,
+    0 of 24 at seed-level parity (PSNR 5–17 dB, SSIM 0.1–0.7: candle's CUDA RNG and diffusers'
+    schedule against ComfyUI's CPU noise and `simple` sigmas, as the review predicted), 26–40 s
+    wall each (loads every time; the engine's residency is Phase 2's first saving).
+  - **Imported** (`genai-native` `1180ef2` by `git subtree`, history kept; `be7bfcf`): a workspace
+    member with its own Apache-2.0 licence and lints, a Windows-aware `build.rs` (conforming
+    preprocessor, the target's CRT from `CARGO_CFG_TARGET_FEATURE`, no rpath), `tokenizers`
+    without `esaxx_fast` (its C++ is built with the static CRT whatever the target and cannot
+    link beside the CUDA objects), the cache-write fix; the root `NOTICE` lists the import, the
+    vendored SageAttention, the SGLang reference file, CUTLASS, cuDNN, candle.
+  - **Next (plan §7.1)**: kernels into `gn-kernels` behind the `Kernels` trait with prebuilt
+    fatbins, the DiT/encoder/VAE into `gn-blocks` + `gn-models/qwen_image_21.rs`, ComfyUI's
+    `simple` schedule and CPU noise for seed-level parity with the reference, residency in the
+    worker (no per-call loads), then the Blackwell tuning pass.
 
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 

@@ -452,6 +452,24 @@ re-runs the trunk, as the node does). Tried and dropped: opset 23's `Attention` 
 CUDA provider ran it in 2.7 s); ORT's offline transformers optimizer (fused BiasGelu and
 SkipLayerNorm only; RoPE and the window layout defeat its attention patterns).
 
+**Qwen-Image-2.1 (plan Phase 2, 2026-10-19): the ComfyUI row and qwen-image-rs's first numbers
+on this card** (`gn-bench run --engine comfy --template qwen-2.1/image` and `--engine qir`; the
+`qwen-2.1/image` template: 25 steps, euler/simple, CFG 1, the INT8 ConvRot repack and the INT8
+Qwen3-VL-8B; qwen-image-rs: the official bf16 snapshot, `--convrot` INT8 DiT, bf16 text encoder,
+SageAttention2, one process per picture):
+
+| Qwen-Image-2.1 at 1024², 25 steps | Per step | 25 steps | Text encoder | VAE decode | Per picture, resident | Per picture, cold process |
+|---|---:|---:|---:|---:|---:|---:|
+| ComfyUI (`best`, server warm) | ≈ 0.15 s | ≈ 3.7 s | inside | ≈ 0.2 s | 4.4–5.0 s engine time | 44 s the first (loads) |
+| qwen-image-rs on the 5090 (4090-tuned tiles) | **0.14 s** | **3.5 s** | 17 s to load (bf16, 16 GB) | 2.1 s (tiled: 11 GB free) | — (no resident mode in its `generate`) | 26–45 s (16 GB encoder load + DiT quantise 20 s) |
+
+Reading: the port's kernels are correct on sm_120 at exactly their 4090 speed (the authors'
+0.148 s/step), so the Python-free lane is at ComfyUI's speed, not ahead; the gap to close is
+tuning (tile plans for 170 SMs / 96 MB L2, Blackwell block-scaled GEMMs) and residency. Pictures
+match ComfyUI's at scene level only (0 of 24 at seed parity, PSNR 5–17 dB): the noise source and
+the schedule differ, which `gn-models` fixes by construction (ComfyUI's CPU noise and `simple`
+sigmas).
+
 Parity yardsticks and thresholds: `genai-native/docs/PARITY.md`. The SAM suite compares
 instance bounds until an engine returns masks (Phase 1). The gates these numbers set for later
 rows: sd.cpp within 1.3× of a row keeps that model on the Python-free lane without further work;
