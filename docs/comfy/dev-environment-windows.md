@@ -57,6 +57,36 @@ nvcc -arch=sm_120a -ccbin "$cl" -o kernel.exe kernel.cu
 stable-diffusion.cpp's prebuilt CUDA 12 build (arch list includes 120) lives in
 `C:\Users\5090\Documents\_eval\sdcpp-bin` with its `cudart` zip; it needs no toolkit.
 
+### Building qwen-image-rs (candle + CUTLASS + nvcc) on this PC
+
+Done 2026-10-19 for plan Phase 2's bring-up (`C:\Users\5090\Documents\_eval\qwen-image-rs`,
+features `cuda,convrot,sage,sage2,fusednorm`, no cuDNN: the wheel has no import library). Four
+things upstream never met, all environment, no source change:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `cudarc` build script: "Unsupported cuda toolkit version: 13.4" | cudarc 0.19 knows up to 13.3 | `set CUDARC_CUDA_VERSION=13030` (the 13.3 bindings serve) |
+| CCCL: "MSVC/cl.exe with traditional preprocessor is used" then "libcu++ requires at least C++ 17" | CUDA 13.4's headers under MSVC | `set NVCC_APPEND_FLAGS=-Xcompiler /Zc:preprocessor -Xcompiler /MD -std=c++17` (nvcc reads it for every call, including the ones `cc` and `bindgen_cuda` make) |
+| `nvcc fatal: Failed to preprocess host compiler properties` / `Access is denied` | `NVCC_PREPEND_FLAGS=-ccbin "…"` keeps the quotes; and `vcvars64.bat` fails silently when `vswhere.exe` is not on PATH | no prepend flag; put `C:\Program Files (x86)\Microsoft Visual Studio\Installer` on PATH before `call vcvars64.bat` so cl, INCLUDE and LIB are set |
+| `LNK2038: mismatch detected for 'RuntimeLibrary'` (candle-kernels' `libmoe.a` is `/MT`, `cc`'s objects `/MD`) | nvcc's default host CRT is static | the `/MD` in the append flags above, and `cargo clean -p candle-kernels --release` so it recompiles |
+
+The working batch (`CUTLASS_DIR` is a shallow clone of NVIDIA/cutlass main at `_eval\cutlass\include`):
+
+```bat
+set PATH=C:\Program Files (x86)\Microsoft Visual Studio\Installer;%PATH%
+call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >nul
+set NVCC_APPEND_FLAGS=-Xcompiler /Zc:preprocessor -Xcompiler /MD -std=c++17
+set CUDARC_CUDA_VERSION=13030
+set CUTLASS_DIR=C:\Users\5090\Documents\_eval\cutlass\include
+set CUDA_COMPUTE_CAP=120
+set PATH=C:\Users\5090\scoop\persist\rustup\.cargo\bin;C:\Users\5090\scoop\apps\cuda\current\bin;%PATH%
+cargo build --release --features cuda,convrot,sage,sage2,fusednorm
+```
+
+Run with `QIR_CONVROT_CACHE=<dir>` (Windows has no `HOME`, so without it the INT8 DiT is
+re-quantised on every load) and `RUST_LOG=info` for its phase timings. The official
+Qwen-Image-2.1 snapshot (31 GB, ungated, research licence) is at `_eval\weights\qwen-image-2.1`.
+
 ### ONNX Runtime and the SAM 3.1 export (`gn-perception`)
 
 | What | Where | Notes |
