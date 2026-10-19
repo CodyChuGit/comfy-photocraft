@@ -2361,3 +2361,18 @@
 	Click an object, or drag a box around it	Auf ein Objekt klicken oder einen Rahmen darum ziehen
 	Fast	Schnell
 	Paint over an object to select it	Über ein Objekt malen, um es auszuwählen
+	Engine: not configured	Engine: nicht eingerichtet
+	Engine: starting…	Engine: startet…
+	Engine: ready	Engine: bereit
+	Engine: running outside the app	Engine: läuft außerhalb der App
+	Engine: failed	Engine: fehlgeschlagen
+	Engine: stopped	Engine: gestoppt
+	Set the ComfyUI folder in Preferences › AI Integrations to let the app start it	Legen Sie den ComfyUI-Ordner unter Voreinstellungen › KI-Integrationen fest, damit die App ihn starten kann
+	Start engine	Engine starten
+	Stop engine	Engine stoppen
+	Restart engine	Engine neu starten
+	Show log	Protokoll anzeigen
+	ComfyUI folder	ComfyUI-Ordner
+	ComfyUI launch flags	ComfyUI-Startparameter
+	Engine start on launch	Engine beim Start starten
+	Engine stop on quit	Engine beim Beenden stoppen

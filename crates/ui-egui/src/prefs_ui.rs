@@ -774,6 +774,13 @@ fn humanize(key: &str) -> String {
     if key == "generativeTimeoutSecs" {
         return "Generative timeout (seconds)".into();
     }
+    // The app-managed engine (plan-native-engine §5.4).
+    if key == "comfyPath" {
+        return "ComfyUI folder".into();
+    }
+    if key == "comfyArgs" {
+        return "ComfyUI launch flags".into();
+    }
     let mut s = String::new();
     for (i, ch) in key.chars().enumerate() {
         if i == 0 {

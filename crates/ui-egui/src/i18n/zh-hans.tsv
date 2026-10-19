@@ -2330,3 +2330,18 @@ cameraRaw	Blending	混合
 	Click an object, or drag a box around it	点击对象，或拖出一个框围住它
 	Fast	快速
 	Paint over an object to select it	在对象上涂抹即可选择它
+	Engine: not configured	引擎：未配置
+	Engine: starting…	引擎：正在启动…
+	Engine: ready	引擎：就绪
+	Engine: running outside the app	引擎：在应用外运行
+	Engine: failed	引擎：失败
+	Engine: stopped	引擎：已停止
+	Set the ComfyUI folder in Preferences › AI Integrations to let the app start it	在 偏好设置 › AI 集成 中设置 ComfyUI 文件夹，应用即可自行启动它
+	Start engine	启动引擎
+	Stop engine	停止引擎
+	Restart engine	重启引擎
+	Show log	显示日志
+	ComfyUI folder	ComfyUI 文件夹
+	ComfyUI launch flags	ComfyUI 启动参数
+	Engine start on launch	启动时启动引擎
+	Engine stop on quit	退出时停止引擎

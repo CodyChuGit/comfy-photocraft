@@ -124,6 +124,12 @@ server) with the models you installed there; the app ships no weights.
   Edge** is the detector's edge refinement. Without a server it is the classical quick selection.
 - **Preferences › Alerts**: a short sound when a run finishes (`done`) or also when it fails
   (`doneAndFailed`); the Windows and macOS packages are built with the `alerts` feature.
+- **The engine dot** (status bar, right end): set **Preferences › AI Integrations › ComfyUI
+  folder** to your ComfyUI install (the portable build's folder or a checkout) and the app starts
+  ComfyUI itself, hidden, when a generative command needs it or at launch (**Start engine at
+  launch**), and stops it when you quit (**Stop engine on quit**). Grey = stopped, amber =
+  starting, green = ready, blue = a ComfyUI you started yourself, red = failed (the tooltip has
+  the reason; the dot's menu has Start / Stop / Restart / Show log). No console window.
 
 ## Status
 

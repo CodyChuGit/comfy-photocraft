@@ -12,7 +12,7 @@ foreach ($line in ($data -split "`n")) {
     [void]$byLang[$cols[0]].Add("`t" + $cols[1] + "`t" + $cols[2])
 }
 foreach ($lang in $byLang.Keys) {
-    $path = "C:\Users\5090\Projects\comfy-photocraft\crates\ui-egui\src\i18n\$lang.tsv"
+    $path = Join-Path $PSScriptRoot "..\..\..\..\crates\ui-egui\src\i18n\$lang.tsv"
     if (-not (Test-Path $path)) { throw "missing $path" }
     $raw = [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8)
     $nl = if ($raw.Contains("`r`n")) { "`r`n" } else { "`n" }

@@ -2393,3 +2393,18 @@ cameraRaw	Amount	Cantidad
 	Click an object, or drag a box around it	Haz clic en un objeto o arrastra un recuadro a su alrededor
 	Fast	Rápida
 	Paint over an object to select it	Pinta sobre un objeto para seleccionarlo
+	Engine: not configured	Motor: sin configurar
+	Engine: starting…	Motor: iniciando…
+	Engine: ready	Motor: listo
+	Engine: running outside the app	Motor: en ejecución fuera de la app
+	Engine: failed	Motor: error
+	Engine: stopped	Motor: detenido
+	Set the ComfyUI folder in Preferences › AI Integrations to let the app start it	Define la carpeta de ComfyUI en Preferencias › Integraciones de IA para que la app pueda iniciarlo
+	Start engine	Iniciar motor
+	Stop engine	Detener motor
+	Restart engine	Reiniciar motor
+	Show log	Mostrar registro
+	ComfyUI folder	Carpeta de ComfyUI
+	ComfyUI launch flags	Opciones de inicio de ComfyUI
+	Engine start on launch	Iniciar motor al abrir
+	Engine stop on quit	Detener motor al salir

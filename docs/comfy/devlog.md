@@ -42,8 +42,61 @@ can pick up.
   the owner's walkthrough; timeline by track; risks; six decisions for the owner (worker
   process, separate repo, a second GPU box, ~46 GB of test-weight downloads, the one surviving
   Python step for the SAM export, 2511 out of scope). Roadmap Phase 6 → planned; README index row.
-- **Open**: the owner's six decisions; Phase 0 starts with the harness and the sm120 bring-up
-  of qwen-image-rs once the downloads are approved.
+- **Owner, same day**: "let's build it out", then "this needs to be cross platform… or at least
+  first Windows and Linux" → plan §3.5 (Windows and Linux first, macOS as a later kernel backend;
+  the second GPU box should be Linux). Phase 0 started.
+- **Toolchain facts on this PC**: no CUDA toolkit, no nvcc, no CMake (installed through scoop,
+  4.4.4), VS 2019 Build Tools 16.11 only (CUDA 13 wants VS 2022; sm_120 needs CUDA ≥ 12.8),
+  driver 617.42, 1 TB free. Installing CUDA + VS 2022 Build Tools needs the owner's go.
+- **Two review notes** (subagents, read-only): [`research/notes/sd-cpp-survey.md`](research/notes/sd-cpp-survey.md)
+  — sd.cpp's CMake recipe (`-DSD_CUDA=ON`, shared libs, `GGML_BACKEND_DL`), **a prebuilt Windows
+  CUDA 12.8 release zip includes arch 120** (so the §5.3 benchmark needs no local toolkit; Linux
+  CUDA is Docker-only, we build), the full C API (ctx params, txt2img/img2img/inpaint/ref-edit,
+  21 samplers, `sd_cancel_generation`, process-global callbacks, lib-malloc'd images), Krea 2 and
+  Qwen-Image-2.1 file/format details (Comfy-Org repacks and INT8 convrot load directly; GGUF
+  Q8/K-quants; LoRA at runtime), SageAttention 2++ on CUDA ≥ 12.8, a declared NVFP4 GGUF type
+  with no documented model path, `--rng cpu` for ComfyUI-matching noise, FFI risks (abort on
+  GGML_ABORT, exceptions across the C boundary, unstable appended struct fields → pin + bindgen),
+  and the sd-cli benchmark lines. [`research/notes/qwen-image-rs-review.md`](research/notes/qwen-image-rs-review.md)
+  — candle 0.11 + cudarc, kernels compiled by `cc` + nvcc for one `sm_89` at build time (no
+  fatbins), CUTLASS from an external dir, cuDNN via a Linux pip wheel: **Linux/WSL2-only as
+  built**; architecture map (single-stream 32-block DiT t2i only, Qwen3 text tower only, VAE
+  decoder only, 2 000-line CLI monolith, official diffusers tensor names only); kernels (CUTLASS
+  Sm80 EVT INT8 GEMM with fused dequant, in-register Hadamard rotate+quant, SageAttention v1/v2,
+  fused norms) all gated `>= 800/890`, so sm_120 is an arch-flag change for correctness and a
+  re-tune for speed; parity scripts reusable but the oracle tensors are not in the repo; 69
+  `unsafe` at the FFI boundary; a licence inconsistency (Cargo says MIT OR Apache-2.0, LICENSE
+  says Apache-2.0); nothing from Qwen's research-licensed repo. Verdict for week 1: bring
+  qwen-image-rs up in WSL2 (its author's own setup, CUDA 13.3) or on the Linux box, not on
+  Windows.
+- **The sidecar landed (plan §5.4)**: `photocraft_genai::sidecar` (a `Launch` built from the
+  preferences each call; one child per process; `resolve` finds the interpreter per layout —
+  `python_embeded`, `venv`/`.venv`, system Python; `command_line` = `python [-s] main.py --listen
+  host --port port --disable-auto-launch <flags>`; `CREATE_NO_WINDOW` on Windows, a process group
+  on Unix; stdout+stderr to `%TEMP%/photocraft-engine.log`, restarted past 10 MB; `status` polls
+  the child and probes the URL at most once a second; `ensure_running` waits up to 180 s with
+  progress and cancel; an external server at the URL is used as it is), `ComfyClient::probe`,
+  `ComfyBackend::with_sidecar` (a run brings the server up first), `generate.engine.status/
+  start/stop/restart` (`generate_engine_cmds.rs`), preferences `comfyPath`, `comfyArgs`
+  (`--fast fp8_matrix_mult`), `engineStartOnLaunch`, `engineStopOnQuit` (eframe `on_exit`), the
+  status bar's engine dot with a Start/Stop/Restart/Show log menu (`engine_ui.rs`, polled every
+  2 s through `session.execute` so the status line is never touched), 15 strings ×13. Tests:
+  4 in `sidecar`, 1 engine (`engine_commands_follow_the_preferences`), 2 UI. Live
+  (`bench/scripts/sidecar-live.ps1`, ComfyUI stopped first): unconfigured → stopped → `start`
+  returns `starting` at once → **ready after 29.2 s, console window hidden** → `select.subjectML`
+  through it (the fox, 1 instance) → `stop` → a detector call with the engine stopped **started
+  it by itself and answered after 21.4 s**; a second run against the real config dir set
+  `comfyPath`, started the engine and quit through `app.quit`: the engine process was gone 4 s
+  later (`engineStopOnQuit` through eframe's `on_exit`). The pinned app now starts ComfyUI itself.
+  Suite: genai 38, engine 920 + integration, UI all
+  green but the baseline `eyedropper` failure; clippy, fmt, wasm engine build. Three UI tests
+  (`alt_scroll_zooms_*`, `clicking_outside_a_dialog_…`) assumed upstream's wheel default and
+  broke with the ported wheel = zoom default (`9e75bf4`); they now pin the preference.
+  `append-translations.ps1` pointed at the retired checkout; fixed. `CLAUDE.md`, README's
+  how-to, `architecture.md` (commands, preferences) updated.
+- **Open**: the owner's decisions (§15: worker process, separate repo, Linux GPU box, ~46 GB of
+  test weights, the CUDA/VS 2022 installs on this PC); the §5.3 sd.cpp benchmark can run from the
+  prebuilt zip once the GGUF downloads are approved; the harness (§5.1) is next.
 
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 

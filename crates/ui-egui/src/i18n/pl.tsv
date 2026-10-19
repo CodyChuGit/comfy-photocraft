@@ -3360,3 +3360,18 @@ cameraRaw	Roughness	Chropowatość
 	Click to include a spot, Alt-click to exclude one	Kliknięcie dodaje miejsce, Alt+kliknięcie je wyklucza
 	Click an object, or drag a box around it	Kliknij obiekt lub narysuj wokół niego ramkę
 	Paint over an object to select it	Pomaluj obiekt, aby go zaznaczyć
+	Engine: not configured	Silnik: nieskonfigurowany
+	Engine: starting…	Silnik: uruchamianie…
+	Engine: ready	Silnik: gotowy
+	Engine: running outside the app	Silnik: działa poza aplikacją
+	Engine: failed	Silnik: błąd
+	Engine: stopped	Silnik: zatrzymany
+	Set the ComfyUI folder in Preferences › AI Integrations to let the app start it	Ustaw folder ComfyUI w Preferencje › Integracje AI, aby aplikacja mogła go uruchamiać
+	Start engine	Uruchom silnik
+	Stop engine	Zatrzymaj silnik
+	Restart engine	Uruchom silnik ponownie
+	Show log	Pokaż dziennik
+	ComfyUI folder	Folder ComfyUI
+	ComfyUI launch flags	Flagi uruchomienia ComfyUI
+	Engine start on launch	Uruchom silnik przy starcie
+	Engine stop on quit	Zatrzymaj silnik przy zamknięciu

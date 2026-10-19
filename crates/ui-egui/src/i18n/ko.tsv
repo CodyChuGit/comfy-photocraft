@@ -2904,3 +2904,18 @@ cameraRaw	Color	색상
 	Click an object, or drag a box around it	개체를 클릭하거나 주위에 상자를 드래그하세요
 	Fast	빠름
 	Paint over an object to select it	개체 위를 칠하면 선택됩니다
+	Engine: not configured	엔진: 구성되지 않음
+	Engine: starting…	엔진: 시작 중…
+	Engine: ready	엔진: 준비됨
+	Engine: running outside the app	엔진: 앱 외부에서 실행 중
+	Engine: failed	엔진: 실패
+	Engine: stopped	엔진: 중지됨
+	Set the ComfyUI folder in Preferences › AI Integrations to let the app start it	환경설정 › AI 연동에서 ComfyUI 폴더를 설정하면 앱이 직접 시작합니다
+	Start engine	엔진 시작
+	Stop engine	엔진 중지
+	Restart engine	엔진 다시 시작
+	Show log	로그 표시
+	ComfyUI folder	ComfyUI 폴더
+	ComfyUI launch flags	ComfyUI 실행 플래그
+	Engine start on launch	앱 시작 시 엔진 시작
+	Engine stop on quit	종료 시 엔진 중지

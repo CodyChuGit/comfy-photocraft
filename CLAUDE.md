@@ -49,7 +49,11 @@ cargo xtask layers; cargo xtask wasm; cargo xtask parity; cargo xtask scorecard 
 
 `photocraft.exe --help` opens the GUI (not a CLI flag); stop it with `Stop-Process -Name photocraft`.
 Use a separate `CARGO_TARGET_DIR` per parallel agent. ComfyUI is a separate process on
-`127.0.0.1:8188`, started with `powershell -File C:\Users\5090\ComfyUI\start-comfyui-fast.ps1`
+`127.0.0.1:8188`. **The app starts it itself** when Preferences › AI Integrations › ComfyUI folder
+names the install (`C:\Users\5090\ComfyUI\ComfyUI_windows_portable` here; `generate.engine.*`,
+`photocraft_genai::sidecar`, the status bar's engine dot; the native engine is being built to
+[`docs/comfy/plan-native-engine.md`](docs/comfy/plan-native-engine.md), Windows and Linux first).
+By hand: `powershell -File C:\Users\5090\ComfyUI\start-comfyui-fast.ps1`
 (the flags measured in [`docs/comfy/benchmarks.md`](docs/comfy/benchmarks.md)); setup and API in
 [`docs/comfy/comfyui-setup.md`](docs/comfy/comfyui-setup.md). Live timings come from
 `docs/comfy/bench/bench-fill.ps1`.

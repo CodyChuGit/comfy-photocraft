@@ -248,6 +248,8 @@ to shared files).
 | `generate.upscale` | Image › Generative Upscale… | `{"model","factor":2|4}` | pixel layer, backend |
 | `generate.models` | — | `{}` → `{models:[…], server}` | always (query, `journal: false`) |
 | `generate.health` | — | `{}` → `{ok, version, vramFree, queue}` | always (query) |
+| `generate.engine.status` | the status bar's engine dot (PhotoshopEX, `engine_ui`) | `{}` → `{state:"unconfigured|stopped|starting|ready|external|failed",pid,url,root,log,detail,sinceMs}`: the app-managed ComfyUI (`photocraft_genai::sidecar`; `external` = a server started by hand answers at the URL) | always (query, `journal: false`) |
+| `generate.engine.start` / `.stop` / `.restart` | the dot's menu; `start` also at launch (`engineStartOnLaunch`) and by itself before a run whose server is down (`ComfyBackend::with_sidecar` → `sidecar::ensure_running`, up to 180 s with progress) | `{}` → as `.status` (`start` spawns Preferences › ComfyUI folder hidden, bound to the host and port of Preferences › ComfyUI server, with Preferences › ComfyUI launch flags, output to `%TEMP%/photocraft-engine.log`; returns at once as `starting`; `stop` leaves an external server alone) | `start`/`restart`: the folder set; `journal: false` |
 | `generate.jobs` | Window › Generations (PhotoshopEX) | `{"limit":100,"includeDismissed":false,"status"?}` → `{jobs:[GenerationRecord…],running,total,dir}`, newest first | always (query) |
 | `generate.jobs.dismiss` / `.pin` / `.clear` | the panel's ×, context menu and overflow menu | `{id | which: completed|failed|stale|all}` / `{id,pinned}` / `{which}`: hide, protect from the caps, delete with files | always |
 | `generate.recreate` | the panel's Recreate and Similar | `{id,seed?,variations?}` → Generate Similar while the result layer exists; else the original command on its open document; a fill or edit whose document closed becomes Generate Image of its prompt (`fallback: "image"`) | native |
@@ -336,6 +338,10 @@ no new section, menu row or dialog page is needed:
 | `allowResearchModels` | false | `plan_fill` refuses research-only templates unless on; `generate.models` reports `allowed` | **Phase 1, implemented** |
 | `defaultGenerateModel` | `""` (the template's default file) | `generate_cmds::plan_image` | **Phase 1, implemented** |
 | `defaultFillTemplate` / `defaultImageTemplate` | `auto` / `krea2-turbo/image` | `plan_fill` / `plan_image` (a research template here still needs `allowResearchModels`); `auto` is resolved inside the job from the server's model lists (`generate_cmds::AUTO_FILL_ORDER`: the Lightning 8-step tier when its LoRA is installed, else the 40-step base) | **Phase 1, implemented; `auto` 2026-10-09** |
+| `comfyPath` | `""` (the server is started by hand) | `generate_engine_cmds::launch_from_prefs` → `sidecar::Launch.root` (the Windows portable build's folder or a checkout; the interpreter is found per layout: `python_embeded`, `venv`/`.venv`, the system Python) | **plan-native-engine Phase 0, implemented 2026-10-18** |
+| `comfyArgs` | `--fast fp8_matrix_mult` | `launch_from_prefs` → the flags after `--listen host --port port --disable-auto-launch` | **implemented 2026-10-18** |
+| `engineStartOnLaunch` | false | `engine_ui::on_launch` (`generate_engine_cmds::start_on_launch`) | **implemented 2026-10-18** |
+| `engineStopOnQuit` | true | `engine_ui::on_quit` (eframe `on_exit`) → `generate.engine.stop` | **implemented 2026-10-18** |
 | `generativePreviews` | true | task bar overlay | Phase 2 |
 | `freeVramAfterRun` | false | client (`POST /free`) | Phase 2 |
 | `generativeContentFilter` | true | the moderation hook required by community licences | Phase 2 |

@@ -2739,3 +2739,18 @@ cameraRaw	Blending	Pembauran
 	Click to include a spot, Alt-click to exclude one	Klik untuk menyertakan titik, Alt-klik untuk mengecualikan
 	Click an object, or drag a box around it	Klik objek, atau seret kotak di sekelilingnya
 	Paint over an object to select it	Sapukan di atas objek untuk memilihnya
+	Engine: not configured	Mesin: belum dikonfigurasi
+	Engine: starting…	Mesin: memulai…
+	Engine: ready	Mesin: siap
+	Engine: running outside the app	Mesin: berjalan di luar aplikasi
+	Engine: failed	Mesin: gagal
+	Engine: stopped	Mesin: berhenti
+	Set the ComfyUI folder in Preferences › AI Integrations to let the app start it	Atur folder ComfyUI di Preferensi › Integrasi AI agar aplikasi dapat memulainya
+	Start engine	Mulai mesin
+	Stop engine	Hentikan mesin
+	Restart engine	Mulai ulang mesin
+	Show log	Tampilkan log
+	ComfyUI folder	Folder ComfyUI
+	ComfyUI launch flags	Opsi peluncuran ComfyUI
+	Engine start on launch	Mulai mesin saat aplikasi dibuka
+	Engine stop on quit	Hentikan mesin saat keluar

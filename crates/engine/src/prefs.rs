@@ -766,6 +766,17 @@ pub struct Integrations {
     /// alike), `default` = the templates' default files, `nvfp4` = the NVFP4 file whenever it
     /// is installed (for testing; slow or failing on other GPUs).
     pub model_precision: String,
+    /// The ComfyUI install the app starts itself (the sidecar, `generate.engine.*`): the Windows
+    /// portable build's folder or a checkout. Empty = the server at `comfyServer` is started by
+    /// hand.
+    pub comfy_path: String,
+    /// Extra flags for that server after `--listen` and `--port` (`benchmarks.md`'s measured
+    /// defaults).
+    pub comfy_args: String,
+    /// Start the engine when the app starts (otherwise on the first generative command).
+    pub engine_start_on_launch: bool,
+    /// Stop the engine the app started when the app quits.
+    pub engine_stop_on_quit: bool,
 }
 
 impl Default for Integrations {
@@ -790,6 +801,10 @@ impl Default for Integrations {
             alerts: "off".into(),
             enhance_prompts: false,
             model_precision: "auto".into(),
+            comfy_path: String::new(),
+            comfy_args: "--fast fp8_matrix_mult".into(),
+            engine_start_on_launch: false,
+            engine_stop_on_quit: true,
         }
     }
 }

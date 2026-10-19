@@ -139,6 +139,8 @@ fn color_range_eyedropper_picks_on_the_canvas() {
 #[test]
 fn clicking_outside_a_dialog_keeps_it_open_and_the_canvas_pans_and_zooms() {
     let mut h = harness();
+    // Upstream's wheel: plain scroll pans (the fork's default is wheel = zoom).
+    h.state_mut().session.edit_prefs(|p| p.general.zoom_with_scroll_wheel = false);
     open_dialog(&mut h);
     let p = free_canvas(&h);
     h.hover_at(p);
@@ -276,6 +278,8 @@ fn doc_at(h: &Harness<'static, PhotocraftApp>, p: Pos2) -> [f32; 2] {
 #[test]
 fn alt_scroll_zooms_gently_around_the_pointer() {
     let mut h = harness();
+    // Upstream's wheel: ⌥ + scroll zooms, plain scroll pans (the fork's default is wheel = zoom).
+    h.state_mut().session.edit_prefs(|p| p.general.zoom_with_scroll_wheel = false);
     let r = h.state().last_canvas_rect;
     let p = pos2(r.center().x + 120.0, r.center().y - 70.0);
     h.hover_at(p);
@@ -318,6 +322,8 @@ fn alt_scroll_zooms_gently_around_the_pointer() {
 #[test]
 fn alt_scroll_zooms_while_a_temporary_tool_is_held() {
     let mut h = harness();
+    // Upstream's wheel (the fork's default is wheel = zoom).
+    h.state_mut().session.edit_prefs(|p| p.general.zoom_with_scroll_wheel = false);
     let p = h.state().last_canvas_rect.center();
     h.hover_at(p);
     // Space (the temporary Hand, #249) is down: ⌥ + scroll still zooms by notches, and the

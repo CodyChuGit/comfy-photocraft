@@ -385,6 +385,11 @@ port conflict handling, "engine stopped" notices; `generate.engine.start/stop/st
 status dot; Preferences › AI Integrations › Engine. Live script `sidecar-live.ps1` (spawn → ready
 → fill → stop).
 
+**Status (2026-10-18):** §5.4 done and live (dev log); §5.2 moves to WSL2 or the Linux box
+(qwen-image-rs builds its kernels with nvcc + a Linux cuDNN wheel, see the review note); §5.3 can
+use sd.cpp's prebuilt Windows CUDA 12.8 zip with arch 120 (no local toolkit needed); this PC has
+no CUDA toolkit, nvcc or VS 2022 yet (installs need the owner's go).
+
 ### 5.5 Done when
 
 A `benchmarks.md` §8 table exists with, per model: ComfyUI fp8 / NVFP4, qwen-image-rs (2.1 only),

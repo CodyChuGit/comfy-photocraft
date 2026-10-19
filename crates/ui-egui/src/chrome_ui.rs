@@ -156,6 +156,8 @@ pub fn status_bar_pro(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         let is_err = app.ui.status_error || app.ui.status.starts_with("Couldn");
         ui.label(RichText::new(&app.ui.status).color(if is_err { t.warning } else { t.text_faint }));
     }
+    // comfy-photocraft: the generative engine's state (`engine_ui`).
+    crate::engine_ui::dot(app, ui);
 }
 
 /// Home button at the very start of Photoshop 2026's options bar: toggles the Home (start)

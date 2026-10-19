@@ -21,6 +21,8 @@ pub mod comfy;
 #[cfg(all(feature = "fake-server", not(target_arch = "wasm32")))]
 pub mod fake;
 pub mod png;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod sidecar;
 pub mod template;
 
 use serde::{Deserialize, Serialize};

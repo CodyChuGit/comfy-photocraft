@@ -2597,3 +2597,18 @@ cameraRaw	Roughness	Неровность
 	Click to include a spot, Alt-click to exclude one	Щелчок включает точку, Alt+щелчок исключает
 	Click an object, or drag a box around it	Щёлкните объект или обведите его рамкой
 	Paint over an object to select it	Проведите по объекту, чтобы выделить его
+	Engine: not configured	Движок: не настроен
+	Engine: starting…	Движок: запускается…
+	Engine: ready	Движок: готов
+	Engine: running outside the app	Движок: запущен вне приложения
+	Engine: failed	Движок: сбой
+	Engine: stopped	Движок: остановлен
+	Set the ComfyUI folder in Preferences › AI Integrations to let the app start it	Укажите папку ComfyUI в Настройки › Интеграции ИИ, чтобы приложение могло его запускать
+	Start engine	Запустить движок
+	Stop engine	Остановить движок
+	Restart engine	Перезапустить движок
+	Show log	Показать журнал
+	ComfyUI folder	Папка ComfyUI
+	ComfyUI launch flags	Флаги запуска ComfyUI
+	Engine start on launch	Запускать движок при старте
+	Engine stop on quit	Останавливать движок при выходе

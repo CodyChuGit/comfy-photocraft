@@ -132,6 +132,25 @@ impl ComfyClient {
         &self.base
     }
 
+    /// Does a ComfyUI answer `/system_stats` at `base_url` within `timeout`? One request with
+    /// its own short connect timeout, for the sidecar's readiness probe and the status bar (a
+    /// closed loopback port answers at once; a server still importing does not listen yet).
+    pub fn probe(base_url: &str, timeout: Duration) -> bool {
+        let Ok(base) = normalize_url(base_url) else { return false };
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_connect(Some(timeout))
+            .timeout_recv_response(Some(timeout))
+            .timeout_recv_body(Some(timeout))
+            .http_status_as_error(false)
+            .build()
+            .into();
+        let Ok(mut resp) = agent.get(&format!("{base}/system_stats")).call() else { return false };
+        if resp.status().as_u16() >= 400 {
+            return false;
+        }
+        Self::read_body(&mut resp, "/system_stats").ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).is_some_and(|v| v.is_object())
+    }
+
     fn url(&self, path: &str) -> String {
         format!("{}{}", self.base, path)
     }
@@ -380,6 +399,9 @@ pub struct ComfyBackend {
     deadline: Duration,
     /// Which weights to load for slots with an NVFP4 alternative (see [`prepare`]).
     precision: crate::Precision,
+    /// The app-managed server to start before a run when the URL does not answer
+    /// ([`crate::sidecar`]); `None` = the server is started by hand.
+    sidecar: Option<crate::sidecar::Launch>,
 }
 
 /// Whether each server's GPU is a Blackwell part, by base URL: asked once per process (one
@@ -390,12 +412,19 @@ impl ComfyBackend {
     /// `url` of the server; `deadline` bounds a whole run (preference `generativeTimeoutSecs`).
     pub fn new(url: &str, deadline: Duration) -> Result<Self> {
         let per_request = deadline.min(Duration::from_secs(120)).max(Duration::from_secs(2));
-        Ok(Self { client: ComfyClient::new(url, per_request)?, deadline, precision: crate::Precision::Auto })
+        Ok(Self { client: ComfyClient::new(url, per_request)?, deadline, precision: crate::Precision::Auto, sidecar: None })
     }
 
     /// The precision policy (preference `integrations.modelPrecision`; `Auto` by default).
     pub fn with_precision(mut self, precision: crate::Precision) -> Self {
         self.precision = precision;
+        self
+    }
+
+    /// The sidecar to bring up before a run when the server does not answer (preference
+    /// `integrations.comfyPath`); a run then waits for it instead of failing.
+    pub fn with_sidecar(mut self, sidecar: Option<crate::sidecar::Launch>) -> Self {
+        self.sidecar = sidecar;
         self
     }
 
@@ -552,6 +581,10 @@ impl GenerativeBackend for ComfyBackend {
     }
 
     fn run(&self, req: &Request, progress: &dyn Progress) -> Result<Response> {
+        // An app-managed server that is down comes up first (one quick probe when it is up).
+        if let Some(l) = &self.sidecar {
+            crate::sidecar::ensure_running(l, progress)?;
+        }
         let started = Instant::now();
         let prepared = self.prepare(req);
         let req = &prepared;

@@ -55,6 +55,7 @@ pub mod distort_ui;
 pub mod doc_props_ui;
 pub mod dock;
 pub mod enable_rules;
+pub mod engine_ui;
 pub mod eraser_ui;
 pub mod export_dialog;
 pub mod file_open;
@@ -571,6 +572,8 @@ impl PhotocraftApp {
         };
         // Saved preferences (and recovered documents) are in place before the first frame.
         prefs_ui::load(&mut app);
+        // comfy-photocraft: the app-managed ComfyUI starts now when the preference says so.
+        engine_ui::on_launch(&mut app);
         notices::wayland_file_drop_guidance(&mut app);
         // File › Scripts › Script Events Manager: "Start Application".
         photocraft_engine::automate_cmds::fire_event(&mut app.session, "startApplication");
@@ -1003,6 +1006,11 @@ impl PhotocraftApp {
 }
 
 impl eframe::App for PhotocraftApp {
+    /// comfy-photocraft: the app-managed ComfyUI stops with the app when the preference says so.
+    fn on_exit(&mut self) {
+        engine_ui::on_quit(self);
+    }
+
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         i18n::set_current(i18n::Lang::from_pref(&self.session.prefs().interface.language));
         if !self.styled {
@@ -1037,6 +1045,7 @@ impl eframe::App for PhotocraftApp {
         self.issue_screenshots(ctx);
         prefs_ui::tick(self, ctx);
         monitor_status::poll(self, ctx);
+        engine_ui::tick(self, ctx);
         // Control requests and persisted preferences can change the language in this frame.
         i18n::sync_context(ctx, &self.session.prefs().interface.language);
         // A window bigger than its display (1440 × 900 on 1366 × 768) runs under the taskbar:

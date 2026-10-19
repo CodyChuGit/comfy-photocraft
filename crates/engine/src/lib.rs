@@ -40,6 +40,7 @@ mod frame_cmds;
 pub mod fx_view_cmds;
 pub mod gallery_cmds;
 pub mod generate_cmds;
+pub mod generate_engine_cmds;
 pub mod generate_jobs;
 mod generate_refs;
 pub mod gradient_fill_cmds;

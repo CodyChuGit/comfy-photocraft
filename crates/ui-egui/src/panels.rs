@@ -1008,6 +1008,8 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         ui.add_space(6.0);
                         crate::jobs_ui::status_progress(app, ui);
                     }
+                    // comfy-photocraft: the generative engine's state (`engine_ui`).
+                    crate::engine_ui::dot(app, ui);
                 });
             });
         });

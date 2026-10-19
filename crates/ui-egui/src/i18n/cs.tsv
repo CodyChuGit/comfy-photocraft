@@ -2322,3 +2322,18 @@ cameraRaw	Color	Barvy
 	Click an object, or drag a box around it	Klikněte na objekt nebo kolem něj táhněte rámeček
 	Fast	Rychlá
 	Paint over an object to select it	Přetáhněte přes objekt a vyberete ho
+	Engine: not configured	Engine: nenastaven
+	Engine: starting…	Engine: spouští se…
+	Engine: ready	Engine: připraven
+	Engine: running outside the app	Engine: běží mimo aplikaci
+	Engine: failed	Engine: selhal
+	Engine: stopped	Engine: zastaven
+	Set the ComfyUI folder in Preferences › AI Integrations to let the app start it	Nastavte složku ComfyUI v Předvolby › Integrace AI, aby ji aplikace mohla spouštět
+	Start engine	Spustit engine
+	Stop engine	Zastavit engine
+	Restart engine	Restartovat engine
+	Show log	Zobrazit protokol
+	ComfyUI folder	Složka ComfyUI
+	ComfyUI launch flags	Parametry spuštění ComfyUI
+	Engine start on launch	Spustit engine při startu
+	Engine stop on quit	Zastavit engine při ukončení

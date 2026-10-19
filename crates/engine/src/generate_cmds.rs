@@ -482,7 +482,10 @@ pub(crate) fn backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> {
     };
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let b = photocraft_genai::comfy::ComfyBackend::new(url, timeout).map_err(gen_err)?.with_precision(precision);
+        let b = photocraft_genai::comfy::ComfyBackend::new(url, timeout)
+            .map_err(gen_err)?
+            .with_precision(precision)
+            .with_sidecar(crate::generate_engine_cmds::launch_from_prefs(s));
         Ok(Arc::new(b))
     }
     #[cfg(target_arch = "wasm32")]

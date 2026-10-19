@@ -2752,3 +2752,18 @@ cameraRaw	Blending	Fusion
 	Click to include a spot, Alt-click to exclude one	Clic pour inclure un point, Alt-clic pour en exclure un
 	Click an object, or drag a box around it	Cliquez sur un objet ou tracez un cadre autour
 	Paint over an object to select it	Peignez sur un objet pour le sélectionner
+	Engine: not configured	Moteur : non configuré
+	Engine: starting…	Moteur : démarrage…
+	Engine: ready	Moteur : prêt
+	Engine: running outside the app	Moteur : lancé hors de l'application
+	Engine: failed	Moteur : en échec
+	Engine: stopped	Moteur : arrêté
+	Set the ComfyUI folder in Preferences › AI Integrations to let the app start it	Indiquez le dossier ComfyUI dans Préférences › Intégrations IA pour que l'application puisse le lancer
+	Start engine	Démarrer le moteur
+	Stop engine	Arrêter le moteur
+	Restart engine	Redémarrer le moteur
+	Show log	Afficher le journal
+	ComfyUI folder	Dossier ComfyUI
+	ComfyUI launch flags	Options de lancement de ComfyUI
+	Engine start on launch	Démarrer le moteur au lancement
+	Engine stop on quit	Arrêter le moteur à la fermeture

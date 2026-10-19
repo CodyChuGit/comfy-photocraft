@@ -797,6 +797,9 @@ pub struct UiState {
     /// (`object_select`).
     #[serde(skip)]
     pub object_select: crate::object_select::ObjectSelectUi,
+    /// The generative engine's last polled status, for the status bar's dot (`engine_ui`).
+    #[serde(skip)]
+    pub engine: crate::engine_ui::EngineUi,
     /// Smoothing is a per-tool option (Brush and Eraser each keep theirs): the tool whose
     /// smoothing the session brush holds, and the other tools' saved values.
     #[serde(default)]
@@ -924,6 +927,7 @@ impl Default for UiState {
             hub: Default::default(),
             angles: Default::default(),
             object_select: Default::default(),
+            engine: Default::default(),
             smoothing_tool: None,
             tool_smoothing: Vec::new(),
             clone_source: None,

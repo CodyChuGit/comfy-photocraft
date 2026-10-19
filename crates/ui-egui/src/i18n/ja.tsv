@@ -2305,3 +2305,18 @@ cameraRaw	Color	カラー
 	Click an object, or drag a box around it	オブジェクトをクリックするか、周りをドラッグして枠で囲みます
 	Fast	高速
 	Paint over an object to select it	オブジェクトの上をなぞると選択されます
+	Engine: not configured	エンジン: 未設定
+	Engine: starting…	エンジン: 起動中…
+	Engine: ready	エンジン: 準備完了
+	Engine: running outside the app	エンジン: アプリ外で実行中
+	Engine: failed	エンジン: 失敗
+	Engine: stopped	エンジン: 停止
+	Set the ComfyUI folder in Preferences › AI Integrations to let the app start it	環境設定 › AI 連携で ComfyUI フォルダーを設定すると、アプリが起動できます
+	Start engine	エンジンを起動
+	Stop engine	エンジンを停止
+	Restart engine	エンジンを再起動
+	Show log	ログを表示
+	ComfyUI folder	ComfyUI フォルダー
+	ComfyUI launch flags	ComfyUI 起動フラグ
+	Engine start on launch	起動時にエンジンを開始
+	Engine stop on quit	終了時にエンジンを停止
