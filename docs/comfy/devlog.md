@@ -4,6 +4,47 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-18: the native-engine plan
+
+- **Owner's direction** (2026-10-16 → 18): "this needs to leave the lab and become real
+  production software", "it's always BYOM", "my biggest concern is that there will be new
+  frontier models by then", "I want to do this once and do it right". Scope they chose for a
+  native engine: Krea 2 Turbo, Qwen-Image-2.1 (generate + edit), SAM 3.1; everything else rented.
+- **Landscape check** (web, 2026-10-16): `stable-diffusion.cpp` (C++/ggml, MIT, ~7.7k stars)
+  already runs Krea 2 (2026-06-25), Qwen-Image-2.1 (day-0, 2026-09-20), the Qwen Image Edit
+  series, Z-Image, FLUX.2/3, with LoRA and GGUF; no FP8/NVFP4 path and no published 5090 number
+  vs ComfyUI. `umag/qwen-image-rs` (Rust + CUDA on candle, Apache-2.0, one developer) ports
+  Qwen-Image-2.1 t2i from diffusers at parity and self-reports 0.62 → 0.148 s/step on a 4090
+  with INT8 ConvRot GEMMs + SageAttention + fused kernels (sm89 only, no edit/LoRA/masks).
+  `SceneWorks/inference` merged 2.1 on candle and MLX with reference-image editing
+  (2026-09-23). SAM 3 community ONNX/TensorRT: 24 ms text, 85 ms point/box on a 5090 FP16; no
+  official export. Reading: speed is in CUDA kernels whatever the host; a component engine
+  with thin definitions is how sd.cpp keeps day-0 pace; a Rust host with its own kernels can
+  beat ComfyUI per model at per-model, per-GPU cost.
+- **Sizing against the owner's Halo week** (`Documents\BloodGulch-Web`, no git: ~55 k lines JS +
+  ~34 k Python export tools in 8 days by a lead model plus a swarm of bounded workers, 65 agent
+  reports, 1,663-test baseline, README: "1:1 milestone not achieved"): that pace comes from
+  hundreds of independent deterministic tasks with an x86 oracle and instant feedback; the
+  engine serializes on one GPU and a dependency chain, so the estimate is ~6–8 weeks to "works
+  end to end", ~12 weeks to the acceptance walkthrough, kernel track ongoing.
+- **Written: [`plan-native-engine.md`](plan-native-engine.md)**: the four brief sentences as
+  design commitments; the ground (trait, templates, commands, research verdict, landscape
+  table); the target (editor ⇄ `GenerativeBackend` ⇄ {native worker, sd.cpp FFI, hidden ComfyUI
+  sidecar}); `genai-native`'s five one-way layers (kernels / blocks / thin model definitions /
+  BYOM loader / perception via `ort`) on candle plumbing; routing `auto: native → sdcpp → comfy`
+  with per-model overrides and badges; the engine as a **worker process** (`photocraft.exe
+  --engine`) so a CUDA fault never kills the editor; phases 0–6 with gates (ground truth +
+  harness + sidecar; SAM 3.1 native; skeleton + 2.1 t2i parity; 2.1 edit/fill/expand; Krea 2;
+  Python-free packaging; kernel track SageAttention sm120 → FP8 → NVFP4 → CUDA graphs); the
+  parity harness spec and thresholds; failure taxonomy; commands and preferences; BYOM file
+  security; budgets; tests by crate; live scripts; licence checklist (Qwen Research License
+  covers "model code" → port from diffusers/ComfyUI's Apache-marked file, never Qwen's repo);
+  the owner's walkthrough; timeline by track; risks; six decisions for the owner (worker
+  process, separate repo, a second GPU box, ~46 GB of test-weight downloads, the one surviving
+  Python step for the SAM export, 2511 out of scope). Roadmap Phase 6 → planned; README index row.
+- **Open**: the owner's six decisions; Phase 0 starts with the harness and the sm120 bring-up
+  of qwen-image-rs once the downloads are approved.
+
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 
 - **Research** (five researchers, report in `docs/comfy/research/Native inference for PhotoCraft on RTX
