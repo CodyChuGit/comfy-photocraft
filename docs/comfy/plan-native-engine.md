@@ -417,6 +417,16 @@ numbers and confirmed §15's decisions.
 in-process at tens of milliseconds, with ComfyUI off, through `gn-perception`; the probe tint
 appears as the pointer moves rather than after a rest.
 
+**Status (2026-10-19): parity reached in the harness.** `gn-perception` runs SAM 3.1 through
+`ort` (runtime loaded from a user-named directory, CUDA + cuDNN preloaded from named
+directories), from **our own export of ComfyUI's modules** (`genai-native/tools/export_sam31.py`,
+five fp32 graphs, no community export and no Hugging Face token needed: the user's existing
+`sam3.1_multiplex_fp16.safetensors` is the source), and `sam31.rs` reproduces the `SAM3_Detect`
+node's text, point and box routes including its crop refinement. 16/16 SAM cases at bounds IoU
+0.99–1.00 against the ComfyUI references (`bench/sam-ort-comfy-compare-2026-10-19.md`). Not yet:
+the worker wiring (`Task::Segment`, prefs), the fp16 export, on-device tensors, the TensorRT
+provider; see 6.2 and the dev log.
+
 ### 6.1 Artifacts
 
 - ONNX graphs for the three paths SAM 3.1 exposes: text (PCS: image encoder + text encoder +

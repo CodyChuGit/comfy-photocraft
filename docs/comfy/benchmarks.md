@@ -422,6 +422,25 @@ works across engines, and an engine that wants ComfyUI-identical output needs Co
 conditioning, which argues for our own encoder path in the native engine rather than borrowing
 sd.cpp's.
 
+**SAM 3.1 through ONNX Runtime (plan Phase 1, 2026-10-19; `gn-bench run --engine sam-ort`,
+ORT 1.31.0 CUDA 13 provider, fp32 graphs exported from ComfyUI's own modules by
+`genai-native/tools/export_sam31.py`; one process per case, so the wall includes 2 s of session
+opening and the first-call autotune):** 16 of 16 at parity, bounds IoU 0.99–1.00
+(`bench/sam-ort-comfy-compare-2026-10-19.md`); a first round through the community
+`kishanstar2003` SAM 3 export reached 11 of 16 (text prompts only;
+`bench/sam-ort-hf-compare-2026-10-19.md`). Engine times on the fox picture, warm:
+
+| SAM 3.1 route | ComfyUI node (fp16, torch SDPA) | ORT fp32 (this round) | Where the ORT time goes |
+|---|---:|---:|---|
+| Picture embedding (vision trunk + FPNs + CLS) | inside the node | 470 ms | the 446 M-parameter ViTDet at fp32 |
+| Text (`select.byText`), one detection with 2 refinement passes | 154 ms whole node | 750 ms | text 209 + decoder 146 + crop vision 264 + heads 2× ≈ 110 |
+| Point (`select.byPoint`), 2 passes | 94 ms whole node | ≈ 200 ms (1.4 s the first call: cuDNN plans) | heads 2× |
+| Box | ≈ 90 ms | 140 ms | heads 2× |
+
+Reading: the masks are ComfyUI's (fox: 344 133 vs 344 125 pixels by point, 344 151 vs 344 045 by
+text, 142 239 vs 141 856 by box), the speed is not yet: the fp16 export, keeping the FPN tensors
+on the device between graphs (IoBinding) and CUDA graphs are the levers, each measured in turn.
+
 Parity yardsticks and thresholds: `genai-native/docs/PARITY.md`. The SAM suite compares
 instance bounds until an engine returns masks (Phase 1). The gates these numbers set for later
 rows: sd.cpp within 1.3× of a row keeps that model on the Python-free lane without further work;

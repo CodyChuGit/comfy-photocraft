@@ -236,6 +236,52 @@ can pick up.
     decoder). ONNX Runtime 1.31.0 ships a **CUDA 13** Windows GPU build (295 MB) that pairs with
     the toolkit here, and cuDNN 9 already lives in ComfyUI's torch (`torch\lib\cudnn*64_9.dll`,
     `cudart64_13.dll`); the `ort` crate is at 2.0.0-rc.15.
+  - **Phase 1, SAM 3.1 through ONNX Runtime, at parity (2026-10-19; `genai-native` `6e87b2a`,
+    `b1642d5`; `gn-perception`).** The runtime is loaded like the weights: `ort` with
+    `load-dynamic`, `init_from(<dir>/onnxruntime.dll)`, the CUDA and cuDNN libraries preloaded
+    from directories the caller names (here scoop's `cuda\bin\x64` and ComfyUI's `torch\lib`;
+    nothing from `PATH`). Two findings on the way: cuDNN 9.24 loads
+    `cudnn_engines_tensor_ir64_9.dll` by name and `ort` rc.15's preload list predates it (first
+    convolution failed with `CUDNN_STATUS_SUBLIBRARY_LOADING_FAILED`), so every `cudnn*_9.dll`
+    in the named directories is preloaded; and the "FP16" community set is fp32 inside (header
+    census). The CLIP tokenizer is the `tokenizers` crate without its C parts (`fancy-regex`),
+    with ComfyUI's 32-token window (start, ≤ 30 pieces, end, zero pad; the mask through the end
+    token). **Round one, the community `kishanstar2003` SAM 3 export** (detector only):
+    11 of 16 cases at parity, every text prompt at bounds IoU 0.98–1.00 even across SAM 3 vs
+    3.1 weights and without the node's refinement, box prompts split, point prompts fail (the
+    detector's geometry encoder is not a point segmenter). **Round two, our own export of
+    ComfyUI's SAM 3.1** (`tools/export_sam31.py`, run with ComfyUI's Python against the user's
+    `sam3.1_multiplex_fp16.safetensors`; `torch.onnx.export(dynamo=True)`, opset 18, fp32,
+    `in_training = True` so RoPE takes ComfyUI's plain-torch path instead of its `comfy_kitchen`
+    op, which has no ONNX translation): five graphs (`vision` 1.87 GB with the detector FPN, the
+    tracker's interactive FPN and the geometry CLS token in one trunk pass; `text` with the
+    language resizer; `geometry` for boxes; `decoder`; `heads` = the tracker's prompt encoder +
+    mask decoder returning all four mask tokens, IoUs and the object score, taking a 1008² mask
+    prompt and a `has_mask` switch so one graph serves points, boxes and mask refinement). The
+    small graphs verified against torch in the exporting process (text 4e-6, geometry 1e-4,
+    decoder 2e-2, heads 5e-3 max abs). `gn_perception::sam31` then reproduces the `SAM3_Detect`
+    node step by step (ComfyUI's unnormalised 0..1 input, prompt = text ⊕ boxes ⊕ CLS,
+    `sigmoid(score) > 0.5` and the best 1, the 288 → picture → crop → 1008 interpolation chain
+    with the node's `int()` truncations in f64, two tracker passes on a 10 %-padded crop, OR with
+    the coarse mask; points as `[pts, pad]` with the best of three multimask heads for a single
+    point, boxes as `[pad, tl=2, br=3]`, the −1024 no-object rule). **16 of 16 at parity**
+    (`bench/sam-ort-comfy-compare-2026-10-19.md`): bounds IoU 0.99–1.00 everywhere; the fox
+    masks within 0.03 % of the reference pixel counts (point 344 133 vs 344 125, text 344 151 vs
+    344 045, box 142 239 vs 141 856). Engine times, fp32 through ORT's CUDA provider after a
+    one-time autotune: vision 470 ms, text route 750 ms (text 209 + decoder 146 + crop vision
+    264 + two heads 109), box 140 ms, point ≈ 200 ms warm (the 1.4 s first heads call is cuDNN
+    plan building); ComfyUI fp16 does the whole text node in 154 ms and a point in 94 ms, so the
+    levers are an fp16 export, keeping the FPN tensors on the device (IoBinding) and CUDA
+    graphs; parity came first. Harness: `gn-bench run --engine sam-ort` (`SamOrt` drives
+    `gn-sam run`, whose JSON line has PhotoshopEX's `select.*` shape). Also learned: ComfyUI's
+    node sends points and boxes through the tracker heads and text through the detector, and
+    refines detector masks through the tracker; the Hugging Face layout stays in `sam3.rs` as a
+    bring-up fallback. Python additions to ComfyUI's embedded interpreter for the export:
+    `onnx` 1.23.2, `onnxscript` 0.7.2, `onnxruntime` 1.31.0 (CPU, verification only).
+  - **Open after this**: wire `Task::Segment` through the worker (`engine_main` gets a real
+    engine; prefs for the runtime and model directories; `select_ml_cmds` unchanged), the fp16
+    export and the on-device tensors, the licence/export notes (`gn-perception/docs/EXPORT.md`),
+    a lighter tracker-only vision graph for the refinement crops.
 
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 
