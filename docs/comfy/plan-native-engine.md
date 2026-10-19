@@ -423,9 +423,12 @@ directories), from **our own export of ComfyUI's modules** (`genai-native/tools/
 five fp32 graphs, no community export and no Hugging Face token needed: the user's existing
 `sam3.1_multiplex_fp16.safetensors` is the source), and `sam31.rs` reproduces the `SAM3_Detect`
 node's text, point and box routes including its crop refinement. 16/16 SAM cases at bounds IoU
-0.99–1.00 against the ComfyUI references (`bench/sam-ort-comfy-compare-2026-10-19.md`). Not yet:
-the worker wiring (`Task::Segment`, prefs), the fp16 export, on-device tensors, the TensorRT
-provider; see 6.2 and the dev log.
+0.99–1.00 against the ComfyUI references (`bench/sam-ort-comfy-compare-2026-10-19.md`). **Wired
+into the app the same day**: `PerceptionEngine` serves the worker, `integrations.runtimePath` /
+`modelsPath` + `engine = native` make `select.byPoint/byText` native (the fox's masks match the
+references exactly; 22 ms per prompt on an embedded picture, 133 ms for a new picture with the
+fp16 graphs). Not yet: on-device tensors, ORT's fused attention (the trunk is ≈ 2.5× torch's
+SDPA), the TensorRT provider; see 6.2 and the dev log.
 
 ### 6.1 Artifacts
 

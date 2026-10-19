@@ -430,16 +430,23 @@ opening and the first-call autotune):** 16 of 16 at parity, bounds IoU 0.99–1.
 `kishanstar2003` SAM 3 export reached 11 of 16 (text prompts only;
 `bench/sam-ort-hf-compare-2026-10-19.md`). Engine times on the fox picture, warm:
 
-| SAM 3.1 route | ComfyUI node (fp16, torch SDPA) | ORT fp32 (this round) | Where the ORT time goes |
-|---|---:|---:|---|
-| Picture embedding (vision trunk + FPNs + CLS) | inside the node | 470 ms | the 446 M-parameter ViTDet at fp32 |
-| Text (`select.byText`), one detection with 2 refinement passes | 154 ms whole node | 750 ms | text 209 + decoder 146 + crop vision 264 + heads 2× ≈ 110 |
-| Point (`select.byPoint`), 2 passes | 94 ms whole node | ≈ 200 ms (1.4 s the first call: cuDNN plans) | heads 2× |
-| Box | ≈ 90 ms | 140 ms | heads 2× |
+| SAM 3.1 route | ComfyUI node (fp16, torch SDPA) | ORT fp32, first call | ORT fp32, warm | ORT fp16, warm (`--fp16`, the default set now) |
+|---|---:|---:|---:|---:|
+| Picture embedding (vision trunk + both FPNs + CLS), once per picture | inside the node | 470–490 ms | 198 ms | **133 ms** |
+| Text (`select.byText`), one detection with 2 refinement passes, after the embedding | 154 ms whole node | 750 ms | 276 ms (text 5 + decoder 51 + crop vision 197 + heads 2× 23) | **202 ms** (5 + 41 + 133 + 23) |
+| Point (`select.byPoint`), 2 passes, after the embedding | 94 ms whole node | 140 ms | 21 ms | **22 ms** |
+| Box, after the embedding | ≈ 90 ms | 137 ms | 21 ms | 22 ms |
 
 Reading: the masks are ComfyUI's (fox: 344 133 vs 344 125 pixels by point, 344 151 vs 344 045 by
-text, 142 239 vs 141 856 by box), the speed is not yet: the fp16 export, keeping the FPN tensors
-on the device between graphs (IoBinding) and CUDA graphs are the levers, each measured in turn.
+text, 142 239 vs 141 856 by box; fp16 16/16 at parity too, 344 142 by text). Per prompt on an
+embedded picture the native path is already **4× faster than ComfyUI's node** (22 ms against
+94 ms: the node re-runs the trunk every time, the worker keeps the embedding), which is the
+object finder's case; a fresh picture costs 133 + 22 = 155 ms by point and 335 ms by text
+against the node's 94 / 154 ms, because ORT's exported attention is the unfused
+MatMul-Softmax-MatMul chain (the ViTDet trunk is ≈ 2.5× torch's SDPA). Tried and dropped:
+opset 23 (the exporter emits the fused `Attention` op, but ORT 1.31's CUDA provider ran that
+graph in 2.7 s). Next levers: ORT's contrib `MultiHeadAttention` through the fusion optimizer,
+keeping the FPN tensors on the device between graphs (IoBinding), CUDA graphs for the heads.
 
 Parity yardsticks and thresholds: `genai-native/docs/PARITY.md`. The SAM suite compares
 instance bounds until an engine returns masks (Phase 1). The gates these numbers set for later

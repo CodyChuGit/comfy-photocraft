@@ -96,13 +96,21 @@ fn cell_of(p: [f64; 2]) -> [i64; 2] {
     [(p[0] / CELL).floor() as i64, (p[1] / CELL).floor() as i64]
 }
 
+/// Seconds the pointer rests before the finder asks: shorter with the native engine, whose
+/// worker keeps the picture's embedding and answers a probe in tens of milliseconds.
+pub fn probe_delay(app: &PhotocraftApp) -> f64 {
+    if crate::retouch_ui::native_engine(app) { 0.08 } else { PROBE_DELAY }
+}
+
 /// Is the server answering? Checked at most every [`ONLINE_RECHECK`] seconds (a health request).
 pub fn online(app: &mut PhotocraftApp, now: f64) -> bool {
     if !server_configured(app) {
         app.ui.object_select.online = None;
         return false;
     }
-    let url = app.session.prefs().integrations.comfy_server.trim().to_string();
+    // The answer is for one configuration: the engine and whatever it needs to be reached.
+    let i = &app.session.prefs().integrations;
+    let url = format!("{}|{}|{}|{}", i.engine.trim(), i.comfy_server.trim(), i.runtime_path.trim(), i.models_path.trim());
     if let Some((u, ok, at)) = &app.ui.object_select.online
         && *u == url
         && now - at < ONLINE_RECHECK
@@ -159,15 +167,16 @@ pub fn tick(app: &mut PhotocraftApp, ctx: &egui::Context) {
         return;
     };
     let cell = cell_of(p);
+    let delay = probe_delay(app);
     match app.ui.object_select.hover {
         Some((c, _)) if c == cell => {}
         _ => {
             app.ui.object_select.hover = Some((cell, now));
-            ctx.request_repaint_after(std::time::Duration::from_millis((PROBE_DELAY * 1000.0) as u64 + 10));
+            ctx.request_repaint_after(std::time::Duration::from_millis((delay * 1000.0) as u64 + 10));
             return;
         }
     }
-    let rested = app.ui.object_select.hover.is_some_and(|(_, since)| now - since >= PROBE_DELAY);
+    let rested = app.ui.object_select.hover.is_some_and(|(_, since)| now - since >= delay);
     let known = app.ui.object_select.probe.as_ref().is_some_and(|pr| pr.cell == cell);
     if !rested || known {
         return;

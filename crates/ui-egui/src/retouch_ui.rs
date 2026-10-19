@@ -216,9 +216,20 @@ pub fn finish_object_selection(app: &mut PhotocraftApp, start: [f64; 2], end: [f
 
 /// Is a generative server configured (Preferences › AI Integrations)? The options bar shows the
 /// SAM 3.1 controls of the selection tools only then (the default preference names the local
-/// server, so this is true out of the box).
+/// server, so this is true out of the box). Under `integrations.engine = native` the question
+/// is whether the worker has its runtime and model folders.
 pub fn server_configured(app: &PhotocraftApp) -> bool {
-    !app.session.prefs().integrations.comfy_server.trim().is_empty()
+    let i = &app.session.prefs().integrations;
+    if native_engine(app) {
+        return !i.runtime_path.trim().is_empty() && !i.models_path.trim().is_empty();
+    }
+    !i.comfy_server.trim().is_empty()
+}
+
+/// Does the native worker answer generative requests (`integrations.engine = native`)? Its SAM
+/// 3.1 keeps a picture's embedding, so the object finder can ask sooner after the pointer rests.
+pub fn native_engine(app: &PhotocraftApp) -> bool {
+    app.session.prefs().integrations.engine.trim() == "native"
 }
 
 /// Is the configured server answering right now (`generate.health`, one quick request; a closed

@@ -302,10 +302,27 @@ can pick up.
     the pixel counts within 0.03 %; no worker left behind. Tests: genai 25 + 12 + 3, engine
     native/prefs/select/generate subset 88, `prefs_usage` 4, clippy clean. Model files live at
     `_eval\native-models\sam3.1` on this PC.
-  - **Open after this**: the fp16 export and on-device tensors (ComfyUI's node is still 3–5×
-    faster per call), a tracker-only vision graph for the refinement crops, the licence/export
-    notes (`gn-perception/docs/EXPORT.md`), `object_select.rs`'s shorter probe delay when the
-    engine reports `native`, the Preferences page screenshot with the two new fields.
+  - **fp16 and warm numbers** (`export_sam31.py --fp16`: vision, geometry, decoder and heads
+    traced in half precision with fp32 inputs and outputs, the text graph fp32; `gn-sam run
+    --repeat 3` for warm timings; `genai-native` `b5d7104`, `98fb1a7`): 16/16 at parity again
+    (`runs/2026-10-19-sam-ort-comfy-fp16`, fox text 344 142 px). Warm, fp32 → fp16: vision
+    198 → **133 ms**, text route after the embedding 276 → **202 ms**, point / box **22 ms**
+    (the first call in a process pays 0.3–0.5 s of cuDNN planning once). Against ComfyUI's node
+    (94 ms point, 154 ms text, trunk every time) a prompt on an embedded picture is 4× faster,
+    a fresh picture 1.6–2.2× slower: ORT runs the exporter's unfused attention. Opset 23 emits
+    the fused `Attention` op but ORT 1.31's CUDA provider took 2.7 s on it; dropped. The fp16 set
+    is now `_eval\native-models\sam3.1` (fp32 beside it as `sam3.1-fp32`). `benchmarks.md` §8.
+    In the app with the fp16 set (`photocraft-cli run`, same fox): point 344 125 px (the
+    reference's count exactly), text 430 ms, box 33 ms, point with a negative on the tail
+    [90, 125, 724, 873] / 287 133 px against the reference's 287 283, a second point 30 ms.
+  - **Object Selection with the native engine**: `server_configured` is engine-aware (under
+    `native` it asks for the two folders, not a ComfyUI URL), the finder's online check is keyed
+    by engine + folders, and the rest delay before a probe drops from 0.25 s to 0.08 s when the
+    engine is native (the worker keeps the picture's embedding, so a probe is ≈ 22 ms).
+  - **Open after this**: on-device tensors (IoBinding) and ORT's fused attention for the trunk,
+    a tracker-only vision graph for the refinement crops, the licence/export notes
+    (`gn-perception/docs/EXPORT.md`), a Preferences screenshot scrolled to the two new fields
+    (the page renders; the fields sit below the fold at 900 pt).
 
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 
