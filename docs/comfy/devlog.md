@@ -120,11 +120,17 @@ can pick up.
   route: 16 of 16 cases, 8.0 s wall in total (0.3–0.8 s per case warm, engine time 0.2–0.7 s),
   the shell pipeline returning at once. Reference folder:
   `genai-native\references\2026-10-18-comfy-sam\` (ignored; `summary.md` there).
+- **The reference baseline is in** (`genai-native\references\2026-10-18-comfy-{t2i,edit,fill,sam}`,
+  44 pictures, 52 MB, ignored by git; `benchmarks.md` §8): t2i 28/28 on `krea2-turbo/image` in
+  142 s (4.0–4.4 s engine time per 1024² image warm, 20.6 s for the first, cold); edit 8/8 in
+  652 s (`auto` under Quality best = `qwen-edit-2511/edit`, 40 steps: 67 s each, 120 s with a
+  reference picture); fill 8/8 in 383 s (44–48 s each, 60 s for the removal case); sam 16/16 in
+  8 s. Every later engine is compared against these folders with `gn-bench compare`.
 - **Open**: the owner's decisions (§15: worker process, separate repo, Linux GPU box, ~46 GB of
   test weights, the CUDA/VS 2022 installs on this PC); the §5.3 sd.cpp benchmark can run from the
-  prebuilt zip once the GGUF downloads are approved; the t2i/edit/fill reference runs (minutes
-  each on the 5090) and the SAM suite's mask-level metrics (the engines report bounds today;
-  masks come with the native SAM in Phase 1).
+  prebuilt zip once the GGUF downloads are approved; the SAM suite's mask-level metrics (the
+  engines report bounds today; masks come with the native SAM in Phase 1); LPIPS (needs a small
+  VGG ONNX) when the first native pictures exist.
 
 ## 2026-10-16: the native-inference question, Quality mode, and the Object Selection tool's SAM 3.1 mode
 

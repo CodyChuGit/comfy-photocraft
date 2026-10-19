@@ -373,3 +373,24 @@ tier's per-reference cost is scaled by its steps and CFG passes (90 s, not measu
   change shipped (§5c).
 - On a 24 GB Ampere card (RTX 3090) the same tiers apply with roughly 2–3× the step times and
   no FP8 gain; the text encoder will live in RAM; the Lightning 8-step tier is the one to install.
+
+## 8. The native-engine baseline (plan-native-engine §5, 2026-10-18)
+
+The reference every engine of the native-engine plan is compared against: PhotoshopEX's
+ComfyUI route as the product runs it (Quality `best`, the app-managed sidecar), through
+`gn-bench run --engine comfy` in the `genai-native` repository (`crates/gn-harness/fixtures/`;
+run folders under its ignored `references/2026-10-18-comfy-<suite>/`, 44 pictures, 52 MB).
+ComfyUI 0.39.0, driver 617.42, RTX 5090 32 GB, one run per case, the server warm after the
+first case.
+
+| Suite | Cases | Template under `auto` / `best` | Engine time per case | Wall, whole suite |
+|---|---:|---|---|---:|
+| `t2i` | 28 | `krea2-turbo/image` (8 steps) | 4.0–4.4 s at 1024², 1344×768 and 768×1344 alike; 20.6 s for the first, cold | 142 s |
+| `edit` | 8 | `qwen-edit-2511/edit` (40 steps) | 67.1–67.5 s; 119.7 s with one reference picture (two cases) | 652 s |
+| `fill` | 8 | `qwen-edit-2511/fill` (40 steps) | 44.1–47.8 s; 59.5 s for the removal case (a 50 % rect) | 383 s |
+| `sam` | 16 | `sam3.1/segment`, `-point`, `-box` | 0.2–0.7 s (text, point, negative point, box) | 8 s |
+
+Parity yardsticks and thresholds: `genai-native/docs/PARITY.md`. The SAM suite compares
+instance bounds until an engine returns masks (Phase 1). The gates these numbers set for later
+rows: sd.cpp within 1.3× of a row keeps that model on the Python-free lane without further work;
+the native engine takes a model under `auto` only when it beats its row at parity.
