@@ -636,6 +636,24 @@ reference natively, at parity, faster than ComfyUI NVFP4 once the kernel track d
 - Harness: the 12 × 2 × 3 text-to-image set + 6 style-reference cases. Done when the definition
   is ≤ 600 lines, blocks added are tested, parity holds, and `benchmarks.md` has the row.
 
+**Status (2026-10-20 night): text to image ported, at the model's own level of agreement,
+faster than ComfyUI.** The weights come from ComfyUI's fp8 repacks through
+`qwen-image-rs convert-fp8` (bf16 safetensors; BYOM). In `qir`: the Qwen3-VL-4B config and
+tapped hidden states (`forward_taps`, Krea 2's twelve), the single-stream DiT
+(`model/krea2.rs`, ~560 lines: GQA with the sigmoid gate, AdaLN-single, `txtfusion`, Flux's
+3-axis RoPE), the Wan 2.1 VAE decoder for one frame (`model/wan_vae.rs`), the shift-1.15
+schedule, `Krea2Pipeline`; `gn-diffusion` serves `krea2-turbo/image` with one family resident
+at a time. Each piece was checked against ComfyUI's running objects (conditioning 1 %, one
+DiT forward 1.6 %, VAE 0.24 %). On the 28 cases the native route is at 16–17 of 28 against
+ComfyUI's fp8 and bf16 routes, which agree with each other on 20 of 28: an 8-step Turbo at CFG
+1 is sensitive to its arithmetic (`benchmarks.md` §8). Speed: 3.5–4.9 s a picture against
+ComfyUI's 4.0–4.7 (through the app, resident: 4.3–4.85 s). With the bf16 DiT the native route
+reaches 21 of 28 against the bf16 route (ComfyUI's fp8 route: 20) at 8.6–15 s. Krea 2 stays on
+ComfyUI under `auto` (not faster at the precision ComfyUI reaches); `native` serves it. Open:
+the fp8 GEMM (§11) to keep both speed and precision, the style reference (6 cases), LoRA loading, the
+NVFP4 file (dequantised on load would work through the same converter path; the NVFP4 GEMM is
+§11), the definition's ≤ 600-line gate is met but the blocks are not yet in `gn-blocks` (§7.1).
+
 ---
 
 ## 10. Phase 5: packaging without Python (weeks 9–12)

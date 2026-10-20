@@ -2863,7 +2863,7 @@ dependencies = [
 [[package]]
 name = "gn-diffusion"
 version = "0.1.0"
-source = "git+https://github.com/CodyChuGit/genai-native.git?rev=37be64aa59bdf6612987910e5222da7f9463ab40#37be64aa59bdf6612987910e5222da7f9463ab40"
+source = "git+https://github.com/CodyChuGit/genai-native.git?rev=4ab8f4f3a6d61f4656be9c0b1f0220b9d0091bd8#4ab8f4f3a6d61f4656be9c0b1f0220b9d0091bd8"
 dependencies = [
  "anyhow",
  "gn-engine",
@@ -2874,7 +2874,7 @@ dependencies = [
 [[package]]
 name = "gn-engine"
 version = "0.1.0"
-source = "git+https://github.com/CodyChuGit/genai-native.git?rev=37be64aa59bdf6612987910e5222da7f9463ab40#37be64aa59bdf6612987910e5222da7f9463ab40"
+source = "git+https://github.com/CodyChuGit/genai-native.git?rev=4ab8f4f3a6d61f4656be9c0b1f0220b9d0091bd8#4ab8f4f3a6d61f4656be9c0b1f0220b9d0091bd8"
 dependencies = [
  "serde",
  "serde_json",
@@ -2883,7 +2883,7 @@ dependencies = [
 [[package]]
 name = "gn-perception"
 version = "0.1.0"
-source = "git+https://github.com/CodyChuGit/genai-native.git?rev=37be64aa59bdf6612987910e5222da7f9463ab40#37be64aa59bdf6612987910e5222da7f9463ab40"
+source = "git+https://github.com/CodyChuGit/genai-native.git?rev=4ab8f4f3a6d61f4656be9c0b1f0220b9d0091bd8#4ab8f4f3a6d61f4656be9c0b1f0220b9d0091bd8"
 dependencies = [
  "gn-engine",
  "ort",
@@ -5424,7 +5424,7 @@ dependencies = [
 [[package]]
 name = "qwen-image-rs"
 version = "0.0.0"
-source = "git+https://github.com/CodyChuGit/genai-native.git?rev=37be64aa59bdf6612987910e5222da7f9463ab40#37be64aa59bdf6612987910e5222da7f9463ab40"
+source = "git+https://github.com/CodyChuGit/genai-native.git?rev=4ab8f4f3a6d61f4656be9c0b1f0220b9d0091bd8#4ab8f4f3a6d61f4656be9c0b1f0220b9d0091bd8"
 dependencies = [
  "anyhow",
  "candle-core",
@@ -5432,8 +5432,10 @@ dependencies = [
  "candle-transformers",
  "cc",
  "clap",
+ "float8",
  "half",
  "image",
+ "memmap2",
  "safetensors 0.8.0",
  "serde",
  "serde_json",

@@ -4,6 +4,66 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-20 (night): plan Phase 4, Krea 2 Turbo native
+
+- **Weights.** Krea 2 Turbo and its Qwen3-VL-4B encoder exist on this machine only as
+  ComfyUI's `fp8_scaled` repacks (`comfy_quant` float8_e4m3fn, one `weight_scale` per linear).
+  `qwen-image-rs convert-fp8` rewrites them as bf16 safetensors tensor by tensor (streaming
+  writer; 12 GB in 21 s, 5 GB in 7 s), the rest copied, the markers dropped. The weights
+  folder `_eval\weights\krea2-turbo\{tokenizer,text_encoder,transformer,vae}` is a junction
+  under `_eval\native-models` for the worker (`<models>/krea2-turbo/`). BYOM stays: nothing
+  ships, the converter is the user's.
+- **The architecture, read from ComfyUI's model code and stable-diffusion.cpp's `krea2.hpp`
+  (MIT), each piece checked against ComfyUI's running objects:** the **encoder** is the 4B's
+  language model (width 2560, 36 layers, 32/8 heads, SwiGLU 9728; `TextConfig::qwen3vl_4b`,
+  the loader takes any key root since the repack keeps `model.*`) tapped at twelve hidden
+  states (`hidden_states[2, 5, …, 35]`, transformers' numbering, `forward_taps`), the prefix
+  through `<|im_start|>user\n` dropped (`krea2::template_end`): the conditioning
+  `(tokens, 12, 2560)` is **1 % from ComfyUI's** (cosine 1.000, 59 tokens → 25). The **DiT**
+  (`model/krea2.rs`): a single-stream transformer, 28 blocks of 6144 with GQA 48/12 heads of
+  128, per-head q/k RMSNorm with the `(1 + scale)` weight, a sigmoid gate on the attention
+  output, SwiGLU 16384, AdaLN-single (one `tproj` of the timestep plus a per-block bias,
+  six chunks), Flux's 3-axis RoPE with axes `[32, 48, 48]` at theta 1000 (text at position 0,
+  pixels at `(0, y, x)`), the `txtfusion` adapter (two blocks across each token's twelve states,
+  a learned 12→1 mix, two blocks along the sequence) and `txtmlp`; one forward on ComfyUI's
+  latent and conditioning is **1.6 % from its fp8 route** (cosine 0.99988). The **Wan 2.1
+  VAE** decoder for one frame (`model/wan_vae.rs`, Wan's own layout; every causal 3-D
+  convolution sees two zero frames so only its last temporal tap matters, the temporal
+  resample never runs on a first frame): **0.24 % from ComfyUI's decode**, first try. The
+  **sampling**: a `FLUX`-type model with `shift 1.15` (read off the loaded model's
+  `model_sampling`; the 8 `simple` sigmas are in a unit test), the noise ComfyUI draws on the
+  `(1, 16, h, w)` latent, the Wan21 statistics on the way to the VAE, no timestep rounding
+  (Flux's embedding takes the f32 sigma).
+- **Speed on the way.** The first picture took 14 s (plain f32 attention over 4121 tokens × 48
+  heads, an f32 VAE at 1024²) and the plain path ran out of memory on one case of 28. With
+  SageAttention2 over the joint sequence (the GQA handled by the kernel), ConvRot INT8 on the
+  block and text-fusion linears (`KLinear`: the 24 GB bf16 model becomes 12 and the encoder
+  stays resident) and the VAE in bf16 (norms and attention scores in f32): the fox in
+  **3.8 s** (0.09 s prompt, 3.0 s sampling, 0.6 s decode) at **35.6 dB** against the app's
+  ComfyUI route (fp8), ComfyUI 4.0–4.4 s. The sage path is as close to ComfyUI as the plain one
+  (1.6 % on the forward).
+- **Parity, 28 cases** (`runs/2026-10-20-qir-krea2-t2i` against
+  `references/2026-10-18-comfy-t2i`, the app's ComfyUI route with the fp8 files): **16 of 28
+  at the gate, 17 against a bf16 ComfyUI route** (`references/2026-10-20-comfy-t2i-krea2-bf16`,
+  the converted files through ComfyUI's API with the template's graph) — and ComfyUI's two
+  routes agree with each other on only 20 of 28: an 8-step Turbo at CFG 1 is sensitive to its
+  arithmetic, and the misses are the same scenes everywhere (street ×3, food, vehicle,
+  architecture-s7, interior-s7), the same picture with details shifted. A run with the bf16
+  DiT (no ConvRot; SageAttention still) reaches **21 of 28 against the bf16 route**, one more
+  than ComfyUI's fp8 route does, at 8.6–15 s a picture (candle's bf16 GEMMs; the encoder is
+  reloaded per prompt because the 24 GB DiT leaves it no room): the INT8 linears cost four
+  cases here, the fp8 GEMM of the kernel track (§11) is what keeps both. Engine times with
+  INT8: 3.5–4.9 s a picture (ComfyUI fp8 4.0–4.7, bf16 5.5–6.7).
+- **The worker** (`gn-diffusion`, `4ab8f4f`): `krea2-turbo/image` beside the 2.1 templates,
+  one family resident at a time (the card holds either set): the other family's first request
+  swaps them. PhotoshopEX pinned at `4ab8f4f`; through the app with `engine = native`: the
+  first picture 15.7 s (loads, quantises), then **4.85 s and 4.31 s per 1024² picture**
+  (ComfyUI warm 4.0–4.7), a swap to 2.1 and back 18 s and 23 s. **Krea 2 stays on ComfyUI under
+  `auto`** (the rule is faster at parity: this is neither clearly faster nor at the precision
+  ComfyUI's own routes reach with INT8); `native` serves it, the GUI and CLI carry it. Open:
+  the style reference (6 cases), LoRAs, the fp8 GEMM, a prequantised ConvRot cache for Krea 2
+  (11 s of each cold start is the quantisation).
+
 ## 2026-10-20 (later): plan Phase 3, Qwen-Image-2.1 edit and fill native, under `auto`
 
 - **The pieces, each checked against ComfyUI's running objects before the next was built**

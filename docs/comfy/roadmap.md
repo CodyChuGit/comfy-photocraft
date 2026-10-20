@@ -241,8 +241,11 @@ ArtCraft Omni API) with the local server as the default and a fallback order.
   spots), refine edge, Select › Subject through the detector. ✅ Native inference
   (`docs/comfy/plan-native-engine.md`): the app-managed ComfyUI sidecar first, then the native
   worker in the same executable: SAM 3.1 (2026-10-19), Qwen-Image-2.1 text to image, edit,
-  fill, expand, matte and transparent output (2026-10-20) at parity and under `auto`;
-  ⬜ Krea 2, Qwen-Image-Edit-2511 and the layered model still go to ComfyUI.
+  fill, expand, matte and transparent output (2026-10-20) at parity and under `auto`; Krea 2
+  Turbo text to image ported the same night (served under `native`, at the model's own level of
+  agreement, 4.3–4.85 s a picture resident) but kept on ComfyUI under `auto` until the fp8 GEMM
+  lands; ⬜ Krea 2's style reference, Qwen-Image-Edit-2511 and the layered model still go to
+  ComfyUI.
 
 **Phase 4 status after the PhotoshopEX build (2026-10-12):** ✅ capability flags the UI reads
 (kept in the templates' metadata rather than a separate `models.toml`), ✅ LoRA and style

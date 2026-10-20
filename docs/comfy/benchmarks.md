@@ -562,6 +562,35 @@ IoU 0.992; a transparent Generate Image at 1024², 12.3 s; Generative Expand wit
 along), 11.7–12.0 s for 256–384 px of new canvas on the fox, seamless on the four cases looked
 at (two symmetric, two one-sided).
 
+**Krea 2 Turbo natively (plan Phase 4, 2026-10-20 night).** The port (`genai-native`
+`cc0ee18`…): ConvRot INT8 block linears, SageAttention2, bf16 Wan 2.1 VAE, ComfyUI's noise and
+`simple` schedule (shift 1.15, 8 steps). The references are the app's ComfyUI route with the
+fp8 repacks (`references/2026-10-18-comfy-t2i`) and the same graph with the bf16 files the
+converter made (`references/2026-10-20-comfy-t2i-krea2-bf16`, through ComfyUI's API), 28 cases:
+
+| Krea 2 Turbo, 1024² (4 at other aspects), 8 steps | Engine time per picture | At the 30 dB / 0.90 gate vs the fp8 route | vs the bf16 route |
+|---|---:|---:|---:|
+| ComfyUI, fp8 repacks (the app's route) | 4.0–4.7 s warm | — | 20 of 28 |
+| ComfyUI, bf16 files | 5.5–6.7 s | 20 of 28 | — |
+| native, INT8 ConvRot + SageAttention2 (`runs/2026-10-20-qir-krea2-t2i`) | **3.5–4.9 s** (one process per picture: 11 s to load, then the picture) | 16 of 28 | 17 of 28 |
+| native, bf16 DiT + SageAttention2 (`runs/2026-10-20-qir-krea2-t2i-bf16`; candle's bf16 GEMMs, the encoder reloaded per prompt) | 8.6–15.0 s | 19 of 28 | **21 of 28** |
+
+Reading: an 8-step Turbo at CFG 1 is sensitive to its arithmetic. ComfyUI's two precisions
+disagree on 8 cases (street ×3, food ×2, architecture-s7, interior-s7, vehicle-s7), the native
+route on 11–12, the same scenes plus macro ×2 and interior-s11, and the misses are the same
+scene with details shifted (a menu card, a tree, an umbrella), not another picture. The fox:
+35.6 dB against the fp8 route, 36.2 against bf16; ComfyUI's two routes 39.3 dB apart on it.
+The single DiT forward on identical inputs is 1.6 % from ComfyUI's fp8 route (cosine 0.99988),
+the conditioning 1 %, the VAE decode 0.24 %. With the bf16 DiT the native route agrees with
+ComfyUI's bf16 route as well as ComfyUI's fp8 route does (21 against 20 of 28), so the INT8
+ConvRot linears cost about four cases on this model; the fp8 GEMM of the kernel track (§11)
+is the lever that keeps both. **Through the app, resident** (`native-krea2-live.bat`,
+`integrations.engine = native`): the first picture 15.7 s (loads and quantises), then **4.85 s
+and 4.31 s per 1024² picture** against ComfyUI's 4.0–4.7 s warm; swapping the worker to
+Qwen-Image-2.1 and back costs the loads (18 s, 23 s). Routing: Krea 2 stays on ComfyUI under
+`auto` (neither faster nor at the INT8 precision ComfyUI's own two routes reach); `native`
+serves it.
+
 Parity yardsticks and thresholds: `genai-native/docs/PARITY.md`. The SAM suite compares
 instance bounds until an engine returns masks (Phase 1). The gates these numbers set for later
 rows: sd.cpp within 1.3× of a row keeps that model on the Python-free lane without further work;
