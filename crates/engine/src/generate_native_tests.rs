@@ -10,7 +10,8 @@ use crate::generate_cmds::{engine_mode, set_native_backend};
 
 #[test]
 fn the_engine_preference_routes_to_the_native_worker() {
-    let (port, token) = photocraft_genai::native::serve_fake(vec!["krea2-turbo/image".into(), "qwen-edit-2511/edit".into(), "sam3.1/segment".into()], 1).unwrap();
+    let (port, token) =
+        photocraft_genai::native::serve_fake(vec!["krea2-turbo/image".into(), "qwen-edit-2511/edit".into(), "sam3.1/segment".into(), "qwen-2.1/image".into()], 1).unwrap();
     set_native_backend(Arc::new(photocraft_genai::native::NativeBackend::attached(port, &token).unwrap()));
     let mut s = Session::new();
     assert_eq!(engine_mode(&s), "auto");
@@ -27,6 +28,10 @@ fn the_engine_preference_routes_to_the_native_worker() {
     assert_eq!((r["width"].as_u64(), r["height"].as_u64(), r["template"].as_str()), (Some(128), Some(64), Some("krea2-turbo/image")), "{r}");
     let doc = &s.active().unwrap().doc;
     assert_eq!((doc.size.width, doc.size.height), (128, 64));
+    // Qwen-Image-2.1 text to image goes through the channel too (a research-only model: opt in).
+    s.execute("prefs.set", json!({"path": "integrations.allowResearchModels", "value": true})).unwrap();
+    let r = s.execute("generate.image", json!({"prompt": "a fox", "template": "qwen-2.1/image", "width": 128, "height": 64, "target": "layer", "seed": 9})).unwrap();
+    assert_eq!((r["width"].as_u64(), r["height"].as_u64(), r["template"].as_str()), (Some(128), Some(64), Some("qwen-2.1/image")), "{r}");
     // Generative Edit sends the picture across and gets one back the same size.
     let e = s.execute("generate.edit", json!({"prompt": "make it winter", "template": "qwen-edit-2511/edit", "seed": 3})).unwrap();
     assert_eq!((e["width"].as_u64(), e["height"].as_u64()), (Some(128), Some(64)), "{e}");
@@ -46,6 +51,8 @@ fn the_engine_preference_routes_to_the_native_worker() {
     assert_eq!(s.execute("generate.health", json!({})).unwrap()["backend"], "comfyui");
     assert_eq!(s.execute("generate.health", json!({"template": "sam3.1/segment"})).unwrap()["backend"], "native/fake");
     assert_eq!(s.execute("generate.health", json!({"template": "krea2-turbo/image"})).unwrap()["backend"], "comfyui");
+    // Served by the worker, but not in `NATIVE_AUTO_FAMILIES` yet: `auto` keeps it on ComfyUI.
+    assert_eq!(s.execute("generate.health", json!({"template": "qwen-2.1/image"})).unwrap()["backend"], "comfyui");
     let sel = s.execute("select.byText", json!({"prompt": "fox"})).unwrap();
     assert_eq!((sel["count"].as_u64(), sel["selected"].as_bool()), (Some(1), Some(true)), "{sel}");
     // The fake's coverage is a centred disc: the selection's bounds sit inside the 128×64 picture.

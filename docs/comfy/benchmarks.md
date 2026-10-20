@@ -463,6 +463,12 @@ SageAttention2, one process per picture):
 | ComfyUI (`best`, server warm) | ≈ 0.15 s | ≈ 3.7 s | inside | ≈ 0.2 s | 4.4–5.0 s engine time | 44 s the first (loads) |
 | qwen-image-rs on the 5090 (4090-tuned tiles), first run | 0.14 s | 3.5 s | 17 s to load (bf16, 16 GB) | 2.1 s (tiled: 11 GB free) | — (no resident mode in its `generate`) | 45 s (16 GB encoder load + DiT quantise 20 s) |
 | the same, page cache and INT8 cache warm (`genai-native/crates/qir`) | **0.116 s** | **2.9 s** | ≈ 5 s to load | 0.43 s | — | **11–13 s** (DiT cache 3 s + encoder 5 s + 2.9 + 0.4) |
+| **PhotoshopEX's native worker** (`gn-diffusion` over `qir::pipeline`, `integrations.engine = native`, 2026-10-20; the app's `ms`, channel included) | 0.116 s | 2.9 s | 0.25 s (bf16, resident) | 0.43 s | **3.65–3.73 s** | 11.7 s the first picture (loads), then resident |
+
+The native worker's picture is **0.8–1.3 s faster than ComfyUI's** at the same steps and size once
+resident, and the first picture costs 11.7 s against ComfyUI's 44 s cold. Measured with ComfyUI
+stopped: with its models still resident the same run took 11.9 s per picture (the card's 32 GB
+oversubscribed), so the two engines are not to be kept warm together.
 
 Reading: the port's kernels are correct on sm_120 at the authors' 4090 speed or a little better
 (0.116–0.14 s/step against their 0.148), so the Python-free lane is at ComfyUI's speed (≈ 0.15),
@@ -471,6 +477,26 @@ tuning (tile plans for 170 SMs / 96 MB L2, Blackwell block-scaled GEMMs) and res
 match ComfyUI's at scene level only (0 of 24 at seed parity, PSNR 5–17 dB): the noise source and
 the schedule differ, which `gn-models` fixes by construction (ComfyUI's CPU noise and `simple`
 sigmas).
+
+**With ComfyUI's conventions (2026-10-20, `qwen-image-rs generate --comfy`: PyTorch's CPU
+generator reproduced bit for bit, the `simple` schedule over the model's shift-0.69 sigmas, its
+bf16 timestep rounding; `runs/2026-10-20-qir-t2i-comfy-sage` against
+`references/2026-10-19-comfy-t2i-qwen21`, all 28 cases including the non-square four):**
+
+| Qwen-Image-2.1, 25 steps, 28 cases | PSNR | SSIM | At the 30 dB / 0.90 gate | Per picture (one process each) |
+|---|---:|---:|---:|---:|
+| qwen-image-rs, candle's RNG + diffusers' schedule (2026-10-19) | 5–17 dB | 0.1–0.7 | 0 of 24 | 26–40 s |
+| qwen-image-rs `--comfy`, SageAttention2 | **9–24 dB** | **0.49–0.93** | 6 of 28 | 11.4–11.6 s |
+| the same, exact attention (no sage; `target-exact`) on the fox | 21.0 dB | 0.90 | — | 22.9 s |
+
+Where the two routes part (the fox, seed 7, both routes at the same step count): **1 step 42.4
+dB, 2 steps 31.5 dB, 4 steps 26.4 dB, 8 steps 24.2 dB, 25 steps 21 dB.** The one-step picture
+is the model's own prediction from the same noise, prompt and timestep, so the conventions are
+right; the trajectories then diverge through the two INT8 quantisations (ComfyUI's ConvRot
+repack of the DiT and INT8 text encoder against this port's own rotation and bf16 encoder),
+which is numerics, not a convention. Pixel parity needs ComfyUI's quantised weights loaded as
+they are (plan §7.2), the next step; the attention kernel is not the cause (exact and sage give
+the same 21 dB on the fox).
 
 Parity yardsticks and thresholds: `genai-native/docs/PARITY.md`. The SAM suite compares
 instance bounds until an engine returns masks (Phase 1). The gates these numbers set for later

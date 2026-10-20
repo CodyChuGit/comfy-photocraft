@@ -4,6 +4,52 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-20: plan Phase 2, Qwen-Image-2.1 in the native worker
+
+- **ComfyUI's sampling conventions, reproduced** (`genai-native/crates/qir/src/comfy.rs`,
+  `4cfc445`): PyTorch's CPU generator (MT19937 seeded as `torch.manual_seed`, the 16-wide
+  Box–Muller `normal_fill` with its last-chunk redraw) gives `torch.randn([1, 64, H/16, W/16])`
+  bit for bit (unit tests carry the numbers ComfyUI's own python printed for seeds 3, 7 and 11,
+  square and 48×84); the `simple` scheduler over `ModelSamplingDiscreteFlow`'s 1000 sigmas with
+  Qwen-Image-2.1's `shift 0.69` in f32 like the torch buffer; the DiT's timestep rounded as
+  ComfyUI rounds it (`bf16(bf16(σ·1000)/1000)`); the prompt tokens checked against
+  `TextEncodeQwenImage21` (the system turn is 14 tokens, dropped). `generate --comfy` uses them;
+  `--width`/`--height` make the non-square cases; a `timings` log line carries the phases and
+  `gn-bench --engine qir` reads it (its `tracing` goes to stdout, not stderr).
+- **Parity, measured** (`runs/2026-10-20-qir-t2i-comfy-sage`, 28/28 cases): PSNR 9–24 dB, SSIM
+  0.49–0.93, 6 of 28 over the 30 dB / 0.90 gate, against 0 of 24 and 5–17 dB a day earlier.
+  Every picture is the ComfyUI reference's scene (the same fox, the same leaf). Where they part:
+  the fox at 1 step agrees at **42.4 dB**, 2 steps 31.5, 4 steps 26.4, 8 steps 24.2, 25 steps 21:
+  the conventions are right (the one-step picture is the model's own prediction from the same
+  noise, prompt and timestep) and the trajectories diverge through the sampler as the two INT8
+  quantisations differ (ComfyUI: the ConvRot repack and the INT8 Qwen3-VL; ours: our own rotation
+  of the bf16 DiT and the bf16 encoder). Exact attention instead of SageAttention changes nothing
+  (21.0 dB either way on the fox). One case (the BAKERY sign, seed 7) came out with a transparent
+  background on our side and an opaque one on ComfyUI's: the same divergence, seen in the alpha
+  the 2.1 VAE decodes. **Pixel parity therefore needs ComfyUI's quantised weights loaded as they
+  are** (the repack through `gn-weights`, plan §7.2), the next step; not a convention.
+- **The resident pipeline and the worker.** `qir::pipeline` (encoder, DiT and VAE loaded once,
+  `generate` with progress and a cancel check between steps, ComfyUI's conventions by default);
+  `gn-diffusion` serves `qwen-2.1/image` over it from `<models>/qwen-image-2.1/` (Hugging Face's
+  layout) with the INT8 DiT cached in `<models>/.qir-cache/`; `gn_engine::Multi` puts it beside
+  the perception engine in one worker, each request to the engine whose index lists the template;
+  `EngineClient::spawn_with_env`. PhotoshopEX (`crates/genai`, feature `native-diffusion`, off by
+  default: nvcc needed): the worker serves both engines, the runtime folders go first on its
+  `PATH` (candle links `cudart`/`cublas`; without them the worker dies at start with
+  STATUS_DLL_NOT_FOUND), `generate_cmds::NATIVE_AUTO_FAMILIES` is the parity table (`sam3.1`
+  only: 2.1 is served under `native` and stays on ComfyUI under `auto`), the fake-engine test
+  covers both. Built with the feature (3 min 19 s on top of the usual build) and run live through
+  `photocraft-cli` with `engine = native`: health `native/ort+qir`, the fox at 1024², 25 steps:
+  **11.7 s the first picture (loads), 3.7 s and 3.65 s the next two, resident** — against ComfyUI's
+  4.4–5.0 s engine time. With ComfyUI's models still resident the same run took 11.9 s a picture
+  (32 GB oversubscribed): stop one engine before timing the other.
+- **On this PC**: `_eval\native-models\qwen-image-2.1` and `.qir-cache` are junctions to the
+  snapshot and to `_eval\qir-cache`; the real preferences keep `engine = auto`.
+- **Open after this**: load the ComfyUI repack INT8 weights (DiT and encoder) natively and
+  re-measure (the parity gate, then `auto`); the §7.1 restructure (`gn-kernels` fatbins,
+  `gn-blocks`, `gn-models`); a VRAM policy for the resident encoder (Q8 on 24 GB cards:
+  `--text-quant` exists, no preference yet); the GUI's engine page (resident models, free).
+
 ## 2026-10-18: the native-engine plan
 
 - **Owner's direction** (2026-10-16 → 18): "this needs to leave the lab and become real

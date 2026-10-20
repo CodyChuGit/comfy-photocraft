@@ -13,6 +13,8 @@ build = "build.rs"
 heif = ["photocraft-codecs/heif"]
 # Generation completion sounds (PhotoshopEX; rodio). The release packages build with it.
 alerts = ["photocraft-ui-egui/alerts"]
+# The native worker serves Qwen-Image-2.1 too (needs nvcc; see crates/genai/Cargo.toml).
+native-diffusion = ["photocraft-genai/native-diffusion"]
 
 [lints]
 workspace = true

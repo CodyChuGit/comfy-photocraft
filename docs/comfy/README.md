@@ -139,8 +139,14 @@ server) with the models you installed there; the app ships no weights.
   Selection work with ComfyUI off and give the same masks. **`Auto` sends each request where it
   runs best today**: SAM 3.1 to the native worker when those two folders are set, everything
   else (Fill, Image, Edit, Expand…) to ComfyUI. `Native` sends everything to the worker, which
-  today serves SAM 3.1 only; without the folders the worker paints placeholder pictures, so the
-  path is exercised end to end on any machine.
+  serves SAM 3.1 and, in a build with the `native-diffusion` feature, **Generate Image with
+  Qwen-Image-2.1** from the official snapshot placed at `qwen-image-2.1/` in the models folder
+  (`processor/ text_encoder/ transformer/ vae/`, as Hugging Face publishes it; the INT8 copy of
+  the transformer is cached in `.qir-cache/` beside it on first use): the same prompt, seed and
+  steps give the ComfyUI route's scene, resident after the first picture. `Auto` keeps that
+  template on ComfyUI until the two routes agree pixel for pixel (dev log 2026-10-20). Without
+  the folders the worker paints placeholder pictures, so the path is exercised end to end on
+  any machine.
 
 ## Status
 

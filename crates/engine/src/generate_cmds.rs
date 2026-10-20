@@ -505,7 +505,8 @@ pub(crate) fn native_backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> 
         b.stop();
         *g = None;
     }
-    let b = Arc::new(photocraft_genai::native::NativeBackend::this_executable(&wanted).map_err(gen_err)?);
+    let dirs = photocraft_genai::native::runtime_dirs(&integrations.runtime_path);
+    let b = Arc::new(photocraft_genai::native::NativeBackend::this_executable(&wanted).map_err(gen_err)?.with_path_dirs(dirs));
     *g = Some(Arc::clone(&b));
     Ok(b)
 }
@@ -573,14 +574,22 @@ pub(crate) fn backend_for(s: &Session, template: &str) -> Result<(Arc<dyn Genera
     Ok((backend(s)?, server_key(s)))
 }
 
-/// Under `auto`: the native worker, when the preferences give it its folders and its index lists
-/// `template` (today the SAM 3.1 templates). A worker that cannot start or does not serve the
-/// template is `None`, and the ComfyUI route stands.
+/// The model families `auto` sends to the native worker when it serves them: those whose native
+/// route beat their ComfyUI row at parity (plan-native-engine §3.3, §12.1). SAM 3.1 since
+/// 2026-10-19. Qwen-Image-2.1 (`qwen-image-2.1`) is served under `integrations.engine = native`
+/// but stays on ComfyUI under `auto`: its pictures agree with the ComfyUI route's at scene level
+/// (the same noise, schedule and prompt; 42 dB after one step) and part over the steps through
+/// the two INT8 quantisations, short of the 30 dB / 0.90 gate at 25 steps (dev log 2026-10-20).
+pub(crate) const NATIVE_AUTO_FAMILIES: [&str; 1] = ["sam3.1"];
+
+/// Under `auto`: the native worker, when the preferences give it its folders, the template's
+/// family is in [`NATIVE_AUTO_FAMILIES`] and the worker's index lists the template. A worker
+/// that cannot start or does not serve the template is `None`, and the ComfyUI route stands.
 #[cfg(not(target_arch = "wasm32"))]
 fn native_serving(s: &Session, template: &str) -> Option<Arc<dyn GenerativeBackend>> {
     let i = &s.prefs().integrations;
     let configured = !i.runtime_path.trim().is_empty() && !i.models_path.trim().is_empty();
-    if !configured || !template::find(template).is_ok_and(|t| t.meta.family == "sam3.1") {
+    if !configured || !template::find(template).is_ok_and(|t| NATIVE_AUTO_FAMILIES.contains(&t.meta.family.as_str())) {
         return None;
     }
     let b = native_backend(s).ok()?;

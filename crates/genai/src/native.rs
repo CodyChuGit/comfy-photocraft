@@ -6,9 +6,13 @@
 //!
 //! With a runtime folder and a model root configured (`integrations.runtimePath`,
 //! `integrations.modelsPath`) the worker serves `gn-perception`'s engine: SAM 3.1 through ONNX
-//! Runtime (plan Phase 1). Without them it serves `gn-engine`'s fake engine, which is enough to
-//! route a request end to end (and to test the editor without a GPU). Pixels cross as binary
-//! frames; everything else is the same `Request`/`Response` the ComfyUI backend speaks.
+//! Runtime (plan Phase 1), and, built with the `native-diffusion` feature, `gn-diffusion`'s:
+//! Qwen-Image-2.1 text to image from the snapshot under the model root (plan Phase 2), the two
+//! behind one `gn_engine::Multi`. Without them it serves `gn-engine`'s fake engine, which is
+//! enough to route a request end to end (and to test the editor without a GPU). Pixels cross as
+//! binary frames; everything else is the same `Request`/`Response` the ComfyUI backend speaks.
+//! The runtime folders go on the worker's `PATH` too: the CUDA libraries the diffusion engine
+//! links are found there, as the ONNX Runtime ones are.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -23,6 +27,8 @@ use crate::{Error, GenerativeBackend, Gray8, Health, Progress, Request, Response
 pub struct NativeBackend {
     program: PathBuf,
     args: Vec<String>,
+    /// Directories put first on the worker's `PATH` (the runtime folders).
+    path_dirs: Vec<PathBuf>,
     token: String,
     client: Mutex<Option<EngineClient>>,
     /// A worker we did not start (tests serve one in-process): never respawned.
@@ -41,7 +47,7 @@ pub const ENGINE_FLAG: &str = "--engine";
 impl NativeBackend {
     /// A backend that starts `program args…` as its worker when first needed.
     pub fn new(program: PathBuf, args: Vec<String>) -> Self {
-        Self { program, args, token: gn_engine::client::new_token(), client: Mutex::new(None), attached: false }
+        Self { program, args, path_dirs: Vec::new(), token: gn_engine::client::new_token(), client: Mutex::new(None), attached: false }
     }
 
     /// This executable with `--engine` (the editor and the CLI both answer it) and `extra` flags
@@ -53,16 +59,35 @@ impl NativeBackend {
         Ok(Self::new(exe, args))
     }
 
+    /// Put `dirs` first on the worker's `PATH` ([`runtime_dirs`]).
+    pub fn with_path_dirs(mut self, dirs: Vec<PathBuf>) -> Self {
+        self.path_dirs = dirs;
+        self
+    }
+
     /// The worker's command line after the program.
     pub fn args(&self) -> &[String] {
         &self.args
+    }
+
+    /// The worker's environment: `PATH` with the runtime folders first, when there are any.
+    fn env(&self) -> Vec<(String, String)> {
+        if self.path_dirs.is_empty() {
+            return Vec::new();
+        }
+        let current = std::env::var_os("PATH").unwrap_or_default();
+        let joined = std::env::join_paths(self.path_dirs.iter().cloned().chain(std::env::split_paths(&current)));
+        match joined {
+            Ok(p) => vec![("PATH".to_string(), p.to_string_lossy().into_owned())],
+            Err(_) => Vec::new(),
+        }
     }
 
     /// A backend over a worker already listening (tests serve `gn_engine::fake::FakeEngine` on
     /// a thread).
     pub fn attached(port: u16, token: &str) -> Result<Self> {
         let client = EngineClient::connect(port, token).map_err(|e| Error::Unavailable(e.to_string()))?;
-        Ok(Self { program: PathBuf::new(), args: Vec::new(), token: token.to_string(), client: Mutex::new(Some(client)), attached: true })
+        Ok(Self { program: PathBuf::new(), args: Vec::new(), path_dirs: Vec::new(), token: token.to_string(), client: Mutex::new(Some(client)), attached: true })
     }
 
     /// Run `f` on a live client, starting or restarting the worker first when needed. A call
@@ -77,7 +102,7 @@ impl NativeBackend {
             if self.attached {
                 return Err(Error::Unavailable("the engine is gone".into()));
             }
-            let c = EngineClient::spawn(&self.program, &self.args, &self.token).map_err(|e| Error::Unavailable(e.to_string()))?;
+            let c = EngineClient::spawn_with_env(&self.program, &self.args, &self.token, &self.env()).map_err(|e| Error::Unavailable(e.to_string()))?;
             *guard = Some(c);
         }
         let Some(client) = guard.as_mut() else { return Err(Error::Unavailable("no engine".into())) };
@@ -236,11 +261,31 @@ pub fn worker_args(runtime_path: &str, models_path: &str) -> Vec<String> {
     vec!["--runtime".into(), r.to_string(), "--models".into(), m.to_string()]
 }
 
+/// The runtime folders of the preference (`;`-separated), as directories for the worker's `PATH`.
+pub fn runtime_dirs(runtime_path: &str) -> Vec<PathBuf> {
+    runtime_path.split(';').map(str::trim).filter(|s| !s.is_empty()).map(PathBuf::from).collect()
+}
+
+/// The engines a worker with these flags serves: the perception engine (SAM 3.1 through ONNX
+/// Runtime) with `--runtime` and `--models`, the diffusion engine (Qwen-Image-2.1, with the
+/// `native-diffusion` feature) with `--models`. Empty without a model root.
+fn engines_for(args: &[String]) -> Vec<Box<dyn gn_engine::Engine>> {
+    let mut engines: Vec<Box<dyn gn_engine::Engine>> = Vec::new();
+    if let Some(p) = gn_perception::engine::from_args(args) {
+        engines.push(Box::new(p));
+    }
+    #[cfg(feature = "native-diffusion")]
+    if let Some(d) = gn_diffusion::from_args(args) {
+        engines.push(Box::new(d));
+    }
+    engines
+}
+
 /// `photocraft --engine [--token T] [--step-ms N] [--runtime <dir;dir> --models <dir>] [--cpu]`:
 /// this process becomes the worker. Reads the token from `GN_ENGINE_TOKEN` when not given, binds
 /// a loopback port, prints the port line, serves until the editor says quit. Returns the exit
 /// code. With `--runtime` and `--models` it serves the perception engine (SAM 3.1 through ONNX
-/// Runtime); otherwise the fake engine.
+/// Runtime) and, when built with it, the diffusion engine; otherwise the fake engine.
 pub fn engine_main(args: &[String]) -> i32 {
     let mut token = std::env::var("GN_ENGINE_TOKEN").unwrap_or_default();
     let mut step_ms = 5u64;
@@ -272,12 +317,13 @@ pub fn engine_main(args: &[String]) -> i32 {
     let port = listener.local_addr().map(|a| a.port()).unwrap_or(0);
     println!("{}", gn_engine::server::port_line(port));
     let _ = std::io::Write::flush(&mut std::io::stdout());
-    let served = match gn_perception::engine::from_args(args) {
-        Some(mut engine) => gn_engine::server::serve(&listener, &token, &mut engine),
-        None => {
-            let mut engine = gn_engine::fake::FakeEngine { step_ms, installed: template::builtin().iter().map(|t| t.meta.id.clone()).collect(), ..Default::default() };
-            gn_engine::server::serve(&listener, &token, &mut engine)
-        }
+    let engines = engines_for(args);
+    let served = if engines.is_empty() {
+        let mut engine = gn_engine::fake::FakeEngine { step_ms, installed: template::builtin().iter().map(|t| t.meta.id.clone()).collect(), ..Default::default() };
+        gn_engine::server::serve(&listener, &token, &mut engine)
+    } else {
+        let mut engine = gn_engine::Multi::new(engines);
+        gn_engine::server::serve(&listener, &token, &mut engine)
     };
     match served {
         Ok(()) => 0,
@@ -367,5 +413,20 @@ mod tests {
         assert!(matches!(b.run(&long, &*c), Err(Error::Cancelled)));
         assert_eq!(b.model_files("diffusion_models").unwrap().len(), 3);
         b.free().unwrap();
+    }
+
+    #[test]
+    fn the_worker_flags_and_path_follow_the_preferences() {
+        assert!(worker_args("", "m").is_empty() && worker_args("r", " ").is_empty());
+        assert_eq!(worker_args(" a;b ", "m"), ["--runtime", "a;b", "--models", "m"]);
+        assert_eq!(runtime_dirs("a; b ;;c"), [PathBuf::from("a"), PathBuf::from("b"), PathBuf::from("c")]);
+        assert!(runtime_dirs("").is_empty());
+        // Without a model root the worker serves the fake engine (no real engine is made).
+        assert!(engines_for(&["--runtime".into(), "a".into()]).is_empty());
+        let b = NativeBackend::new(PathBuf::from("x"), vec![ENGINE_FLAG.into()]).with_path_dirs(runtime_dirs("a;b"));
+        let env = b.env();
+        assert_eq!(env.len(), 1);
+        assert!(env[0].0 == "PATH" && env[0].1.starts_with("a") && env[0].1.contains('b'), "{env:?}");
+        assert!(NativeBackend::new(PathBuf::from("x"), Vec::new()).env().is_empty());
     }
 }

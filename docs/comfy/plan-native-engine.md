@@ -221,10 +221,12 @@ Burn is not used (training-oriented; dropped its candle backend; attention kerne
 
 ### 3.3 Routing and the day-0 lane
 
-**Status (2026-10-19):** `generate_cmds::backend_for(s, template)` exists with `auto | native |
-comfy`; under `auto` the SAM 3.1 templates go to the native worker when `runtimePath` and
-`modelsPath` are set and the worker's index lists them, everything else to ComfyUI. `sdcpp` and
-the per-model `engineFor` map come with the engines that need them.
+**Status (2026-10-20):** `generate_cmds::backend_for(s, template)` exists with `auto | native |
+comfy`; under `auto` the families in `generate_cmds::NATIVE_AUTO_FAMILIES` (SAM 3.1) go to the
+native worker when `runtimePath` and `modelsPath` are set and the worker's index lists the
+template, everything else to ComfyUI; `native` sends everything to the worker, which serves SAM
+3.1 and (built with `native-diffusion`) Qwen-Image-2.1 text to image. `sdcpp` and the per-model
+`engineFor` map come with the engines that need them.
 
 A model can be served by up to three engines; a request picks one:
 
@@ -491,10 +493,15 @@ qwen-image-rs that survive review.
 
 ### 7.1 Fork and restructure
 
-**Status (2026-10-19):** imported as `genai-native/crates/qir` by `git subtree` (history and
+**Status (2026-10-20):** imported as `genai-native/crates/qir` by `git subtree` (history and
 attribution kept, Apache-2.0, root `NOTICE`), building on Windows with CUDA 13.4 for sm_120 and
-running on the 5090 at 0.14 s/step (the authors' 4090 speed; ComfyUI's INT8 path is ≈ 0.15);
-`gn-bench --engine qir` drives it. The restructuring below is next.
+running on the 5090 at 0.116–0.14 s/step (the authors' 4090 speed; ComfyUI's INT8 path is ≈
+0.15); `gn-bench --engine qir` drives it. Added there: ComfyUI's sampling conventions
+(`qir::comfy`: PyTorch's CPU generator reproduced bit for bit, the `simple` schedule over the
+model's shift-0.69 sigmas, the bf16 timestep rounding; `generate --comfy`), non-square pictures,
+and a resident library pipeline (`qir::pipeline`: encoder, DiT and VAE loaded once, progress,
+cancellation). The restructuring into `gn-kernels` / `gn-blocks` / `gn-models` is still to do;
+the pipeline is what the worker hosts meanwhile.
 
 Fork `umag/qwen-image-rs` into `genai-native` (keep history and attribution in `NOTICE`). Move
 its CUDA kernels into `gn-kernels` behind the `Kernels` trait (bf16 GEMM, INT8 ConvRot GEMM,
@@ -527,11 +534,32 @@ mirrored on `Request`/`Response`; `src/bin/gn-engine` for standalone tests. Phot
 `engine_proc.rs` (shared with the sidecar), `NativeBackend`, `routing.rs` with `auto` order and
 the per-model parity flags (a `const` table shipped in the build, plus the preference override).
 
+**Status (2026-10-20):** `gn-diffusion` is the worker-side engine for `qwen-2.1/image` (task
+`image`): it loads the snapshot `<models>/qwen-image-2.1/` (Hugging Face's layout) on the first
+request through `qir::pipeline` and keeps the three models on the device; the INT8 DiT cache
+lives in `<models>/.qir-cache/`. `gn_engine::Multi` puts it and the perception engine behind one
+worker (each request goes to the engine whose index lists the template). PhotoshopEX's worker
+serves both when built with `--features native-diffusion` (nvcc needed; the SAM route builds
+without it), and puts the runtime folders on the worker's `PATH` so the CUDA libraries the
+kernels link are found. The parity table is `generate_cmds::NATIVE_AUTO_FAMILIES`; the
+preference override map is still to come.
+
 ### 7.4 Parity and speed for Qwen-Image-2.1 text-to-image
 
 Harness thresholds (§12.1) met against the ComfyUI reference at bf16; then INT8 ConvRot +
 SageAttention on sm120 measured against ComfyUI `best`. The definition's size is a gate too: if
 `qwen_image_21.rs` exceeds ~600 lines, something belongs in a block.
+
+**Status (2026-10-20):** the conventions are right and the numerics are not yet the same. With
+`--comfy` the 28 t2i cases agree with the ComfyUI reference at scene level (PSNR 9–24 dB, SSIM
+0.49–0.93, 6 of 28 over the 30 dB / 0.90 gate; 5–17 dB before), and a one-step picture agrees at
+**42 dB** (the same noise, prompt, timestep and model output), 31.5 dB after two steps, 26 after
+four, 24 after eight, ≈ 21 after 25: the two routes start together and part through the sampler
+as their quantisations differ (ComfyUI: the INT8 ConvRot repack and the INT8 text encoder; ours:
+our own rotation of the bf16 DiT and the bf16 encoder). Closing the gap means running ComfyUI's
+own quantised weights (the repack through `gn-weights`, §7.2) rather than quantising ours, which
+is the next step here; until then `qwen-2.1/image` is served under `native` and stays on ComfyUI
+under `auto`.
 
 ### 7.5 Tests and done
 

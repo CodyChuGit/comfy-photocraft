@@ -89,6 +89,13 @@ Run with `QIR_CONVROT_CACHE=<dir>` (Windows has no `HOME`, so without it the INT
 re-quantised on every load) and `RUST_LOG=info` for its phase timings. The official
 Qwen-Image-2.1 snapshot (31 GB, ungated, research licence) is at `_eval\weights\qwen-image-2.1`.
 
+**PhotoshopEX with the diffusion engine compiled in** (`gn-diffusion` behind the
+`native-diffusion` feature of `photocraft` and `photocraft-cli`): the same environment block,
+then `cargo build --release -p photocraft-cli --features native-diffusion` in the PhotoshopEX
+checkout (and `-p photocraft`). Without the feature nothing CUDA is built and the worker serves
+SAM 3.1 only. The native model root on this PC, `_eval\native-models`, holds `qwen-image-2.1`
+and `.qir-cache` as junctions to the snapshot and to `_eval\qir-cache`.
+
 ### ONNX Runtime and the SAM 3.1 export (`gn-perception`)
 
 | What | Where | Notes |
