@@ -57,7 +57,10 @@ can pick up.
   drops the encoder after the prompt when `free_vram` says the cache will not fit (free 2.3 GB,
   needed 9.0 GB on the fox-in-the-boat) and loads it again for the next prompt (about 7 s): that
   edit now takes **9.0 s** (3.6 s encoders and eviction, 4.7 s sampling, 0.7 s decode) against
-  ComfyUI's 8.2–8.6 s.
+  ComfyUI's 8.2–8.6 s. Through the pinned app, two such edits in one process: 14.7 s (loads)
+  then 10.9 s (the encoder's 7 s reload is paid on every two-reference edit; keeping its weights
+  in host memory for a sub-second upload is the next lever). No worker lingers after the CLI
+  exits (the server quits when its client goes).
 - **Not done, on purpose:** Generative Expand with 2.1. No `qwen-2.1/expand` template exists
   on either route (the app's expand templates are 2511's), so there is nothing to route; a 2.1
   expand would be the fill graph with the expand prompt wrapper and the prefilled canvas, a
