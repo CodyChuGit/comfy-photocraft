@@ -60,9 +60,18 @@ can pick up.
   first picture 15.7 s (loads, quantises), then **4.85 s and 4.31 s per 1024² picture**
   (ComfyUI warm 4.0–4.7), a swap to 2.1 and back 18 s and 23 s. **Krea 2 stays on ComfyUI under
   `auto`** (the rule is faster at parity: this is neither clearly faster nor at the precision
-  ComfyUI's own routes reach with INT8); `native` serves it, the GUI and CLI carry it. Open:
-  the style reference (6 cases), LoRAs, the fp8 GEMM, a prequantised ConvRot cache for Krea 2
-  (11 s of each cold start is the quantisation).
+  ComfyUI's own routes reach with INT8); `native` serves it, the GUI and CLI carry it.
+- **The ConvRot cache for Krea 2** (`genai-native` `f2bf496`, pinned): `convrot_cache::Policy`
+  names which linears a model rotates and tags the entry; Krea 2's entry
+  (`<cache>/krea2-turbo-<hash>/transformer_convrot.safetensors`, 256 linears, 13 GB) builds
+  once in 27 s and the DiT then loads in **4 s instead of 11**, the picture bit-identical
+  (99 dB). The worker keeps it under `<models>/.qir-cache/` with the 2.1 entry.
+- **A trap for timing on this PC (23:00):** four `python.exe` processes in session 0
+  (services, not killable from the user session, no command line visible) appeared and hold
+  about 10 GB of the card; with them resident the same cold start sampled in 14 s and decoded
+  in 19 s (0.6 s before). Every number above was measured before they appeared. Check what
+  started them before trusting a timing (`nvidia-smi`, `tasklist /v`). Open: the style
+  reference (6 cases), LoRAs, the fp8 GEMM.
 
 ## 2026-10-20 (later): plan Phase 3, Qwen-Image-2.1 edit and fill native, under `auto`
 
