@@ -814,12 +814,15 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
 /// folder), else `fallback`. Only permissive templates belong in `candidates`.
 pub(crate) fn resolve_auto(backend: &dyn GenerativeBackend, candidates: &[&str], fallback: &str) -> String {
     let mut folders: BTreeMap<String, Option<Vec<String>>> = BTreeMap::new();
+    // The native worker's index names the templates it serves rather than model files.
+    let served: Vec<String> = backend.model_files("").unwrap_or_default();
     for id in candidates {
         let Ok(t) = template::find(id) else { continue };
-        let installed = t.meta.models.iter().all(|slot| {
-            let files = folders.entry(slot.folder.clone()).or_insert_with(|| backend.model_files(&slot.folder).ok());
-            files.as_ref().is_some_and(|f| f.iter().any(|x| x == &slot.default))
-        });
+        let installed = served.iter().any(|s| s == id)
+            || t.meta.models.iter().all(|slot| {
+                let files = folders.entry(slot.folder.clone()).or_insert_with(|| backend.model_files(&slot.folder).ok());
+                files.as_ref().is_some_and(|f| f.iter().any(|x| x == &slot.default))
+            });
         if installed {
             return (*id).to_string();
         }
@@ -1572,6 +1575,10 @@ fn fill_region(
         params.insert("ref_y".to_string(), json!(y0 as u32));
         params.insert("ref_w".to_string(), json!((x1 - x0) as u32));
         params.insert("ref_h".to_string(), json!((y1 - y0) as u32));
+        // The canvas size, for templates that sample a latent of their own size (Qwen-Image-2.1
+        // takes its target from the reference otherwise).
+        params.insert("width".to_string(), json!(rw));
+        params.insert("height".to_string(), json!(rh));
     }
     // An edit template has no noise mask: the picture goes alone and the selection only masks
     // the result layer.
@@ -1664,7 +1671,10 @@ const PREFILL: [u8; 4] = [128, 128, 128, 255];
 /// `Outpaint`, and the noise mask is full over it), but the VAE's latents next to a wall of grey
 /// carry its tone into the picture's edge band, which came back as a dark line along the old
 /// edge. The replicated streaks are what the early padded-reference variant turned into
-/// content; with the reference cropped they are only ever noised away.
+/// content; with the reference cropped they are only ever noised away. (Qwen-Image-2.1's
+/// in-context expand template, whose reference is the picture placed inside the canvas, never
+/// sees this area either; a mid-grey prefill tried with the whole canvas as the reference came
+/// back as black canvas, 2026-10-20.)
 fn prefill_outside(img: &mut Rgba8, inner: Rect) {
     let (w, h) = (img.width as i32, img.height as i32);
     let inner = inner.intersect(&Rect::new(0, 0, w, h));
@@ -1822,7 +1832,9 @@ fn plan_expand(s: &Session, p: &Value) -> Result<(FillPlan, Pads, (u32, u32))> {
         Some(x) if x.fract() == 0.0 => x as u32,
         Some(_) => return Err(bad(EXPAND, format!("`variations` must be a whole number from 1 to {MAX_VARIATIONS}"))),
     };
-    let margin = opt_num(EXPAND, p, "margin", 0.0, 1.0)?.unwrap_or(0.25);
+    // How much of the picture goes along: the template's say (an in-context model wants all of
+    // it, see `Meta::expand_margin`), else a quarter of the longer side.
+    let margin = opt_num(EXPAND, p, "margin", 0.0, 1.0)?.unwrap_or_else(|| template.meta.expand_margin.map_or(0.25, |m| f64::from(m.clamp(0.0, 1.0))));
     let edge = parse_edge(EXPAND, p)?;
     // The request: the bounding box of the added canvas (an L or a frame when more than one
     // side grows) plus `margin` of the picture next to it, on the new canvas.
@@ -2216,8 +2228,7 @@ pub(crate) fn matte_request_size(w: u32, h: u32) -> (u32, u32) {
 /// model's re-rendering and are never used: the layer keeps its own.
 fn run_remove_bg(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_remove_bg(s, p)?;
-    let backend = backend(s)?;
-    let server = server_key(s);
+    let (backend, server) = backend_for(s, &plan.common.template.meta.id)?;
     let MattePlan { common, layer: id, as_selection, mode, all_layers, subject, auto, segment, refine } = plan;
     let Common { template, negative, seed, steps, guidance, models, .. } = common;
     let template_id = template.meta.id.clone();

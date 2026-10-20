@@ -555,6 +555,13 @@ loads it again for the next prompt (7 s): the fox-in-the-boat edit then takes 9.
 A direct `--engine qir` run of the edit suite is not comparable with the app's references (2 of
 8): the app resizes a 1024² picture to 880² before the model sees it.
 
+Also native the same evening (one CLI process each, loads included): Remove Background with
+`qwen-2.1/matte` on the fox at 1024², 10.5 s (ComfyUI 13.8 s), the two routes' alphas at soft
+IoU 0.992; a transparent Generate Image at 1024², 12.3 s; Generative Expand with
+`qwen-2.1/expand` (the picture placed inside the canvas as the reference, the whole picture
+along), 11.7–12.0 s for 256–384 px of new canvas on the fox, seamless on the four cases looked
+at (two symmetric, two one-sided).
+
 Parity yardsticks and thresholds: `genai-native/docs/PARITY.md`. The SAM suite compares
 instance bounds until an engine returns masks (Phase 1). The gates these numbers set for later
 rows: sd.cpp within 1.3× of a row keeps that model on the Python-free lane without further work;

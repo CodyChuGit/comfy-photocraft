@@ -598,15 +598,18 @@ RGBA output, references) runs natively.
   the threshold is LPIPS, not PSNR). Done when `auto` routes 2.1 edit/fill/expand to `native`
   and the Variations strip shows no difference in behaviour.
 
-**Status (2026-10-20):** edit and fill native and under `auto`. The VAE encoder, the Qwen3-VL
-vision tower, the multimodal encoder and the DiT's reference sequence are in `qir`, each
-checked against ComfyUI's running objects (dev log); the prefix cache (ComfyUI's
-`QwenImage21Cache`) makes an edit step cost a text-to-image step (3.8 s of sampling for a
-1024² edit). `gn-diffusion` serves `qwen-2.1/edit` and `qwen-2.1/fill`; through the app's own
-CLI the edit suite is 8 of 8 and the fill suite 8 of 8 at the gate against the ComfyUI route.
-The VRAM budget policy exists (`evict_text_encoder`: the encoder leaves after the prompt when
-the cache would not fit). Open: Expand (no 2.1 expand template on either route; it would be the
-fill graph with the expand wrapper), the RGBA matte output, previews for the task bar.
+**Status (2026-10-20): done but for the previews.** Edit, fill, expand, matte and transparent
+output native and under `auto`. The VAE encoder, the Qwen3-VL vision tower, the multimodal
+encoder and the DiT's reference sequence are in `qir`, each checked against ComfyUI's running
+objects (dev log); the prefix cache (ComfyUI's `QwenImage21Cache`) makes an edit step cost a
+text-to-image step (3.8 s of sampling for a 1024² edit). `gn-diffusion` serves `qwen-2.1/edit`,
+`fill`, `expand` and `matte`; through the app's own CLI the edit suite is 8 of 8 and the fill
+suite 8 of 8 at the gate against the ComfyUI route, the matte at soft IoU 0.992. Expand is the
+in-context way: the picture placed at its own position inside the canvas as the reference
+(`RefImage::offset`), the whole canvas as the target, the editor's mask confining the result;
+the new `qwen-2.1/expand` template carries it (and `expandMargin: 1`). The VRAM budget policy
+exists (`evict_text_encoder`: the encoder leaves after the prompt when the cache would not
+fit). Open: previews for the task bar.
 
 ---
 

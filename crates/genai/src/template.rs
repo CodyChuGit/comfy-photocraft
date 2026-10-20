@@ -190,6 +190,12 @@ pub struct Meta {
     /// model cannot, and a request for transparency is refused.
     #[serde(default)]
     pub prompt_format_transparent: String,
+    /// Expand templates: how much of the picture next to the new canvas goes into the request,
+    /// as a fraction of the canvas's longer side (`generate.expand`'s `margin` default). Models
+    /// that regenerate the whole picture in context want the whole picture (1.0): shown a strip
+    /// of it, they paint a second subject into the new area. Absent: the engine's 0.25.
+    #[serde(default)]
+    pub expand_margin: Option<f32>,
     #[serde(default)]
     pub notes: String,
     /// Who made the model ("Alibaba Qwen", "Krea", "Meta"), for the picker.
@@ -252,6 +258,7 @@ const BUILTIN: &[&str] = &[
     include_str!("../workflows/qwen-edit-2511-edit-lightning-8.json"),
     include_str!("../workflows/qwen-edit-2511-edit.json"),
     include_str!("../workflows/qwen-2.1-fill.json"),
+    include_str!("../workflows/qwen-2.1-expand.json"),
     include_str!("../workflows/krea2-turbo-image.json"),
     include_str!("../workflows/qwen-2.1-image.json"),
     include_str!("../workflows/qwen-2.1-matte.json"),

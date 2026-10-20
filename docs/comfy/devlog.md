@@ -61,11 +61,35 @@ can pick up.
   then 10.9 s (the encoder's 7 s reload is paid on every two-reference edit; keeping its weights
   in host memory for a sub-second upload is the next lever). No worker lingers after the CLI
   exits (the server quits when its client goes).
-- **Not done, on purpose:** Generative Expand with 2.1. No `qwen-2.1/expand` template exists
-  on either route (the app's expand templates are 2511's), so there is nothing to route; a 2.1
-  expand would be the fill graph with the expand prompt wrapper and the prefilled canvas, a
-  template decision for both routes, not engine work. Matte via the RGBA output and the
-  `<|im_start|>` sink row's precision stay open.
+- **Matte and transparent output, native** (`genai-native` `02f428c`): the worker serves
+  `qwen-2.1/matte` (the picture alone; the 2.1 VAE decodes RGBA and the alpha is the cut-out)
+  and `generate.removeBackground` resolves its backend per template too; `resolve_auto` counts
+  a template the native worker lists as installed (the worker names templates, not model
+  files), so `auto` with research models allowed takes the native matte. On the fox the native
+  matte and the ComfyUI route's agree at **soft IoU 0.992** (alpha mean 0.337 vs 0.335): the
+  same noisy background matte on both, the model's weakness on a busy background (§5b), not the
+  route's. `generate.image {transparent}` natively carries a real alpha (the boat prompt the
+  ComfyUI route was verified with: alpha mean 44/255 both through the engine and through the
+  app; an exported composite over the white Background layer is opaque, use `target:
+  document` to see it).
+- **Generative Expand with 2.1, native** (`genai-native` `37be64a`, template
+  `qwen-2.1/expand`). Two approaches failed first: the fill graph with the whole canvas as
+  image 1 and the mask as image 2 painted the replicated-edge prefill as streaks, and a grey
+  prefill came back as black canvas (an in-context model copies whatever it is shown). What
+  works: the picture alone as the reference, **placed at its own position inside the canvas**
+  (`RefImage::offset`: its latent tokens take the positions of the target tokens under them,
+  cropped to whole 16 px tokens, never resampled), and the target is the whole canvas; the
+  editor's layer mask then confines the result to the new area as it does for 2511. The worker
+  cuts the picture out of the request at the engine's `ref_x/ref_y/ref_w/ref_h`. Symmetric
+  expands were seamless at once; a one-sided 384 px expand painted a second fox when the request
+  carried only a strip of the picture (the engine's 25 % margin), so the template says
+  `expandMargin: 1` (a new template property: the whole picture goes along) and both one-sided
+  cases (left 384, top 320) are seamless at 11.9 s per process through the app. The ComfyUI
+  graph of the template does the same with ImageCrop and EmptyLatentImage, but
+  `TextEncodeQwenImage21` centres every reference on the target, so through ComfyUI it lines
+  up for symmetric expands only (noted in the template). `auto` still prefers the 2511 expand
+  templates (`AUTO_EXPAND_ORDER`); the 2.1 one is picked by template or as the default edit
+  model. Open: the `<|im_start|>` sink row's precision; previews for the task bar.
 
 ## 2026-10-20: plan Phase 2 done, Qwen-Image-2.1 native at parity and under `auto`
 
