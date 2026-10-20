@@ -576,11 +576,11 @@ pub(crate) fn backend_for(s: &Session, template: &str) -> Result<(Arc<dyn Genera
 
 /// The model families `auto` sends to the native worker when it serves them: those whose native
 /// route beat their ComfyUI row at parity (plan-native-engine §3.3, §12.1). SAM 3.1 since
-/// 2026-10-19. Qwen-Image-2.1 (`qwen-image-2.1`) is served under `integrations.engine = native`
-/// but stays on ComfyUI under `auto`: its pictures agree with the ComfyUI route's at scene level
-/// (the same noise, schedule and prompt; 42 dB after one step) and part over the steps through
-/// the two INT8 quantisations, short of the 30 dB / 0.90 gate at 25 steps (dev log 2026-10-20).
-pub(crate) const NATIVE_AUTO_FAMILIES: [&str; 1] = ["sam3.1"];
+/// 2026-10-19; Qwen-Image-2.1 text to image since 2026-10-20 (ComfyUI's noise, schedule and
+/// prompt reproduced: the same seed gives the same picture, 40 dB on the fox, and the resident
+/// worker is faster than the ComfyUI route per picture; dev log). The worker serves the
+/// family only in a build with the `native-diffusion` feature, and `native_serving` asks it.
+pub(crate) const NATIVE_AUTO_FAMILIES: [&str; 2] = ["sam3.1", "qwen-image-2.1"];
 
 /// Under `auto`: the native worker, when the preferences give it its folders, the template's
 /// family is in [`NATIVE_AUTO_FAMILIES`] and the worker's index lists the template. A worker
@@ -1268,8 +1268,8 @@ fn image_enabled(_: &Session) -> std::result::Result<(), String> {
 
 fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_image(s, p)?;
-    let backend = backend(s)?;
-    let server = server_key(s);
+    // Per template: under `auto` the native worker takes the families it serves at parity.
+    let (backend, server) = backend_for(s, &plan.template.meta.id)?;
     let server_doc = server.clone();
     let ImagePlan {
         template,

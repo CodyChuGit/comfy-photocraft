@@ -51,8 +51,13 @@ fn the_engine_preference_routes_to_the_native_worker() {
     assert_eq!(s.execute("generate.health", json!({})).unwrap()["backend"], "comfyui");
     assert_eq!(s.execute("generate.health", json!({"template": "sam3.1/segment"})).unwrap()["backend"], "native/fake");
     assert_eq!(s.execute("generate.health", json!({"template": "krea2-turbo/image"})).unwrap()["backend"], "comfyui");
-    // Served by the worker, but not in `NATIVE_AUTO_FAMILIES` yet: `auto` keeps it on ComfyUI.
-    assert_eq!(s.execute("generate.health", json!({"template": "qwen-2.1/image"})).unwrap()["backend"], "comfyui");
+    // Qwen-Image-2.1 text to image is in `NATIVE_AUTO_FAMILIES` and the worker lists it: native,
+    // and `generate.image` itself goes there (no ComfyUI server is configured in this test).
+    assert_eq!(s.execute("generate.health", json!({"template": "qwen-2.1/image"})).unwrap()["backend"], "native/fake");
+    let r = s.execute("generate.image", json!({"prompt": "a fox", "template": "qwen-2.1/image", "width": 128, "height": 64, "target": "layer", "seed": 5})).unwrap();
+    assert_eq!(r["template"].as_str(), Some("qwen-2.1/image"), "{r}");
+    // Its other templates (edit, fill) are not served by the worker: ComfyUI.
+    assert_eq!(s.execute("generate.health", json!({"template": "qwen-2.1/edit"})).unwrap()["backend"], "comfyui");
     let sel = s.execute("select.byText", json!({"prompt": "fox"})).unwrap();
     assert_eq!((sel["count"].as_u64(), sel["selected"].as_bool()), (Some(1), Some(true)), "{sel}");
     // The fake's coverage is a centred disc: the selection's bounds sit inside the 128×64 picture.

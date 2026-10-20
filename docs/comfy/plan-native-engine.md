@@ -222,11 +222,12 @@ Burn is not used (training-oriented; dropped its candle backend; attention kerne
 ### 3.3 Routing and the day-0 lane
 
 **Status (2026-10-20):** `generate_cmds::backend_for(s, template)` exists with `auto | native |
-comfy`; under `auto` the families in `generate_cmds::NATIVE_AUTO_FAMILIES` (SAM 3.1) go to the
-native worker when `runtimePath` and `modelsPath` are set and the worker's index lists the
-template, everything else to ComfyUI; `native` sends everything to the worker, which serves SAM
-3.1 and (built with `native-diffusion`) Qwen-Image-2.1 text to image. `sdcpp` and the per-model
-`engineFor` map come with the engines that need them.
+comfy`; under `auto` the families in `generate_cmds::NATIVE_AUTO_FAMILIES` (SAM 3.1 since
+2026-10-19, Qwen-Image-2.1 since 2026-10-20) go to the native worker when `runtimePath` and
+`modelsPath` are set and the worker's index lists the template, everything else to ComfyUI;
+`native` sends everything to the worker, which serves SAM 3.1 and (built with
+`native-diffusion`) Qwen-Image-2.1 text to image. `sdcpp` and the per-model `engineFor` map
+come with the engines that need them.
 
 A model can be served by up to three engines; a request picks one:
 
@@ -550,16 +551,14 @@ Harness thresholds (§12.1) met against the ComfyUI reference at bf16; then INT8
 SageAttention on sm120 measured against ComfyUI `best`. The definition's size is a gate too: if
 `qwen_image_21.rs` exceeds ~600 lines, something belongs in a block.
 
-**Status (2026-10-20):** the conventions are right and the numerics are not yet the same. With
-`--comfy` the 28 t2i cases agree with the ComfyUI reference at scene level (PSNR 9–24 dB, SSIM
-0.49–0.93, 6 of 28 over the 30 dB / 0.90 gate; 5–17 dB before), and a one-step picture agrees at
-**42 dB** (the same noise, prompt, timestep and model output), 31.5 dB after two steps, 26 after
-four, 24 after eight, ≈ 21 after 25: the two routes start together and part through the sampler
-as their quantisations differ (ComfyUI: the INT8 ConvRot repack and the INT8 text encoder; ours:
-our own rotation of the bf16 DiT and the bf16 encoder). Closing the gap means running ComfyUI's
-own quantised weights (the repack through `gn-weights`, §7.2) rather than quantising ours, which
-is the next step here; until then `qwen-2.1/image` is served under `native` and stays on ComfyUI
-under `auto`.
+**Status (2026-10-20):** at parity. ComfyUI's noise (PyTorch's CPU generator, bit for bit),
+its `simple` schedule over the model's own sigma table (`ModelSamplingFlux`, the exponential
+shift with `0.69` over 10 000 timesteps: the 2.1 model is a `FLUX`-type model in ComfyUI, and
+the day's detour was a table built from the other class), its timestep rounding and its prompt
+tokens: the fox agrees with the ComfyUI route at **39.9 dB** (21 dB with the wrong table); the
+28-case numbers are in the dev log and `benchmarks.md` §8. The text encoder runs its attention
+in f32 (2.7 % from the bf16 oracle; ComfyUI's INT8 encoder is 8.8 % from it). `auto` routes
+`qwen-2.1/image` to the native worker since the same day (`NATIVE_AUTO_FAMILIES`).
 
 ### 7.5 Tests and done
 

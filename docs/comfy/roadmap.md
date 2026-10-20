@@ -17,7 +17,7 @@ code map is in [`codebase-orientation.md`](codebase-orientation.md).
 | 4 Models and workflows as data | ⬜ | Model catalogue, workflow template import, references, LoRAs, downloads with checksums |
 | 4.5 Assistant | ⬜ | In-app assistant panel over a local LLM/VLM, driving the command registry; prompt enhancement, auto-naming |
 | 5 Quality and depth | ⬜ | Harmonize, Generative Upscale, Generate Similar, generative smart objects, PSD interop |
-| 6 Beyond ComfyUI | 🟡 in progress: [`plan-native-engine.md`](plan-native-engine.md) (phases 0–6). Phase 0 ground truth, sidecar and worker skeleton done 2026-10-18; **Phase 1 SAM 3.1 native at parity and under `auto` 2026-10-19** (16/16, our own export of ComfyUI's modules); **Phase 2 Qwen-Image-2.1 text to image in the worker 2026-10-20** (resident, ComfyUI's noise and schedule, served under `native`; scene-level agreement, pixel parity waits for the repack weights) | Native inference backend behind the same trait (`genai-native`, worker process, sd.cpp and ComfyUI as day-0 lanes); web-build path |
+| 6 Beyond ComfyUI | 🟡 in progress: [`plan-native-engine.md`](plan-native-engine.md) (phases 0–6). Phase 0 ground truth, sidecar and worker skeleton done 2026-10-18; **Phase 1 SAM 3.1 native at parity and under `auto` 2026-10-19** (16/16, our own export of ComfyUI's modules); **Phase 2 Qwen-Image-2.1 text to image native at parity and under `auto` 2026-10-20** (resident, ComfyUI's noise and schedule reproduced, 40 dB on the fox, faster than the ComfyUI route per picture) | Native inference backend behind the same trait (`genai-native`, worker process, sd.cpp and ComfyUI as day-0 lanes); web-build path |
 
 ## Phase 0: Foundation ✅
 

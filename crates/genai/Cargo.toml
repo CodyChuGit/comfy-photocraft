@@ -35,6 +35,6 @@ tungstenite = { version = "0.30", default-features = false, features = ["handsha
 # through ONNX Runtime, plan Phase 1), pinned by commit; the repository is private for now, so
 # `.cargo/config.toml` fetches it with the system git. The runtime library itself is loaded at run
 # time from a folder the user names (`integrations.runtimePath`); nothing is linked.
-gn-engine = { git = "https://github.com/CodyChuGit/genai-native.git", rev = "4cfc4450ec00328446cd1f8fe0c0126e2270a5ad" }
-gn-perception = { git = "https://github.com/CodyChuGit/genai-native.git", rev = "4cfc4450ec00328446cd1f8fe0c0126e2270a5ad", features = ["engine"] }
-gn-diffusion = { git = "https://github.com/CodyChuGit/genai-native.git", rev = "4cfc4450ec00328446cd1f8fe0c0126e2270a5ad", features = ["cuda"], optional = true }
+gn-engine = { git = "https://github.com/CodyChuGit/genai-native.git", rev = "992231a3d525fe783251f936998eff8905cfac2f" }
+gn-perception = { git = "https://github.com/CodyChuGit/genai-native.git", rev = "992231a3d525fe783251f936998eff8905cfac2f", features = ["engine"] }
+gn-diffusion = { git = "https://github.com/CodyChuGit/genai-native.git", rev = "992231a3d525fe783251f936998eff8905cfac2f", features = ["cuda"], optional = true }

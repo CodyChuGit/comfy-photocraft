@@ -479,24 +479,54 @@ the schedule differ, which `gn-models` fixes by construction (ComfyUI's CPU nois
 sigmas).
 
 **With ComfyUI's conventions (2026-10-20, `qwen-image-rs generate --comfy`: PyTorch's CPU
-generator reproduced bit for bit, the `simple` schedule over the model's shift-0.69 sigmas, its
-bf16 timestep rounding; `runs/2026-10-20-qir-t2i-comfy-sage` against
-`references/2026-10-19-comfy-t2i-qwen21`, all 28 cases including the non-square four):**
+generator reproduced bit for bit, the `simple` schedule over the model's sigma table, its bf16
+timestep rounding; against `references/2026-10-19-comfy-t2i-qwen21`, all 28 cases including
+the non-square four):**
 
 | Qwen-Image-2.1, 25 steps, 28 cases | PSNR | SSIM | At the 30 dB / 0.90 gate | Per picture (one process each) |
 |---|---:|---:|---:|---:|
 | qwen-image-rs, candle's RNG + diffusers' schedule (2026-10-19) | 5–17 dB | 0.1–0.7 | 0 of 24 | 26–40 s |
-| qwen-image-rs `--comfy`, SageAttention2 | **9–24 dB** | **0.49–0.93** | 6 of 28 | 11.4–11.6 s |
-| the same, exact attention (no sage; `target-exact`) on the fox | 21.0 dB | 0.90 | — | 22.9 s |
+| `--comfy` with the wrong sigma table (`ModelSamplingDiscreteFlow`'s SNR shift, 1000 entries; the morning's runs) | 9–24 dB | 0.49–0.93 | 6 of 28 | 11.4–11.6 s |
+| `--comfy` with the right one (`ModelSamplingFlux`'s exponential shift, 10 000 entries; `genai-native` `992231a`; `runs/2026-10-20-qir-t2i-comfy-flux`) | **16.7–41.3 dB** (the fox 39.9) | **0.71–1.00** | **24 of 28** | 11.3 s |
+| the same against ComfyUI run with its bf16 encoder and DiT (`references/2026-10-20-comfy-t2i-qwen21-bf16`) | 16.9–41.3 dB | 0.72–1.00 | 25 of 28 | |
+| for scale: ComfyUI's INT8 route against its own bf16 route | 6.1–42.4 dB | 0.75–1.00 | 26 of 28 | |
 
-Where the two routes part (the fox, seed 7, both routes at the same step count): **1 step 42.4
-dB, 2 steps 31.5 dB, 4 steps 26.4 dB, 8 steps 24.2 dB, 25 steps 21 dB.** The one-step picture
-is the model's own prediction from the same noise, prompt and timestep, so the conventions are
-right; the trajectories then diverge through the two INT8 quantisations (ComfyUI's ConvRot
-repack of the DiT and INT8 text encoder against this port's own rotation and bf16 encoder),
-which is numerics, not a convention. Pixel parity needs ComfyUI's quantised weights loaded as
-they are (plan §7.2), the next step; the attention kernel is not the cause (exact and sage give
-the same 21 dB on the fox).
+The four misses are the same cases for everyone: the brutalist facade at both seeds (ComfyUI
+against itself 24.8 / 25.8 dB), the vehicle at seed 11 (23 dB; ComfyUI against itself 26), and
+the BAKERY sign at seed 7, where the app's INT8 encoder flips the background to transparent
+(ComfyUI's two routes 6 dB apart; ours matches the bf16 route at 37.9 dB).
+
+**How the gap was found (2026-10-20).** With the wrong table the routes agreed after one step
+(sigmas `[1, 0]` on both sides: 42 dB) and parted from the second (31.5 dB at 2 steps, 21 dB
+at 25). Ruled out one by one on the fox before the cause showed: the attention kernel (exact
+bf16 and SageAttention2 both 21.0 dB), this port's DiT quantisation (the bf16 DiT with exact
+attention: 20.9 dB), the DiT weights (ComfyUI's INT8 ConvRot repack loaded into the port, its
+256-column groups permuted into the port's Hadamard basis: 21.1 dB), the VAE (ComfyUI's own
+final latent, normalised, through the port's decoder: 49 dB against ComfyUI's picture), and a
+single DiT forward on identical inputs (1 % apart, as ComfyUI's INT8 and bf16 DiTs are from
+each other). ComfyUI against itself, bf16 DiT instead of the INT8 repack: 43.9 dB on the fox,
+30.6 on the facade, 26 of 28 cases at the gate. What was left was the sampler's own state, and
+stepping ComfyUI's real `KSampler` path next to a plain Euler loop over the same model showed
+the second sigma at 0.9795 where the SNR shift gives 0.9430: the Qwen-Image-2.1 model is a
+`FLUX`-type model in ComfyUI, whose `ModelSamplingFlux` builds `e^0.69 / (e^0.69 + 1/t − 1)` over
+10 000 timesteps. The script that had printed the "ground truth" sigmas had instantiated the
+other class. Lesson for every later model: take the sigma table from the loaded model object,
+never from a formula read off a class.
+
+**The text encoders, measured on the way** (the fox prompt, 28 tokens after the system turn,
+against transformers' bf16 Qwen3-VL-8B from the official snapshot):
+
+| Text encoder | Error vs the oracle | Cosine, first token / mean |
+|---|---:|---:|
+| ComfyUI's `qwen3vl_8b_int8_convrot` (what the ComfyUI route conditions on) | 8.8 % | 0.902 / 0.9956 |
+| the port, bf16 attention scores (as imported) | 4.1 % | 0.988 / 0.9992 |
+| the port, attention scores and softmax in f32 (`genai-native` `9617518`, kept) | **2.7 %** | 0.9992 / 0.9997 |
+
+The INT8 encoder's error costs the ComfyUI route little at picture level (its INT8 and bf16
+routes agree at 24–42 dB), and the native route conditions the DiT closer to the model than
+the ComfyUI route does. A second reference set, ComfyUI with the bf16 encoder and the bf16 DiT
+(`references/2026-10-20-comfy-t2i-qwen21-bf16`, the model as published, run through ComfyUI's
+API with the template's graph), sits next to the INT8 one the app's route produces.
 
 Parity yardsticks and thresholds: `genai-native/docs/PARITY.md`. The SAM suite compares
 instance bounds until an engine returns masks (Phase 1). The gates these numbers set for later
