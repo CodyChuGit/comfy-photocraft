@@ -4,6 +4,66 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-20 (later): plan Phase 3, Qwen-Image-2.1 edit and fill native, under `auto`
+
+- **The pieces, each checked against ComfyUI's running objects before the next was built**
+  (`genai-native` `c0a598f`, `d170a38`, `1c43110`): the **VAE encoder** (Encoder3d at T = 1 with
+  the AvgDown3D shortcut's zero-padded earlier frame: 0.8 % from ComfyUI's latent on the fox,
+  38 dB round trip); the **Qwen3-VL vision tower** in f32 (27 ViT blocks, the learned 48×48
+  position table interpolated in bf16 as transformers does, which took its drift from 4.8 % to
+  1.4 %; DeepStack mergers after blocks 8/16/24); the **multimodal text encoder** (image rows
+  at `<|image_pad|>`, interleaved mRoPE `[24, 20, 20]`, DeepStack features added after decoder
+  layers 0–2; spans and slots exact, the text after the picture at cosine 0.9998); the DiT's
+  **`build_sequence`** (reference latents spliced at their slots, frame positions, grids centred
+  on the target with the half-token parity offset, prefix rows modulated at t = 0, text stretches
+  causal, each picture block attending to everything before its end). The edit prompt template
+  and `TextEncodeQwenImage21`'s sizing at `resolution 0` (sides to multiples of 32, Lanczos).
+- **The first joint forward ran out of memory** (a dense f32 `(1, 32, S, S)` score tensor at
+  S ≈ 5100): attention is now computed per segment in 1024-row query chunks with f32 scores and
+  a small causal mask where a text stretch needs one. The fox's "make it winter" then matched
+  ComfyUI at **40.0 dB** (bf16 route) and 39.4 dB (the app's INT8 route; ComfyUI's two routes
+  are 43.9 dB apart on it), at 47 s of sampling.
+- **The prefix cache** (`dit::PrefixCache`, what ComfyUI's `QwenImage21Cache` node keeps):
+  the text and reference rows never attend to the target and modulate at t = 0, so their keys
+  and values are the same at every step. They are computed once per generation (the plain
+  segment attention, 1.5 s on the fox) and every step runs the target's 1024 rows alone, with
+  SageAttention over the joint keys and no mask. **Sampling 47 s → 3.8 s**, 44 dB against the
+  uncached picture, 39.9 dB against ComfyUI. `--no-prefix-cache` keeps the plain path as the
+  reference.
+- **The worker and the app.** `gn-diffusion` serves `qwen-2.1/edit` (the picture, then the
+  references) and `qwen-2.1/fill` (the picture, then the mask as a grey picture) the way the
+  app's ComfyUI graphs feed `TextEncodeQwenImage21`; alpha is made opaque the way ComfyUI's
+  `LoadImage` hands pictures over (the colours as they are, the VAE's alpha padded opaque, no
+  compositing over white). PhotoshopEX: `run_fill`, `run_expand` and `run_edit` resolve their
+  backend per template through `backend_for` like `run_image` does, the native route wraps the
+  prompt with the template's `promptFormat` as the ComfyUI route does (a fill's wrapper names
+  the mask image), the fake-engine test runs an edit and a fill through the channel. Pinned at
+  `317f1e2` (the eviction policy included), both executables built with `native-diffusion`.
+- **Parity, measured through the app's own CLI** (`gn-bench --engine comfy --pref
+  integrations.engine=native …`: the same request building on both routes, the composite, the
+  feathered mask, the 880 px working size; references
+  `references/2026-10-20-comfy-{edit,fill}-qwen21`, runs `runs/2026-10-20-native-{edit,fill}-qwen21`):
+  **edit 8 of 8 at the gate** (36–40 dB on six; the boat 21.2 dB / 0.94 SSIM and the fox in the
+  boat 23.8 dB / 0.97), **fill 8 of 8** (17–56 dB, SSIM 0.91–1.00 on the whole picture with the
+  fill masked in). A direct `--engine qir` run of the edit suite is *not* comparable (2 of 8):
+  the app resizes a 1024² picture to 880² before the model sees it and the CLI does not.
+- **Speed.** Through the app, one CLI process per case (so each case loads the models): edits
+  12.6–13.5 s against ComfyUI's 5.4–5.9 s warm. **Resident, in one CLI process**
+  (`native-edit-live.bat`): the first edit 12.3 s (loads), then **4.19 s and 4.21 s per 880²
+  edit against ComfyUI's 5.4–5.9 s**, and a 608×464 fill in **1.8 s** (ComfyUI 1.9–3.5 s). The
+  two-reference cases had run 30 and 68 s: the bf16 text encoder (16 GB) + INT8 DiT + VAE +
+  vision tower + an 8 GB prefix cache oversubscribe the 32 GB card and the driver pages. Fixed
+  in `genai-native` by the policy §8 of the plan asked for: `Options::evict_text_encoder` (on)
+  drops the encoder after the prompt when `free_vram` says the cache will not fit (free 2.3 GB,
+  needed 9.0 GB on the fox-in-the-boat) and loads it again for the next prompt (about 7 s): that
+  edit now takes **9.0 s** (3.6 s encoders and eviction, 4.7 s sampling, 0.7 s decode) against
+  ComfyUI's 8.2–8.6 s.
+- **Not done, on purpose:** Generative Expand with 2.1. No `qwen-2.1/expand` template exists
+  on either route (the app's expand templates are 2511's), so there is nothing to route; a 2.1
+  expand would be the fill graph with the expand prompt wrapper and the prefilled canvas, a
+  template decision for both routes, not engine work. Matte via the RGBA output and the
+  `<|im_start|>` sink row's precision stay open.
+
 ## 2026-10-20: plan Phase 2 done, Qwen-Image-2.1 native at parity and under `auto`
 
 - **ComfyUI's sampling conventions, reproduced** (`genai-native/crates/qir/src/comfy.rs`,

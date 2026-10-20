@@ -559,6 +559,9 @@ pub(crate) const NATIVE_SERVER_KEY: &str = "native";
 /// `native` and `comfy` as the preference says; under `auto`, the native worker when it serves
 /// this template and the ComfyUI server otherwise (plan-native-engine §3.3: a model moves under
 /// `auto` once the native route beats its row at parity, which SAM 3.1 did on 2026-10-19).
+/// Every generative command asks here with its planned template (`generate.image`, `fill`,
+/// `expand`, `edit`, the selection commands); a job whose `auto` template is resolved later
+/// (`resolve_auto`) keeps the backend chosen for the default.
 pub(crate) fn backend_for(s: &Session, template: &str) -> Result<(Arc<dyn GenerativeBackend>, String)> {
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -578,8 +581,10 @@ pub(crate) fn backend_for(s: &Session, template: &str) -> Result<(Arc<dyn Genera
 /// route beat their ComfyUI row at parity (plan-native-engine §3.3, §12.1). SAM 3.1 since
 /// 2026-10-19; Qwen-Image-2.1 text to image since 2026-10-20 (ComfyUI's noise, schedule and
 /// prompt reproduced: the same seed gives the same picture, 40 dB on the fox, and the resident
-/// worker is faster than the ComfyUI route per picture; dev log). The worker serves the
-/// family only in a build with the `native-diffusion` feature, and `native_serving` asks it.
+/// worker is faster than the ComfyUI route per picture; dev log), its edit and fill templates
+/// since the same day (the references through the native vision tower and VAE encoder, the
+/// fox's winter edit at 40 dB). The worker serves the family only in a build with the
+/// `native-diffusion` feature, and `native_serving` asks it template by template.
 pub(crate) const NATIVE_AUTO_FAMILIES: [&str; 2] = ["sam3.1", "qwen-image-2.1"];
 
 /// Under `auto`: the native worker, when the preferences give it its folders, the template's
@@ -1690,12 +1695,12 @@ fn prefill_outside(img: &mut Rgba8, inner: Rect) {
 
 fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_fill(s, p)?;
-    let backend = backend(s)?;
+    let (backend, server) = backend_for(s, &plan.template.meta.id)?;
     let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs } = plan;
     let label = name.clone();
     let job = FillJob {
         backend,
-        server: server_key(s),
+        server,
         command: FILL,
         template_id: template.meta.id.clone(),
         auto,
@@ -1859,12 +1864,12 @@ fn expand_enabled(s: &Session) -> std::result::Result<(), String> {
 /// `generate.expand`: grow the canvas and have the model paint the new area, as one undo step.
 fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
     let (plan, pads, (nw, nh)) = plan_expand(s, p)?;
-    let backend = backend(s)?;
+    let (backend, server) = backend_for(s, &plan.template.meta.id)?;
     let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs } = plan;
     let label = name.clone();
     let job = FillJob {
         backend,
-        server: server_key(s),
+        server,
         command: EXPAND,
         template_id: template.meta.id.clone(),
         auto,
@@ -2059,14 +2064,14 @@ fn plan_edit(s: &Session, p: &Value) -> Result<FillPlan> {
 
 fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_edit(s, p)?;
-    let backend = backend(s)?;
+    let (backend, server) = backend_for(s, &plan.template.meta.id)?;
     let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs } = plan;
     let label = name.clone();
     // `wholePicture` (Generative Angles): the selection does not confine the result.
     let whole = opt_bool(EDIT, p, "wholePicture", false)?;
     let job = FillJob {
         backend,
-        server: server_key(s),
+        server,
         command: EDIT,
         template_id: template.meta.id.clone(),
         auto,

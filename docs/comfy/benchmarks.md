@@ -528,6 +528,33 @@ the ComfyUI route does. A second reference set, ComfyUI with the bf16 encoder an
 (`references/2026-10-20-comfy-t2i-qwen21-bf16`, the model as published, run through ComfyUI's
 API with the template's graph), sits next to the INT8 one the app's route produces.
 
+**Qwen-Image-2.1 edit and fill natively (plan Phase 3, 2026-10-20).** Both routes driven by
+the app's own CLI so the request is built the same way (the composite, the feathered mask, the
+880 px working size, the fill's prompt wrapper): `gn-bench run --engine comfy` against ComfyUI
+for the references, then with `--pref integrations.engine=native` for the native worker
+(`references/2026-10-20-comfy-{edit,fill}-qwen21`, `runs/2026-10-20-native-{edit,fill}-qwen21`).
+One CLI process per case, so every native case loads the models (about 8 s of its time):
+
+| Suite, 8 cases each, 25 steps | ComfyUI warm, engine time | Native, per process (loads included) | PSNR / SSIM | At the gate |
+|---|---:|---:|---:|---:|
+| edit (one reference = the picture) | 5.4–5.9 s | 12.6–13.5 s | 36–40 dB on six; 21.2 dB / 0.94 and 23.8 dB / 0.97 on two | **8 of 8** |
+| edit with a second reference | 8.2–8.6 s | 30 and 68 s (paging: see below) | 36.6 dB; 23.8 dB / 0.97 | (counted above) |
+| fill (the picture and the mask) | 1.9–5.6 s | 9.6–12.1 s | 17–56 dB, SSIM 0.91–1.00 | **8 of 8** |
+
+Resident (`qwen-image-rs edit`, the fox at 1024², one reference): the references' encoders
+and the prefix pass 1.5 s, **sampling 3.8 s** (47 s before the prefix cache), decode 0.7 s; the
+prefix cache holds every block's keys and values of the text and reference rows (4 GB for one
+1024² reference, 8 GB for two). **Through the app, resident** (one CLI process, the worker
+keeps the models): the first edit 12.3 s (loads), then **4.2 s per 880² edit against ComfyUI's
+5.4–5.9 s warm**, a 608×464 fill **1.8 s** (ComfyUI 1.9–3.5 s). With two references the bf16
+text encoder (16 GB), the INT8 DiT, the VAE, the vision tower and that cache oversubscribe the
+32 GB card and the driver pages, hence the 30–68 s; `Options::evict_text_encoder` (on by
+default) drops the encoder after the prompt when `free_vram` says the cache will not fit, and
+loads it again for the next prompt (7 s): the fox-in-the-boat edit then takes 9.0 s (ComfyUI
+8.2–8.6 s).
+A direct `--engine qir` run of the edit suite is not comparable with the app's references (2 of
+8): the app resizes a 1024² picture to 880² before the model sees it.
+
 Parity yardsticks and thresholds: `genai-native/docs/PARITY.md`. The SAM suite compares
 instance bounds until an engine returns masks (Phase 1). The gates these numbers set for later
 rows: sd.cpp within 1.3× of a row keeps that model on the Python-free lane without further work;

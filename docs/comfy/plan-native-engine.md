@@ -226,7 +226,8 @@ comfy`; under `auto` the families in `generate_cmds::NATIVE_AUTO_FAMILIES` (SAM 
 2026-10-19, Qwen-Image-2.1 since 2026-10-20) go to the native worker when `runtimePath` and
 `modelsPath` are set and the worker's index lists the template, everything else to ComfyUI;
 `native` sends everything to the worker, which serves SAM 3.1 and (built with
-`native-diffusion`) Qwen-Image-2.1 text to image. `sdcpp` and the per-model `engineFor` map
+`native-diffusion`) Qwen-Image-2.1 text to image, edit and fill (every generative command
+resolves its backend per template since 2026-10-20). `sdcpp` and the per-model `engineFor` map
 come with the engines that need them.
 
 A model can be served by up to three engines; a request picks one:
@@ -536,7 +537,7 @@ mirrored on `Request`/`Response`; `src/bin/gn-engine` for standalone tests. Phot
 the per-model parity flags (a `const` table shipped in the build, plus the preference override).
 
 **Status (2026-10-20):** `gn-diffusion` is the worker-side engine for `qwen-2.1/image` (task
-`image`): it loads the snapshot `<models>/qwen-image-2.1/` (Hugging Face's layout) on the first
+`image`), and since the evening `qwen-2.1/edit` and `qwen-2.1/fill` (§8): it loads the snapshot `<models>/qwen-image-2.1/` (Hugging Face's layout) on the first
 request through `qir::pipeline` and keeps the three models on the device; the INT8 DiT cache
 lives in `<models>/.qir-cache/`. `gn_engine::Multi` puts it and the perception engine behind one
 worker (each request goes to the engine whose index lists the template). PhotoshopEX's worker
@@ -596,6 +597,16 @@ RGBA output, references) runs natively.
   the contact sheet (parity on edits is softer: same seed can diverge after sampler differences;
   the threshold is LPIPS, not PSNR). Done when `auto` routes 2.1 edit/fill/expand to `native`
   and the Variations strip shows no difference in behaviour.
+
+**Status (2026-10-20):** edit and fill native and under `auto`. The VAE encoder, the Qwen3-VL
+vision tower, the multimodal encoder and the DiT's reference sequence are in `qir`, each
+checked against ComfyUI's running objects (dev log); the prefix cache (ComfyUI's
+`QwenImage21Cache`) makes an edit step cost a text-to-image step (3.8 s of sampling for a
+1024² edit). `gn-diffusion` serves `qwen-2.1/edit` and `qwen-2.1/fill`; through the app's own
+CLI the edit suite is 8 of 8 and the fill suite 8 of 8 at the gate against the ComfyUI route.
+The VRAM budget policy exists (`evict_text_encoder`: the encoder leaves after the prompt when
+the cache would not fit). Open: Expand (no 2.1 expand template on either route; it would be the
+fill graph with the expand wrapper), the RGBA matte output, previews for the task bar.
 
 ---
 

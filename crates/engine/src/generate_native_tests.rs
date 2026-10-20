@@ -10,8 +10,11 @@ use crate::generate_cmds::{engine_mode, set_native_backend};
 
 #[test]
 fn the_engine_preference_routes_to_the_native_worker() {
-    let (port, token) =
-        photocraft_genai::native::serve_fake(vec!["krea2-turbo/image".into(), "qwen-edit-2511/edit".into(), "sam3.1/segment".into(), "qwen-2.1/image".into()], 1).unwrap();
+    let (port, token) = photocraft_genai::native::serve_fake(
+        vec!["krea2-turbo/image".into(), "qwen-edit-2511/edit".into(), "sam3.1/segment".into(), "qwen-2.1/image".into(), "qwen-2.1/edit".into(), "qwen-2.1/fill".into()],
+        1,
+    )
+    .unwrap();
     set_native_backend(Arc::new(photocraft_genai::native::NativeBackend::attached(port, &token).unwrap()));
     let mut s = Session::new();
     assert_eq!(engine_mode(&s), "auto");
@@ -56,8 +59,18 @@ fn the_engine_preference_routes_to_the_native_worker() {
     assert_eq!(s.execute("generate.health", json!({"template": "qwen-2.1/image"})).unwrap()["backend"], "native/fake");
     let r = s.execute("generate.image", json!({"prompt": "a fox", "template": "qwen-2.1/image", "width": 128, "height": 64, "target": "layer", "seed": 5})).unwrap();
     assert_eq!(r["template"].as_str(), Some("qwen-2.1/image"), "{r}");
-    // Its other templates (edit, fill) are not served by the worker: ComfyUI.
-    assert_eq!(s.execute("generate.health", json!({"template": "qwen-2.1/edit"})).unwrap()["backend"], "comfyui");
+    // Its edit and fill templates are served by the worker too: Generative Edit and Fill with
+    // them go native under `auto` (the family is listed and the worker names the templates),
+    // while a template the worker does not list stays on ComfyUI.
+    assert_eq!(s.execute("generate.health", json!({"template": "qwen-2.1/edit"})).unwrap()["backend"], "native/fake");
+    assert_eq!(s.execute("generate.health", json!({"template": "qwen-2.1/fill"})).unwrap()["backend"], "native/fake");
+    assert_eq!(s.execute("generate.health", json!({"template": "qwen-2.1/matte"})).unwrap()["backend"], "comfyui");
+    let e = s.execute("generate.edit", json!({"prompt": "make it winter", "template": "qwen-2.1/edit", "seed": 3})).unwrap();
+    assert_eq!((e["width"].as_u64(), e["height"].as_u64(), e["template"].as_str()), (Some(128), Some(64), Some("qwen-2.1/edit")), "{e}");
+    s.execute("select.rect", json!({"x": 10, "y": 10, "width": 40, "height": 30})).unwrap();
+    let f = s.execute("generate.fill", json!({"prompt": "a hat", "template": "qwen-2.1/fill", "seed": 4})).unwrap();
+    assert_eq!(f["template"].as_str(), Some("qwen-2.1/fill"), "{f}");
+    s.execute("select.deselect", json!({})).unwrap();
     let sel = s.execute("select.byText", json!({"prompt": "fox"})).unwrap();
     assert_eq!((sel["count"].as_u64(), sel["selected"].as_bool()), (Some(1), Some(true)), "{sel}");
     // The fake's coverage is a centred disc: the selection's bounds sit inside the 128×64 picture.

@@ -238,8 +238,11 @@ ArtCraft Omni API) with the local server as the default and a fallback order.
 - ✅ 2026-10-16: **Quality** (`integrations.quality`, best by default: full-step templates, no
   NVFP4 under auto) after the native-inference study (`docs/comfy/research/`), and the **Object Selection
   tool's SAM 3.1 mode**: object finder on hover, box prompt, Refine mode (include / exclude
-  spots), refine edge, Select › Subject through the detector. ⬜ Native inference: the report's
-  path is an app-managed ComfyUI sidecar first, then per-model engines after benchmarks.
+  spots), refine edge, Select › Subject through the detector. ✅ Native inference
+  (`docs/comfy/plan-native-engine.md`): the app-managed ComfyUI sidecar first, then the native
+  worker in the same executable: SAM 3.1 (2026-10-19), Qwen-Image-2.1 text to image, edit and
+  fill (2026-10-20) at parity and under `auto`; ⬜ Krea 2, Qwen-Image-Edit-2511, the matte
+  and layered models still go to ComfyUI.
 
 **Phase 4 status after the PhotoshopEX build (2026-10-12):** ✅ capability flags the UI reads
 (kept in the templates' metadata rather than a separate `models.toml`), ✅ LoRA and style

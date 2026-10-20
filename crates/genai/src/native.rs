@@ -203,7 +203,9 @@ impl GenerativeBackend for NativeBackend {
         let rr = RunRequest {
             model: req.template.clone(),
             task: task_name(tpl.meta.task),
-            prompt: req.prompt.clone(),
+            // The prompt as the model should see it, wrapped the way the ComfyUI route wraps it
+            // (a fill's `promptFormat` names the mask image).
+            prompt: tpl.format_prompt(&req.prompt),
             negative: req.negative.clone(),
             seed: req.seed,
             steps: req.steps,
