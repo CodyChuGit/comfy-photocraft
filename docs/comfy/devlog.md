@@ -4,6 +4,51 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-21 (the robustness set): fourteen scenes, six rounds, what held up
+
+- **The set** (`robust-make.ps1`, the app's own text-to-image, 1024², seed 31): a watch on a
+  wrist, glasses, a hoop earring, a rose tattoo, a shirt logo, a parked car, a distant person
+  on a beach, a lamp post, a street sign on bricks, a crow on a wire, a mug on a checkered
+  cloth, a diamond ring, a poster on a brick wall, a dog on a lawn. Two strokes a scene
+  through the tools' own commands (`robust-strokes.ps1`): Spot Healing along the first half
+  of the object's long axis (the hard case), the Remove tool in a serpentine over its whole
+  box. Contact sheets by `robust-sheets.ps1`; every run's rewrite, growth and time in
+  `bench\rb-log.txt`. `benchmarks.md` §5i has the round-by-round tables.
+- **What the rounds found and fixed**, in order:
+  1. The "quarter of the object" rule rejected a half stroke over any thick object (22 % of
+     the watch): now a tenth. The rewriter, seeing one crop and no selection, named the part
+     under the stroke ("the window" of the car, "the dog's head", "the hand" for a ring).
+  2. Outlining the stroke in green for the rewriter made it talk about the outline ("the green
+     circle"). Dropped. The Remove tool's serpentine on a logo or on glasses had the point
+     prompt return the shirt or the face, which the stroke covered enough of: the point prompt
+     is now the fallback only, for an object no bigger than the stroke's box and a half.
+  3. The rewriter now sees two views side by side (the surroundings, a close-up of the painted
+     part) and names the whole object; the detector is asked by that name, then by its last
+     two words, then its last word; an object's enclosed gaps go with it (the coffee inside the
+     cup's rim). All fourteen named right.
+  4. The rewriter's "what lies behind" was wrong often enough ("the beige wall" behind glasses,
+     "light blue sky" for a grey one, "the wooden table" over a wrist) and the model painted
+     it. The rewriter now gives the name alone; the fill's wording is the measured generic one
+     with the name in it. A crow taken off the sky left a lighter patch: the result's tone is
+     now matched to the picture at the hole's edge (`tone_matched`, seamless cloning).
+  5. The fill model's own guess is a coin flip on the hard ones (wood or skin for the watch,
+     a blur over the eyes, a second wire): a removal now runs **two seeds** and keeps the one
+     whose fill matches its edge (`edge_mismatch`: colour and texture), the other a hidden
+     variation (`variations` 1–4 on the three commands, default 2). The rewriter named "the
+     painted-over area" once: names that are the selection are rejected.
+  6. The edge score preferred a smeared skin-coloured blob over a man's eyes to the eyes (its
+     colour and smoothness matched the cheeks): the vision-language model now **judges the two
+     results side by side** ("which looks like an untouched photograph", `judge_pair`), the
+     edge score the fallback. It picked the eyes over the blob and the sky over the second wire.
+- **Where it stands**: the last run of the set is in §5i; a stroke is 20–24 s wall on the
+  Lightning tier (name, detector, two fills, judge; the native engine will keep the three
+  models resident). `seed` on the generative strokes now sets the fill's seed too, for
+  reproducible benches.
+- Open: the Remove tool's serpentine makes a rectangular hole (its `closeLoops`) that a real
+  stroke would not; a third seed when the judge is unsure; the same judge for Generative
+  Fill's own variations; faces are the fragile case (a blur or mosaic over the eyes at some
+  seeds).
+
 ## 2026-10-21 (later still): the detector asked again by the name the rewriter found
 
 - **Closed the open item**: a stroke over half a thin necklace now removes the whole of it.

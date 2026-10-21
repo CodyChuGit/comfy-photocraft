@@ -719,7 +719,9 @@ fn content_aware_fill_as(s: &mut Session, p: &Value, cmd: &'static str, label: &
         let grow: i32 = fill_edits(p, cmd, &mut budget)?.iter().map(|e| if let FillEdit::Grow(b) = e { b.max(&0) } else { &0 }).sum();
         let erase = bool_or(p, "erase", false);
         let enhance = bool_or(p, "enhance", true);
-        return crate::generate_cmds::generative_remove(s, label, sb, coverage, grow.clamp(0, 512) as u32, erase, false, None, enhance);
+        let variations = crate::generate_cmds::removal_variations(p);
+        let seed = p.get("seed").and_then(Value::as_u64);
+        return crate::generate_cmds::generative_remove(s, label, sb, coverage, grow.clamp(0, 512) as u32, erase, false, None, enhance, variations, seed);
     }
     let doc = st.doc.clone();
     // Check the params before the job starts.
@@ -1508,7 +1510,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Content-Aware Fill…",
             ["Edit"],
             None,
-            r##"{"sampling":"auto|rectangular|custom","margin":px?,"area":[x,y,w,h]?,"channel":index|name?,"samplingStrokes":[{"mode":"add|subtract","size":px,"points":[[x,y],…]}]? (the workspace's Sampling Brush, after the sampling option's area; added strokes may lie outside the window),"fillEdits":[{"op":"new|add|subtract|intersect","points":[[x,y],…]}|{"op":"expand|contract","by":px}]? (the workspace's lasso edits of the fill area, in order),"sampleAllLayers":bool=false,"colorAdaptation":"default|none|high|veryHigh","rotationAdaptation":"none|low|medium|high|full","scale":bool=false,"mirror":bool=false,"output":"current|new|duplicate","layer":id?=active (the layer filled and sampled),"seed":u64=1,"generative":bool=false (PhotoshopEX: the fill through the generative model, as Generative Fill with an instruction to continue the surroundings into the selection: the result is a masked layer above the active one, whatever `output` says; the classical fill when no ComfyUI server or native engine is configured),"erase":bool=false (generative: the selection flattened to grey in the request; off, since the model paints such a hole back as a grey panel),"enhance":bool=true (generative: the vision-language model names what is in the selection first, "remove the gold necklace…", which removes what the generic wording leaves)}"##,
+            r##"{"sampling":"auto|rectangular|custom","margin":px?,"area":[x,y,w,h]?,"channel":index|name?,"samplingStrokes":[{"mode":"add|subtract","size":px,"points":[[x,y],…]}]? (the workspace's Sampling Brush, after the sampling option's area; added strokes may lie outside the window),"fillEdits":[{"op":"new|add|subtract|intersect","points":[[x,y],…]}|{"op":"expand|contract","by":px}]? (the workspace's lasso edits of the fill area, in order),"sampleAllLayers":bool=false,"colorAdaptation":"default|none|high|veryHigh","rotationAdaptation":"none|low|medium|high|full","scale":bool=false,"mirror":bool=false,"output":"current|new|duplicate","layer":id?=active (the layer filled and sampled),"seed":u64=1,"generative":bool=false (PhotoshopEX: the fill through the generative model, as Generative Fill with an instruction to continue the surroundings into the selection: the result is a masked layer above the active one, whatever `output` says; the classical fill when no ComfyUI server or native engine is configured),"erase":bool=false (generative: the selection flattened to grey in the request; off, since the model paints such a hole back as a grey panel),"enhance":bool=true (generative: the vision-language model names what is in the selection first, "remove the gold necklace…", which removes what the generic wording leaves),"variations":1..4=2 (generative: seeds run; the result whose fill matches its edge best is shown, the others are hidden variations)}"##,
             can_caf,
             content_aware_fill
         ),

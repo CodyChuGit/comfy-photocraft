@@ -495,6 +495,33 @@ pendant" where the fill note named "the gold necklace", so the name ask found le
 half-necklace stroke regressed to half; the boat was clean either way. On a fresh server the
 three asks come to 14–17 s wall a stroke on Lightning (the first stroke after a start 40 s).
 
+**The robustness set** (the same day; `robust-make.ps1` makes fourteen scenes with the app's
+own text-to-image, 1024², seed 31, and locates each object by Select by Text;
+`robust-strokes.ps1` runs two strokes a scene through the tools' own commands, Spot Healing
+along the first half of the object's long axis and the Remove tool in a serpentine over its
+whole box; `robust-sheets.ps1` makes the sheets; every run's rewrite, growth and time go to
+`bench\rb-log.txt`). Six rounds of refinement, the fixes in the dev log; what each round's
+sheets showed:
+
+| Round | Clean of 28 | What failed |
+|---|---|---|
+| 1: as committed before the set | (half strokes only) none whole | the quarter-of-the-object rule rejected every half stroke over a thick object; the rewriter named the part under the stroke ("the window", "the dog's head", "the hand") |
+| 2: a tenth, the stroke outlined in green for the rewriter | 24 | "the green circle", "the green-painted face"; the Remove tool's serpentine on the logo removed the shirt, on the glasses the face (the point prompt's segment) |
+| 3: two views side by side, name first, point prompt the fallback | 22 | the watch's place filled with the table, both strokes; a panel over the eyes (Remove); a lighter patch of sky where the crow was; the mug's rim without its coffee |
+| 4: the name alone in the generic wording, tone matched at the edge, enclosed gaps filled | 25 | the watch clean (seed luck), the glasses half a wall panel, the crow's place blue on a grey sky, the cup's coffee named and emptied |
+| 5: two seeds, the better edge match shown | 26 | a second wire drawn under the first; "the painted-over area" as a name |
+| 6: the rewriter judges the two side by side, selection-names rejected | 26 (final run) | a faint circular seam where the mug's half stroke met the pattern; the crow's claws left on the wire |
+
+The final run, all fourteen scenes clean at both strokes but those two: watch, glasses,
+earring, tattoo, logo, car, person, lamp post, sign, crow, mug, ring, poster, dog, the
+rewriter naming every one right ("silver watch", "black-framed glasses", "silver hoop
+earring", "black rose tattoo", "red circular logo", "blue car", "man", "black lamppost", "blue
+sign", "black bird", "white coffee cup", "gold ring", "white poster", "golden retriever").
+On the glasses seed by seed (`glasses-seeds-live.ps1`), seeds 1–3 were clean and seed 4 a
+smeared blob over one eye; the edge score chose the blob (its colour and smoothness matched the
+cheeks), the judge chose seed 3. A stroke is 20–27 s wall on the Lightning tier (the name, the
+detector, two fills, the judge; three outliers of 40–143 s were the server reloading).
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP

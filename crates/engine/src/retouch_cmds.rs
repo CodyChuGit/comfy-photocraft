@@ -854,7 +854,9 @@ fn spot_healing(s: &mut Session, p: &Value) -> Result<Value> {
         "generative" if crate::generate_cmds::generative_configured(s) && targets_pixels(p) => {
             let (bounds, cov) = coverage(CMD, &stroke)?;
             let object = flag(p, "wholeObject", true).then(|| object_under_strokes(s, std::slice::from_ref(&stroke))).flatten();
-            return crate::generate_cmds::generative_remove(s, "Spot Healing Brush", bounds, cov, 0, false, true, object, flag(p, "enhance", true));
+            let variations = crate::generate_cmds::removal_variations(p);
+            let seed = p.get("seed").and_then(Value::as_u64);
+            return crate::generate_cmds::generative_remove(s, "Spot Healing Brush", bounds, cov, 0, false, true, object, flag(p, "enhance", true), variations, seed);
         }
         "generative" => SpotType::ContentAware,
         o => return Err(bad(CMD, format!("unknown type `{o}` (contentAware|createTexture|proximityMatch|generative)"))),
@@ -1351,7 +1353,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Spot Healing Brush",
             menu: &[],
             shortcut: None,
-            params: brush_params!(r#","type":"contentAware|createTexture|proximityMatch|generative"="contentAware","sampleAllLayers":bool=false,"wholeObject":bool=true,"enhance":bool=true (generative: the stroke healed through the generative fill model with an instruction to remove what is there and continue the surroundings, as a masked layer above the target, the hole widened by 15 % of its size; wholeObject = the object the segmentation model finds under the stroke goes with it when the stroke covers at least a quarter of it, since the fill model redraws an object part of which stays in view; enhance = the vision-language model names the object first ("remove the gold necklace…"), which removes what the generic wording leaves, and the segmentation model is asked again for it by that name, so a thin object goes whole from a stroke over part of it; Content-Aware when no ComfyUI server or native engine is configured)"#),
+            params: brush_params!(r#","type":"contentAware|createTexture|proximityMatch|generative"="contentAware","sampleAllLayers":bool=false,"wholeObject":bool=true,"enhance":bool=true,"variations":1..4=2 (generative: variations = seeds run, the result whose fill matches its edge best shown and the others hidden variations; the stroke healed through the generative fill model with an instruction to remove what is there and continue the surroundings, as a masked layer above the target, the hole widened by 15 % of its size; wholeObject = the object the segmentation model finds under the stroke goes with it when the stroke covers at least a quarter of it, since the fill model redraws an object part of which stays in view; enhance = the vision-language model names the object first ("remove the gold necklace…"), which removes what the generic wording leaves, and the segmentation model is asked again for it by that name, so a thin object goes whole from a stroke over part of it; Content-Aware when no ComfyUI server or native engine is configured)"#),
             enabled: has_pixel_layer,
             run: spot_healing,
             journal: true,
@@ -1382,7 +1384,7 @@ pub fn specs() -> Vec<CommandSpec> {
             menu: &[],
             shortcut: None,
             params: brush_params!(
-                r#","strokes":[[[x,y,pressure?],…],…]? (several strokes removed together, as one job and one undo step; else "points"),"closeLoops":bool=true (a stroke around an object removes what it encloses),"sampleAllLayers":bool=false,"newLayer":bool=false (the fill goes to a new layer above the target, which stays as it was),"generative":bool=false,"wholeObject":bool=true,"enhance":bool=true (PhotoshopEX: the hole filled through the generative fill model with an instruction to remove what is there and continue the surroundings, always as a masked layer above the target, the hole widened by 15 % of its size; wholeObject = the object the segmentation model finds under the stroke goes with it when the stroke covers at least a quarter of it; enhance = the vision-language model names the object first and the segmentation model is asked again for it by that name; the classical fill when no ComfyUI server or native engine is configured) → {"damage","layer"?} (a background job)"#
+                r#","strokes":[[[x,y,pressure?],…],…]? (several strokes removed together, as one job and one undo step; else "points"),"closeLoops":bool=true (a stroke around an object removes what it encloses),"sampleAllLayers":bool=false,"newLayer":bool=false (the fill goes to a new layer above the target, which stays as it was),"generative":bool=false,"wholeObject":bool=true,"enhance":bool=true,"variations":1..4=2 (PhotoshopEX: variations = seeds run, the result whose fill matches its edge best shown and the others hidden variations; the hole filled through the generative fill model with an instruction to remove what is there and continue the surroundings, always as a masked layer above the target, the hole widened by 15 % of its size; wholeObject = the object the segmentation model finds under the stroke goes with it when the stroke covers at least a quarter of it; enhance = the vision-language model names the object first and the segmentation model is asked again for it by that name; the classical fill when no ComfyUI server or native engine is configured) → {"damage","layer"?} (a background job)"#
             ),
             enabled: has_pixel_layer,
             run: remove::remove,

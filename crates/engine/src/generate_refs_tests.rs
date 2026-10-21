@@ -170,7 +170,7 @@ fn the_classical_tools_go_through_the_model_when_asked_and_fall_back_without_a_s
     let fake = FakeComfy::start().unwrap();
     let (mut s, _, _) = session(&fake.url);
     let layers = s.active().unwrap().doc.layers.len();
-    let r = s.execute("edit.contentAwareFill", json!({"generative": true})).unwrap();
+    let r = s.execute("edit.contentAwareFill", json!({"generative": true, "variations": 1})).unwrap();
     assert!(r["layer"].is_number(), "a generative layer: {r}");
     assert_eq!(s.active().unwrap().doc.layers.len(), layers + 1);
     {
@@ -187,12 +187,14 @@ fn the_classical_tools_go_through_the_model_when_asked_and_fall_back_without_a_s
     let made = LayerId(r["layer"].as_u64().unwrap());
     let info = generative_info(s.active().unwrap().doc.layer(made).unwrap()).unwrap();
     assert_eq!((info.command.as_str(), info.erase, info.name.as_str()), (FILL, false, "Content-Aware Fill"));
-    assert!(info.enhanced.starts_with("Enhanced: Remove the object"), "the rewritten instruction is remembered: {info:?}");
+    // The fake's rewrite ("Enhanced: …") names nothing, so the fill keeps the generic wording
+    // and the layer records no rewrite (a named removal records the wording with the name).
+    assert!(info.enhanced.is_empty(), "{info:?}");
     // The Remove tool and Spot Healing: a stroke each, a layer each; each asks the detector
     // for the object under the stroke first (the fake finds nothing: the stroke alone), then
     // the rewriter, then the fill.
-    s.execute("paint.remove", json!({"points": [[20, 16], [26, 16]], "size": 6, "generative": true})).unwrap();
-    s.execute("paint.spotHealing", json!({"points": [[22, 18]], "size": 6, "type": "generative"})).unwrap();
+    s.execute("paint.remove", json!({"points": [[20, 16], [26, 16]], "size": 6, "generative": true, "variations": 1})).unwrap();
+    s.execute("paint.spotHealing", json!({"points": [[22, 18]], "size": 6, "type": "generative", "variations": 1})).unwrap();
     assert_eq!(s.active().unwrap().doc.layers.len(), layers + 3);
     assert_eq!(fake.state().prompts.len(), 8, "two detector asks, two rewrites, two fills more");
     // No backend configured: the classical fills, in place, no layer.
@@ -202,10 +204,10 @@ fn the_classical_tools_go_through_the_model_when_asked_and_fall_back_without_a_s
         p.integrations.models_path.clear();
     });
     let n = s.active().unwrap().doc.layers.len();
-    let r = s.execute("edit.contentAwareFill", json!({"generative": true})).unwrap();
+    let r = s.execute("edit.contentAwareFill", json!({"generative": true, "variations": 1})).unwrap();
     assert!(r.get("filled").is_some() && r.get("runId").is_none(), "the classical fill: {r}");
-    s.execute("paint.remove", json!({"points": [[20, 16], [26, 16]], "size": 6, "generative": true})).unwrap();
-    s.execute("paint.spotHealing", json!({"points": [[22, 18]], "size": 6, "type": "generative"})).unwrap();
+    s.execute("paint.remove", json!({"points": [[20, 16], [26, 16]], "size": 6, "generative": true, "variations": 1})).unwrap();
+    s.execute("paint.spotHealing", json!({"points": [[22, 18]], "size": 6, "type": "generative", "variations": 1})).unwrap();
     assert_eq!(s.active().unwrap().doc.layers.len(), n);
     assert_eq!(fake.state().prompts.len(), 8, "nothing more was asked of the server");
 }
@@ -220,30 +222,34 @@ fn a_generative_stroke_takes_the_object_under_it_whole_when_it_covers_enough_of_
     let fake = FakeComfy::start_with(Options {
         segments: vec![[0.25, 1.0 / 3.0, 0.55, 170.0 / 300.0]],
         segments_for: vec![("red hat".into(), vec![[0.25, 1.0 / 3.0, 0.75, 170.0 / 300.0]])],
-        enhanced_text: Some("Remove the red hat and replace it with the wall behind it, blending seamlessly.".into()),
+        enhanced_text: Some("Remove the red hat.".into()),
         ..Options::default()
     })
     .unwrap();
     let (mut s, _, _) = session(&fake.url);
     s.execute("file.new", json!({"width": 400, "height": 300})).unwrap();
-    // A stroke across the object (its footprint 150×51, from x 85 to 235): over a third of
-    // the hat either way, so it goes whole, the hole grown by 15 % of its larger side (the
-    // stroke and the whole hat: x 85 to 300 → 215 → 32).
-    let r = s.execute("paint.spotHealing", json!({"points": [[110, 135], [210, 135]], "size": 30, "hardness": 1, "type": "generative", "seed": 3})).unwrap();
+    // A stroke across the object (its footprint 150×51, from x 85 to 235): the rewriter names
+    // "the red hat", the detector finds the whole of it by that name and the stroke covers
+    // over a tenth of it, so it goes whole, the hole grown by 15 % of its larger side (the
+    // stroke and the whole hat: x 85 to 300 → 215 → 32). The point prompt is not asked.
+    let r = s.execute("paint.spotHealing", json!({"points": [[110, 135], [210, 135]], "size": 30, "hardness": 1, "type": "generative", "variations": 1, "seed": 3})).unwrap();
     let made = LayerId(r["layer"].as_u64().unwrap());
     let info = generative_info(s.active().unwrap().doc.layer(made).unwrap()).unwrap();
     assert_eq!(info.grow, 32, "{info:?}");
-    assert!(info.enhanced.starts_with("Remove the red hat"), "{info:?}");
+    // The rewriter gives the name; the fill keeps the generic wording around it.
+    assert_eq!(info.enhanced, "Remove the red hat and fill its place with the surrounding scene continued seamlessly (its background, surfaces, textures, patterns and lines), as if nothing had ever been there", "{info:?}");
     let rect = photocraft_geom::Rect::new(info.rect[0], info.rect[1], info.rect[0] + info.rect[2], info.rect[1] + info.rect[3]);
     assert!(rect.contains(70, 70) && rect.contains(330, 200), "the request takes in the whole hat, its growth and margin: {rect:?}");
     {
         let st = fake.state();
-        assert_eq!(st.prompts.len(), 4, "the detector by point, the rewriter, the detector by name, the fill");
-        assert!(st.prompts[2].1.to_string().contains("\"text\":\"red hat\""), "asked by the rewriter's name: {}", st.prompts[2].1);
+        assert_eq!(st.prompts.len(), 3, "the rewriter, the detector by name, the fill");
+        assert!(st.prompts[1].1.to_string().contains("\"text\":\"red hat\""), "asked by the rewriter's name: {}", st.prompts[1].1);
     }
-    // A dab on one spot of it (a blemish, not the object): the hat stays, the dab is healed
-    // with the least growth.
-    let r = s.execute("paint.spotHealing", json!({"points": [[120, 130]], "size": 8, "hardness": 1, "type": "generative", "seed": 3})).unwrap();
+    // A dab on one spot of it (a blemish, not the object): the named hat is 14000 pixels, the
+    // dab covers under a tenth of it, and so of the "hat" the shorter name finds (the fake's
+    // default object, 8400 pixels); the point prompt's object (the same) is far bigger than
+    // the dab's box. The hat stays, the dab is healed with the least growth.
+    let r = s.execute("paint.spotHealing", json!({"points": [[120, 130]], "size": 8, "hardness": 1, "type": "generative", "variations": 1, "seed": 3})).unwrap();
     let made = LayerId(r["layer"].as_u64().unwrap());
     let info = generative_info(s.active().unwrap().doc.layer(made).unwrap()).unwrap();
     assert_eq!(info.grow, 16, "{info:?}");
@@ -251,10 +257,48 @@ fn a_generative_stroke_takes_the_object_under_it_whole_when_it_covers_enough_of_
     // The request is widened to at least 384 px a side (the canvas is 300 tall) so the model
     // sees context around the dab, but no further.
     assert!(rect.width() == 384 && rect.height() == 300 && !rect.contains(399, 10), "a dab's request: {rect:?}");
-    assert_eq!(fake.state().prompts.len(), 8);
+    assert_eq!(fake.state().prompts.len(), 8, "the rewriter, the detector by \"red hat\" then \"hat\", the detector by point, the fill");
     // `wholeObject: false` never asks the detector; `enhance: false` never asks the rewriter.
-    s.execute("paint.remove", json!({"points": [[110, 135], [210, 135]], "size": 30, "generative": true, "wholeObject": false, "enhance": false})).unwrap();
+    s.execute("paint.remove", json!({"points": [[110, 135], [210, 135]], "size": 30, "generative": true, "wholeObject": false, "enhance": false, "variations": 1})).unwrap();
     assert_eq!(fake.state().prompts.len(), 9, "the fill alone for the Remove stroke");
+    // With no rewriter (`enhance: false`) the point prompt's object is taken when it fits
+    // the stroke's box: the stroke's box is 150×51, the object 120×70 (under 1.5× each way).
+    let r = s.execute("paint.spotHealing", json!({"points": [[110, 135], [210, 135]], "size": 30, "hardness": 1, "type": "generative", "enhance": false, "variations": 1, "seed": 3})).unwrap();
+    let made = LayerId(r["layer"].as_u64().unwrap());
+    let info = generative_info(s.active().unwrap().doc.layer(made).unwrap()).unwrap();
+    assert_eq!((info.grow, info.enhanced.as_str()), (23, ""), "the stroke and the point object, x 85 to 235: {info:?}");
+    assert_eq!(fake.state().prompts.len(), 11, "the detector by point, the fill");
+}
+
+#[test]
+fn a_removal_matches_the_tone_of_its_surroundings_at_the_hole() {
+    // The fake paints its result a flat colour; the document is another. A removal's result
+    // comes back matched to the document at the hole's edge, so the layer's pixels inside the
+    // hole are the document's tone, not the fake's; a plain fill keeps the fake's colour.
+    use photocraft_genai::fake::Options;
+    let fake = FakeComfy::start_with(Options { color: [200, 120, 40, 255], ..Options::default() }).unwrap();
+    let (mut s, _, _) = session(&fake.url);
+    s.execute("file.new", json!({"width": 400, "height": 300})).unwrap();
+    s.execute("edit.fill", json!({"color": "#2060a0"})).unwrap();
+    let sample = |s: &Session, layer: LayerId, x: i32, y: i32| -> [u8; 4] {
+        let l = s.active().unwrap().doc.layer(layer).unwrap();
+        let mut px = [[0u8; 4]; 1];
+        l.surface().unwrap().read_rgba8_into(photocraft_geom::Rect::new(x, y, x + 1, y + 1), &mut px);
+        px[0]
+    };
+    let before = s.active().unwrap().doc.layers.len();
+    let r = s.execute("paint.spotHealing", json!({"points": [[200, 150]], "size": 40, "hardness": 1, "type": "generative", "enhance": false, "wholeObject": false, "seed": 3})).unwrap();
+    let removed = sample(&s, LayerId(r["layer"].as_u64().unwrap()), 200, 150);
+    assert!(removed[0] < 80 && removed[2] > 120, "the document's blue, not the fake's orange: {removed:?}");
+    // Two seeds by default: two layers, the shown one first (the fake paints both alike).
+    let ids: Vec<u64> = r["layers"].as_array().unwrap().iter().filter_map(Value::as_u64).collect();
+    assert_eq!((ids.len(), s.active().unwrap().doc.layers.len()), (2, before + 2), "{r}");
+    let d = s.active().unwrap();
+    assert!(d.doc.layer(LayerId(ids[0])).unwrap().visible && !d.doc.layer(LayerId(ids[1])).unwrap().visible);
+    s.execute("select.rect", json!({"x": 180, "y": 130, "width": 40, "height": 40})).unwrap();
+    let r = s.execute(FILL, json!({"prompt": "a mark", "enhance": false, "seed": 3})).unwrap();
+    let filled = sample(&s, LayerId(r["layer"].as_u64().unwrap()), 200, 150);
+    assert!(filled[0] > 150 && filled[2] < 80, "a fill keeps what the model painted: {filled:?}");
 }
 
 #[test]
@@ -266,6 +310,14 @@ fn a_rewritten_removal_names_its_object() {
     assert_eq!(named_object("remove the small bird on the wire."), Some("small bird".into()));
     assert_eq!(named_object("Fill the area with sea."), None, "not a removal");
     assert_eq!(named_object("Remove the very long and winding description of something that goes on and on."), None, "a sentence, not a name");
+    assert_eq!(named_object("Remove the black crow perched on the wire and fill its place with the sky."), Some("black crow".into()));
+    assert_eq!(named_object("Remove the painted-over area."), None, "the selection, not a thing");
+    assert_eq!(named_object("Remove the selected region of the cup."), None);
+    use crate::generate_cmds::{name_candidates, removal_prompt};
+    assert_eq!(name_candidates("white ceramic coffee cup"), vec!["white ceramic coffee cup", "coffee cup", "cup"]);
+    assert_eq!(name_candidates("red boat"), vec!["red boat", "boat"]);
+    assert_eq!(name_candidates("dog"), vec!["dog"]);
+    assert!(removal_prompt("silver watch").starts_with("Remove the silver watch and fill its place with the surrounding scene continued seamlessly"));
 }
 
 #[test]

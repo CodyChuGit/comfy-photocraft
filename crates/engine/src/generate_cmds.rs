@@ -118,10 +118,25 @@ Reply with the sentence only: no explanation, no quotes, no markdown.";
 /// Added to the system turn for a fill: where the selection is and what the instruction means
 /// there.
 const ENHANCE_FILL_NOTE: &str = "The user selected the {place} of the image; the instruction says what should be generated inside that selection so that it blends with its surroundings. Describe what appears there.";
-// A removal uses the fill note with `REMOVE_PROMPT` as the instruction. A note of its own
-// ("name that object precisely, then only what lies directly behind it", tried 2026-10-21
-// after one boat run came back with a rock in its place) named the pendant where the fill
-// note named the whole necklace, so the second detector ask found less; the rock was 1 of 7.
+
+/// The system turn's note for a removal, whose picture is two views side by side: the
+/// surroundings on the left, a close-up of the painted area on the right ([`side_by_side`]).
+/// The rewriter has no other view of what was painted: with the fill note and one crop it
+/// named what lay under the stroke ("the window" for a stroke on a car, "the dog's head",
+/// "the hand" for a ring) or the most salient thing in view ("the pendant" for a stroke on
+/// the chain); with the painted area outlined in green it talked about the outline ("the
+/// green circle", "the green-painted face"). Measured 2026-10-21 on the robustness set.
+const ENHANCE_REMOVE_NOTE: &str = "You can see two views of the same photo side by side: on the right, a close-up of an object to remove (or of part of it); on the left, the same with its surroundings. Reply with exactly one sentence of the form \"Remove the <object>.\" The object is the whole thing, not a part of it (the whole car, not its window; the whole dog, not its head; the whole necklace, not its pendant; the whole cup, not the coffee in it), named by what it is and its colour in at most five words; never call it an area, region, part or selection. Say nothing else: not what is behind it, not the two views, not other things in the picture.";
+
+/// The system turn for judging two results of a removal side by side ([`judge_pair`]): the
+/// edge-match score preferred a smeared skin-coloured blob over a man's eyes to the eyes
+/// themselves (its colour and smoothness matched the cheeks), where a look at the two tells
+/// them apart at once (measured 2026-10-21).
+const ENHANCE_JUDGE_SYSTEM: &str = "You can see two versions of the same part of a photo side by side, left and right, after something was removed from it. One of them may show a flaw where the thing was: a smear, a blur, a blocky or pixelated patch, a flat panel, a wrong texture, a duplicated line or object, or something that does not belong. Pick the version that looks like a natural, untouched photograph.\n\
+Reply with exactly one sentence: \"The left one looks natural.\" or \"The right one looks natural.\" Nothing else.";
+
+/// What the judge is asked ("left" before "right", so a parroted question picks the left).
+const JUDGE_QUESTION: &str = "Which one looks natural, left or right?";
 
 /// The system turn for a fill from a reference image. The rewriter sees the picture (its
 /// selection flattened to grey) and the reference side by side, as AusBoss's Krea 2 clothing
@@ -145,6 +160,11 @@ pub(crate) enum EnhanceKind {
     /// A fill from a reference: the picture (its selection flattened to grey) and the reference
     /// side by side, and what to take from the reference.
     FillRef,
+    /// A removal: the surroundings and a close-up of the painted part side by side; name the
+    /// whole object the part belongs to.
+    Remove,
+    /// Two results of a removal side by side: which looks like an untouched photograph.
+    Judge,
     /// An edit: the picture and an instruction about it.
     Edit,
     /// Text to image: no picture.
@@ -230,6 +250,8 @@ pub(crate) fn enhance_prompt(
         EnhanceKind::Image => ENHANCE_IMAGE_SYSTEM.to_string(),
         EnhanceKind::Edit => edit_system,
         EnhanceKind::Fill => format!("{edit_system}\n{}", ENHANCE_FILL_NOTE.replace("{place}", place.unwrap_or("selected part"))),
+        EnhanceKind::Remove => format!("{edit_system}\n{ENHANCE_REMOVE_NOTE}"),
+        EnhanceKind::Judge => ENHANCE_JUDGE_SYSTEM.to_string(),
         EnhanceKind::FillRef => ENHANCE_FILL_REF_SYSTEM.to_string(),
     };
     let mut params = BTreeMap::new();
@@ -825,6 +847,25 @@ pub(crate) fn fill_rect(bounds: Rect, margin: f64, canvas: Rect) -> Result<Rect>
 /// matches it at twice the time; a hole flattened to grey is painted back as a grey panel by
 /// 2511 (the `erase` that serves a swap from a reference defeats a removal).
 pub const REMOVE_PROMPT: &str = "Remove the object in the selected area and fill its place with the surrounding scene continued seamlessly (its background, surfaces, textures, patterns and lines), as if nothing had ever been there";
+/// The part of [`REMOVE_PROMPT`] the rewriter's name replaces ("the gold necklace").
+const REMOVE_PROMPT_OBJECT: &str = "the object in the selected area";
+
+/// The names the detector is asked for in turn: the name as given, then its last two words,
+/// then its last word ("white ceramic coffee cup" → "coffee cup" → "cup"), without repeats.
+pub(crate) fn name_candidates(name: &str) -> Vec<String> {
+    let words: Vec<&str> = name.split_whitespace().collect();
+    let mut out: Vec<String> = Vec::new();
+    for n in [words.len(), 2, 1] {
+        if n == 0 || n > words.len() {
+            continue;
+        }
+        let c = words[words.len() - n..].join(" ");
+        if !out.contains(&c) {
+            out.push(c);
+        }
+    }
+    out
+}
 
 /// Is a generative backend set up: a ComfyUI server, or the native worker's folders? The
 /// classical tools go through the model only then, and fall back to their own algorithms
@@ -873,11 +914,24 @@ const REMOVE_GROW_MIN: u32 = 16;
 const REMOVE_GROW_MAX: u32 = 96;
 
 /// A stroke removes the object the detector finds under it whole only when the stroke covers
-/// at least this share of that object: a dab on a blemish must heal the blemish, not remove the
-/// face the detector finds under it.
-const WHOLE_OBJECT_MIN_COVERED: f64 = 0.25;
+/// at least this share of that object: a dab on a blemish (under 1 % of the face the detector
+/// finds under it) must heal the blemish, not remove the face. A quarter was too strict: a
+/// stroke along half a watch covers 22 % of it (measured 2026-10-21 on the robustness set).
+const WHOLE_OBJECT_MIN_COVERED: f64 = 0.10;
 /// …and never an object larger than this share of the canvas.
 const WHOLE_OBJECT_MAX_CANVAS: f64 = 0.4;
+
+/// How many seeds a removal runs unless told otherwise (`variations`): two, the one whose fill
+/// matches its edge best shown ([`edge_mismatch`]). One seed in four or so filled a watch's
+/// place with the table beside the wrist, or a crow's with blue on a grey sky (measured
+/// 2026-10-21); a second seed at 6 s on the Lightning tier buys the choice.
+pub const DEFAULT_REMOVAL_VARIATIONS: u32 = 2;
+const MAX_REMOVAL_VARIATIONS: u32 = 4;
+
+/// `variations` for a removal: [`DEFAULT_REMOVAL_VARIATIONS`] unless given, 1 to 4.
+pub(crate) fn removal_variations(p: &Value) -> u32 {
+    p.get("variations").and_then(Value::as_f64).filter(|v| v.is_finite()).map_or(DEFAULT_REMOVAL_VARIATIONS, |v| (v.round() as i64).clamp(1, i64::from(MAX_REMOVAL_VARIATIONS)) as u32)
+}
 
 /// A removal's request is at least this many pixels on a side (where the canvas allows), so
 /// the model sees real context around a small dab and the request is not upscaled many times
@@ -900,6 +954,18 @@ fn at_least(rect: Rect, min_side: i32, canvas: Rect) -> Rect {
     let (x0, x1) = span(rect.x0, rect.x1, canvas.x0, canvas.x1);
     let (y0, y1) = span(rect.y0, rect.y1, canvas.y0, canvas.y1);
     align_to_grid(Rect::new(x0, y0, x1, y1).intersect(&canvas), canvas)
+}
+
+/// An object the detector found under the stroke's spots (its point prompt, no name) is
+/// taken whole only when its box is at most this many times the stroke's in each direction:
+/// the point prompt on the glasses returned the face, on a shirt's logo the shirt (measured
+/// 2026-10-21); the object the rewriter names is found by name instead, with no such limit
+/// (half a stroke on a necklace's chain names the whole necklace).
+const POINT_OBJECT_MAX_SCALE: f64 = 1.5;
+
+/// Whether an object's box `ob` is within [`POINT_OBJECT_MAX_SCALE`] of the stroke's `sb`.
+fn fits_stroke(ob: Rect, sb: Rect) -> bool {
+    f64::from(ob.width()) <= POINT_OBJECT_MAX_SCALE * f64::from(sb.width()) && f64::from(ob.height()) <= POINT_OBJECT_MAX_SCALE * f64::from(sb.height())
 }
 
 /// Whether a stroke (`stroke`, one value per pixel of `sb`) covers enough of an object (`obj`
@@ -949,13 +1015,29 @@ fn take_in(area: Rect, coverage: &[f32], obj: &[f32], ob: Rect, canvas: Rect, se
 pub(crate) fn named_object(rewritten: &str) -> Option<String> {
     let t = rewritten.trim();
     let rest = ["Remove the ", "remove the ", "Remove ", "remove "].iter().find_map(|p| t.strip_prefix(p))?;
-    let cut = [", ", " and replace", " and fill", " from ", " with ", " so ", ".", ";", " replacing", " completely", " entirely", " to ", " in the ", " on the "]
-        .iter()
-        .filter_map(|m| rest.find(m))
-        .min()
-        .unwrap_or(rest.len());
+    let cut = [
+        ", ", " and replace", " and fill", " from ", " with ", " so ", ".", ";", " replacing", " completely", " entirely", " to ", " in the ", " on the ", " perched", " sitting",
+        " standing", " lying", " hanging", " taped", " mounted", " parked", " walking", " resting", " placed", " attached",
+    ]
+    .iter()
+    .filter_map(|m| rest.find(m))
+    .min()
+    .unwrap_or(rest.len());
     let name = rest.get(..cut).unwrap_or("").trim();
-    (!name.is_empty() && name.split_whitespace().count() <= 6).then(|| name.to_string())
+    // "the painted-over area", "the selected region": the rewriter naming the selection
+    // instead of what is in it (measured); the generic wording does better than that.
+    let lower = name.to_lowercase();
+    let not_a_thing = ["area", "region", "part", "selection", "painted", "marked", "outlined", "view", "section", "spot", "portion"].iter().any(|w| lower.split(|c: char| !c.is_alphanumeric()).any(|t| t == *w));
+    (!name.is_empty() && !not_a_thing && name.split_whitespace().count() <= 6).then(|| name.to_string())
+}
+
+/// The fill's prompt for a removal the rewriter named: [`REMOVE_PROMPT`] with the name in it.
+/// The rewriter is not asked what lies behind the object: its answers were wrong often
+/// enough ("the beige wall" behind glasses on a face, "light blue sky" for a grey one, and
+/// the model painted those) that the fill model's own reading of the surroundings, over two
+/// seeds with the better edge match kept, does better (measured 2026-10-21).
+pub(crate) fn removal_prompt(name: &str) -> String {
+    REMOVE_PROMPT.replace(REMOVE_PROMPT_OBJECT, &format!("the {name}"))
 }
 
 /// How far a removal's hole of bounds `b` grows.
@@ -989,6 +1071,8 @@ pub(crate) fn generative_remove(
     within_selection: bool,
     object: Option<crate::select_ml_cmds::ObjectUnderStroke>,
     enhance: bool,
+    variations: u32,
+    seed: Option<u64>,
 ) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let canvas = d.doc.bounds();
@@ -1017,7 +1101,7 @@ pub(crate) fn generative_remove(
     let auto = default_template == AUTO_TEMPLATE;
     let base = if auto { DEFAULT_FILL_TEMPLATE.to_string() } else { default_template };
     let Common { template, prompt, negative, seed, steps, guidance, models, .. } =
-        plan_common(s, FILL, &json!({"prompt": REMOVE_PROMPT}), &base, Task::Fill, &default_model)?;
+        plan_common(s, FILL, &json!({"prompt": REMOVE_PROMPT, "seed": seed}), &base, Task::Fill, &default_model)?;
     let (backend, server) = backend_for(s, &template.meta.id)?;
     let job = FillJob {
         backend,
@@ -1033,13 +1117,14 @@ pub(crate) fn generative_remove(
         guidance,
         name: label.to_string(),
         models,
-        variations: 1,
+        variations: variations.clamp(1, MAX_REMOVAL_VARIATIONS),
         edge: Edge::Soft,
         enhance,
         refs: Default::default(),
         grow,
         erase,
         rewritten: None,
+        removal: true,
     };
     crate::jobs::edit_job(
         s,
@@ -1049,42 +1134,64 @@ pub(crate) fn generative_remove(
             let stroke = (bounds, coverage.clone());
             let (mut area, mut coverage) = (bounds, coverage);
             let sel = if within_selection { doc.selection.as_ref() } else { None };
-            // The object under the stroke, whole, when the stroke covers enough of it.
-            if let Some(finder) = &object {
-                ctx.progress(0.0, "Finding the object");
+            // The object under the stroke, whole, when the stroke covers enough of it. The
+            // rewriter names it first, with a close-up of the painted part and its surroundings
+            // in view, and the detector is asked by that name (a point prompt on a thin object
+            // returns only the brushed part, on a part of a bigger segment the segment: the
+            // face for the glasses, the shirt for its logo; a text prompt the named thing).
+            // The point prompt is the fallback when nothing is named or found, for an object
+            // no bigger than the stroke's box and a half.
+            let mut taken = false;
+            if job.enhance {
+                ctx.progress(0.0, "Naming the object");
+                let (hole, _) = crate::select_ml_cmds::coverage_bounds(&coverage, area);
+                let close_rect = fill_rect(hole.inflate(remove_grow(hole) as i32).intersect(&canvas), 0.25, canvas)?;
+                let wide_rect = at_least(close_rect, REMOVE_MIN_REQUEST, canvas);
+                let crop = |r: Rect| -> Result<Rgba8> {
+                    let c = photocraft_compose::render(doc, r).to_rgba8();
+                    Rgba8::new(c.width, c.height, c.pixels).map_err(gen_err)
+                };
+                let seen = side_by_side(&crop(wide_rect)?, &crop(close_rect)?)?;
+                let (rw, rh) = request_size(seen.width, seen.height);
+                let seen = if (rw, rh) == (seen.width, seen.height) { seen } else { resize_rgba8(&seen, rw, rh)? };
+                let place = place_in_words(hole, wide_rect);
+                // The rewriter's sentence gives the object's name and what lies behind it; the
+                // fill's prompt is composed from them with the measured generic wording (the
+                // rewriter's own closing clauses listed the scene's neighbours and the model
+                // painted them: a rock for the boat, the table over a wrist).
+                if let Ok(Some(p)) =
+                    enhance_prompt(job.backend.as_ref(), EnhanceKind::Remove, &job.prompt, Some(&seen), Some(&place), job.seed, &JobProgress::span(ctx, 0.01, 0.04))
+                    && let Some(name) = named_object(&p)
+                {
+                    job.rewritten = Some(removal_prompt(&name));
+                    if let Some(finder) = &object {
+                        // The name as given, then its last two words, then its last word: the
+                        // detector found nothing called "white ceramic coffee cup" (measured).
+                        for candidate in name_candidates(&name) {
+                            ctx.progress(0.04, &format!("Finding the {candidate}"));
+                            if let Some((obj, ob, on)) = finder.find_by_text(&candidate, doc, *active, ctx)?
+                                && stroke_takes(&stroke.1, stroke.0, &obj, on, canvas)
+                            {
+                                (area, coverage) = take_in(area, &coverage, &obj, ob, canvas, sel);
+                                taken = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                // Named or not, the fill's prompt is settled here.
+                job.enhance = false;
+                ctx.check()?;
+            }
+            if !taken && let Some(finder) = &object {
+                ctx.progress(0.05, "Finding the object");
                 if let Some((obj, ob, on)) = finder.find(doc, *active, ctx)?
+                    && fits_stroke(ob, stroke.0)
                     && stroke_takes(&stroke.1, stroke.0, &obj, on, canvas)
                 {
                     (area, coverage) = take_in(area, &coverage, &obj, ob, canvas, sel);
                 }
                 ctx.check()?;
-                // The rewriter names it with the picture in view, and the detector is asked
-                // again by that name: a point prompt on a thin object (a necklace's chain)
-                // returns only the brushed part, a text prompt the whole of it (measured).
-                if job.enhance {
-                    ctx.progress(0.01, "Naming the object");
-                    let (hole, _) = crate::select_ml_cmds::coverage_bounds(&coverage, area);
-                    let r0 = at_least(fill_rect(hole.inflate(remove_grow(hole) as i32).intersect(&canvas), 0.25, canvas)?, REMOVE_MIN_REQUEST, canvas);
-                    let seen = photocraft_compose::render(doc, r0).to_rgba8();
-                    let seen = Rgba8::new(seen.width, seen.height, seen.pixels).map_err(gen_err)?;
-                    let (rw, rh) = request_size(seen.width, seen.height);
-                    let seen = if (rw, rh) == (seen.width, seen.height) { seen } else { resize_rgba8(&seen, rw, rh)? };
-                    let place = place_in_words(hole, r0);
-                    if let Ok(Some(p)) =
-                        enhance_prompt(job.backend.as_ref(), EnhanceKind::Fill, &job.prompt, Some(&seen), Some(&place), job.seed, &JobProgress::span(ctx, 0.01, 0.04))
-                    {
-                        if let Some(name) = named_object(&p) {
-                            ctx.progress(0.04, &format!("Finding the {name}"));
-                            if let Some((obj, ob, on)) = finder.find_by_text(&name, doc, *active, ctx)?
-                                && stroke_takes(&stroke.1, stroke.0, &obj, on, canvas)
-                            {
-                                (area, coverage) = take_in(area, &coverage, &obj, ob, canvas, sel);
-                            }
-                        }
-                        job.rewritten = Some(p);
-                    }
-                    ctx.check()?;
-                }
             }
             let (hole, _) = crate::select_ml_cmds::coverage_bounds(&coverage, area);
             if hole.is_empty() {
@@ -1820,6 +1927,12 @@ struct FillJob {
     /// before the request, so it can ask the detector for it by name); the fill takes it as
     /// the rewritten prompt instead of rewriting again.
     rewritten: Option<String>,
+    /// A removal: the result's tone matched to the picture's at the hole's edge
+    /// ([`tone_matched`]; a crow taken off a sky came back as a lighter patch of sky), and of
+    /// several variations the one whose fill matches its edge best shown first
+    /// ([`edge_mismatch`]; wood over a wrist, a wall over eyes, blue on a grey sky all lose
+    /// to a seed that continued the edge). Measured 2026-10-21.
+    removal: bool,
 }
 
 /// The layers a job made: (id, seed, run id, ms, timings), the primary one first.
@@ -1878,6 +1991,7 @@ fn fill_region(
         grow,
         erase,
         rewritten,
+        removal,
     } = job;
     // `grow`: the selection widened, so the repainted area (and the result's mask) takes in a
     // band of the old object's surroundings; a bulkier replacement then has room.
@@ -1963,6 +2077,8 @@ fn fill_region(
     // An edit template has no noise mask: the picture goes alone and the selection only masks
     // the result layer.
     let wants_mask = template::find(&template_id).map(|t| t.meta.needs_mask).unwrap_or(true);
+    // A removal keeps the request picture and mask to judge and tone-match the results.
+    let tone_ref = removal.then(|| (image.clone(), mask.clone()));
     let mut req = Request {
         template: template_id.clone(),
         prompt,
@@ -1981,6 +2097,8 @@ fn fill_region(
     // is visible, the alternates sit hidden above it (`generate.variation` switches).
     let n = variations.max(1);
     let mut made: Made = Vec::with_capacity(n as usize);
+    let mut mismatches: Vec<f64> = Vec::with_capacity(n as usize);
+    let mut judged: Vec<Rgba8> = Vec::with_capacity(n as usize);
     for i in 0..n {
         req.seed = seed.wrapping_add(u64::from(i)) % MAX_SEED;
         let (lo, hi) = (0.05 + 0.9 * i as f32 / n as f32, 0.05 + 0.9 * (i + 1) as f32 / n as f32);
@@ -1990,6 +2108,15 @@ fn fill_region(
         let resp = run_switching(backend.as_ref(), &server, &req, &JobProgress::span(ctx, lo, hi)).map_err(gen_err)?;
         ctx.check()?;
         let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
+        let (out, mismatch) = match &tone_ref {
+            Some((picture, mask)) if (out.width, out.height) == (picture.width, picture.height) => {
+                let matched = tone_matched(&out, picture, mask);
+                judged.push(crop_rgba8(&matched, judged_rect(mask, TONE_MATCH_INSIDE)));
+                (matched, edge_mismatch(&out, picture, mask))
+            }
+            _ => (out, 0.0),
+        };
+        mismatches.push(mismatch);
         let out = if (out.width, out.height) == (w, h) { out } else { resize_rgba8(&out, w, h)? };
         // The result becomes a layer in the document's own format, masked to the coverage.
         let layer_name = if n > 1 { format!("{name} ({}/{n})", i + 1) } else { name.clone() };
@@ -2027,10 +2154,89 @@ fn fill_region(
         made.push((nid, resp.seed, resp.run_id, resp.elapsed_ms, resp.timings));
     }
     ctx.progress(0.96, "Placing");
+    // A removal shows the variation that looks most natural to the vision-language model,
+    // each judged against the best so far ([`judge_pair`]); where it cannot say, the one whose
+    // fill matches its edge best. The others stay as hidden variations, in their order.
+    if removal && made.len() > 1 {
+        let mut best = 0usize;
+        for i in 1..made.len() {
+            ctx.progress(0.96, "Judging");
+            let verdict = match (judged.get(best), judged.get(i)) {
+                (Some(a), Some(b)) => judge_pair(backend.as_ref(), a, b, seed.wrapping_add(100 + i as u64), &JobProgress::span(ctx, 0.96, 0.97)),
+                _ => None,
+            };
+            let left_wins = verdict.unwrap_or_else(|| mismatches.get(best).copied().unwrap_or(0.0) <= mismatches.get(i).copied().unwrap_or(0.0));
+            if !left_wins {
+                best = i;
+            }
+        }
+        if best > 0 {
+            let chosen = made.remove(best);
+            made.insert(0, chosen);
+            for (i, m) in made.iter().enumerate() {
+                if let Some(l) = doc.layer_mut(m.0) {
+                    l.visible = i == 0;
+                }
+            }
+        }
+    }
     // The visible result is the active layer.
     *active = made.first().map(|m| m.0);
     Ok((made, w, h, (rw, rh), template_id))
 }
+
+/// How far a result's fill is from its own edge: the distance between the mean colour of the
+/// result inside the hole (mask at least [`TONE_MATCH_INSIDE`]) and the mean colour of the
+/// picture in the band around it (mask above zero and below that), per channel, 0..1, plus
+/// [`EDGE_TEXTURE_WEIGHT`] times the difference in texture (the mean absolute luminance
+/// step between neighbours) between the two: a seed that drew a second wire on a plain sky
+/// has the sky's colour but not its smoothness, and a plain fill on a checkered cloth has
+/// the colour but not the texture. A removal wants its hole to look like its edge, so of
+/// several seeds the lowest wins.
+fn edge_mismatch(result: &Rgba8, picture: &Rgba8, mask: &Gray8) -> f64 {
+    let (w, h) = (mask.width as usize, mask.height as usize);
+    let n = w * h;
+    if result.data.len() != n * 4 || picture.data.len() != n * 4 || mask.data.len() != n || w < 2 || h < 2 {
+        return 0.0;
+    }
+    let luma = |d: &[u8], i: usize| (0.299 * f64::from(d[i * 4]) + 0.587 * f64::from(d[i * 4 + 1]) + 0.114 * f64::from(d[i * 4 + 2])) / 255.0;
+    let (mut hole, mut band) = ([0.0f64; 3], [0.0f64; 3]);
+    let (mut hn, mut bn) = (0usize, 0usize);
+    let (mut hole_tex, mut band_tex) = (0.0f64, 0.0f64);
+    let (mut htn, mut btn) = (0usize, 0usize);
+    for (i, m) in mask.data.iter().enumerate() {
+        let (x, y) = (i % w, i / w);
+        if *m >= TONE_MATCH_INSIDE {
+            for c in 0..3 {
+                hole[c] += f64::from(result.data[i * 4 + c]);
+            }
+            hn += 1;
+            if x + 1 < w && y + 1 < h {
+                hole_tex += (luma(&result.data, i) - luma(&result.data, i + 1)).abs() + (luma(&result.data, i) - luma(&result.data, i + w)).abs();
+                htn += 1;
+            }
+        } else if *m > 0 {
+            for c in 0..3 {
+                band[c] += f64::from(picture.data[i * 4 + c]);
+            }
+            bn += 1;
+            if x + 1 < w && y + 1 < h {
+                band_tex += (luma(&picture.data, i) - luma(&picture.data, i + 1)).abs() + (luma(&picture.data, i) - luma(&picture.data, i + w)).abs();
+                btn += 1;
+            }
+        }
+    }
+    if hn == 0 || bn == 0 || htn == 0 || btn == 0 {
+        return 0.0;
+    }
+    let colour = (0..3).map(|c| (hole[c] / hn as f64 - band[c] / bn as f64) / 255.0).map(|d| d * d).sum::<f64>().sqrt();
+    let texture = (hole_tex / htn as f64 - band_tex / btn as f64).abs();
+    colour + EDGE_TEXTURE_WEIGHT * texture
+}
+
+/// How much a texture difference weighs against a colour difference in [`edge_mismatch`]
+/// (a luminance step is a few hundredths on a smooth surface, a few tenths on a pattern).
+const EDGE_TEXTURE_WEIGHT: f64 = 2.0;
 
 /// The JSON a fill or expand job answers with.
 fn made_json(made: &Made, w: u32, h: u32, (rw, rh): (u32, u32), template_id: &str) -> Value {
@@ -2075,6 +2281,36 @@ pub(crate) fn dilate(coverage: &[f32], w: usize, h: usize, r: usize) -> Vec<f32>
     pass(&pass(coverage, true), false)
 }
 
+/// `result` with its tone matched to `original`'s at the hole's edge: the hole is where
+/// `mask` is at least [`TONE_MATCH_INSIDE`]; just outside it the model re-rendered the band
+/// and the difference between the two pictures there is its tone shift, which a membrane
+/// carries smoothly across the hole and takes out (Pérez's seamless cloning with the result
+/// as the source). Outside the hole the original comes back (the layer mask fades there
+/// anyway). Both pictures the same size; otherwise `result` as it was.
+fn tone_matched(result: &Rgba8, original: &Rgba8, mask: &Gray8) -> Rgba8 {
+    let (w, h) = (result.width as usize, result.height as usize);
+    if (original.width, original.height) != (result.width, result.height) || (mask.width, mask.height) != (result.width, result.height) || w < 3 || h < 3 {
+        return result.clone();
+    }
+    // A one-pixel unmasked margin keeps the problem Dirichlet (see `seamless_clone`).
+    let hole: Vec<bool> = mask.data.iter().enumerate().map(|(i, m)| *m >= TONE_MATCH_INSIDE && i % w > 0 && i % w < w - 1 && i / w > 0 && i / w < h - 1).collect();
+    if !hole.iter().any(|h| *h) {
+        return result.clone();
+    }
+    let rgb = |img: &Rgba8| -> Vec<f32> { img.data.chunks_exact(4).flat_map(|p| [f32::from(p[0]) / 255.0, f32::from(p[1]) / 255.0, f32::from(p[2]) / 255.0]).collect() };
+    let matched = photocraft_algo::poisson::seamless_clone(w, h, 3, &rgb(result), &rgb(original), &hole);
+    let mut data = Vec::with_capacity(w * h * 4);
+    for (px, src) in result.data.chunks_exact(4).zip(matched.chunks_exact(3)) {
+        data.extend(src.iter().map(|v| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8));
+        data.push(px[3]);
+    }
+    Rgba8::new(result.width, result.height, data).unwrap_or_else(|_| result.clone())
+}
+
+/// Mask values from here up count as the hole for [`tone_matched`] (the request's mask is
+/// 255 inside the selection and feathered outward).
+const TONE_MATCH_INSIDE: u8 = 200;
+
 /// Paint the pixels `coverage` selects (half or more) mid-grey: the request image shows a hole
 /// where the model is to paint, not the object it is to replace.
 fn erase_covered(img: &mut Rgba8, coverage: &[f32]) {
@@ -2083,6 +2319,59 @@ fn erase_covered(img: &mut Rgba8, coverage: &[f32]) {
             px.copy_from_slice(&PREFILL);
         }
     }
+}
+
+/// Whether `left` looks more natural than `right` to the vision-language model
+/// ([`ENHANCE_JUDGE_SYSTEM`]): `Some(true)` left, `Some(false)` right, `None` when it could
+/// not be asked or did not answer (the caller falls back to [`edge_mismatch`]).
+fn judge_pair(backend: &dyn GenerativeBackend, left: &Rgba8, right: &Rgba8, seed: u64, progress: &JobProgress) -> Option<bool> {
+    let seen = side_by_side(left, right).ok()?;
+    let (rw, rh) = request_size(seen.width, seen.height);
+    let seen = if (rw, rh) == (seen.width, seen.height) { seen } else { resize_rgba8(&seen, rw, rh).ok()? };
+    let answer = enhance_prompt(backend, EnhanceKind::Judge, JUDGE_QUESTION, Some(&seen), None, seed, progress).ok()??.to_lowercase();
+    match (answer.find("left"), answer.find("right")) {
+        (Some(l), Some(r)) => Some(l < r),
+        (Some(_), None) => Some(true),
+        (None, Some(_)) => Some(false),
+        (None, None) => None,
+    }
+}
+
+/// `img` cut to `rect` (in its own pixels, clipped to it); `img` itself when the cut is empty.
+fn crop_rgba8(img: &Rgba8, rect: Rect) -> Rgba8 {
+    let r = rect.intersect(&Rect::new(0, 0, img.width as i32, img.height as i32));
+    if r.is_empty() {
+        return img.clone();
+    }
+    let (w, h) = (r.width() as usize, r.height() as usize);
+    let stride = img.width as usize * 4;
+    let mut data = Vec::with_capacity(w * h * 4);
+    for y in r.y0..r.y1 {
+        let start = y as usize * stride + r.x0 as usize * 4;
+        data.extend_from_slice(img.data.get(start..start + w * 4).unwrap_or(&[]));
+    }
+    Rgba8::new(r.width(), r.height(), data).unwrap_or_else(|_| img.clone())
+}
+
+/// The box of the pixels of `mask` at or above `level`, widened by a quarter of its larger
+/// side: what the judge of a removal looks at.
+fn judged_rect(mask: &Gray8, level: u8) -> Rect {
+    let w = mask.width as usize;
+    let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+    for (i, m) in mask.data.iter().enumerate() {
+        if *m >= level && w > 0 {
+            let (x, y) = ((i % w) as i32, (i / w) as i32);
+            x0 = x0.min(x);
+            y0 = y0.min(y);
+            x1 = x1.max(x + 1);
+            y1 = y1.max(y + 1);
+        }
+    }
+    if x1 <= x0 || y1 <= y0 {
+        return Rect::new(0, 0, mask.width as i32, mask.height as i32);
+    }
+    let m = ((x1 - x0).max(y1 - y0) / 4).max(8);
+    Rect::new(x0 - m, y0 - m, x1 + m, y1 + m).intersect(&Rect::new(0, 0, mask.width as i32, mask.height as i32))
 }
 
 /// `left` and `right` side by side, `right` scaled to `left`'s height (aspect kept, at most as
@@ -2165,6 +2454,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
         grow,
         erase,
         rewritten: None,
+        removal: false,
     };
     crate::jobs::edit_job(
         s,
@@ -2356,6 +2646,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
         grow,
         erase,
         rewritten: None,
+        removal: false,
     };
     crate::jobs::edit_job(
         s,
@@ -2561,6 +2852,7 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
         grow,
         erase,
         rewritten: None,
+        removal: false,
     };
     crate::jobs::edit_job(
         s,
@@ -3214,6 +3506,7 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
         grow: info.grow,
         erase: info.erase,
         rewritten: None,
+        removal: false,
     };
     let label = format!("Generate Similar: {}", short(&info.prompt));
     crate::jobs::edit_job(

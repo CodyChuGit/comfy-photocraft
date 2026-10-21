@@ -805,7 +805,9 @@ fn find_union(
         return Ok(None);
     }
     let n = area.width() as usize * area.height() as usize;
-    let cov = pick(&instances, None, n, &pr.prompt)?;
+    // The gaps an object encloses go with it (the coffee inside a cup's rim: without it a
+    // stroke down the cup's middle covered none of the "cup", measured 2026-10-21).
+    let cov = fill_enclosed(&pick(&instances, None, n, &pr.prompt)?, area.width() as usize, area.height() as usize);
     let (bounds, count) = coverage_bounds(&cov, area);
     Ok((count > 0).then_some((cov, bounds, count)))
 }

@@ -236,12 +236,18 @@ visible; one new document holds them all with `target: document`).
   px). The vision-language rewriter names what is there first (`enhance`, on by default:
   "Remove the gold necklace and replace it with the surrounding skin…"): unnamed, a thin
   necklace over skin came back at half the seeds however far the hole was grown; named, every
-  run was clean and the boat went with the hole grown only 15 px. The detector is then asked
-  again by that name (`named_object`, the text template), so a stroke over half a thin chain
-  removes the whole necklace: a point prompt returns only the brushed part of a thin object, a
-  text prompt the whole. A removal's request is at least 384 px a side, so a small dab still
-  shows the model real context. A classical pre-fill under the model made things worse (the
-  model keeps the copied rocks) and was dropped.
+  run was clean and the boat went with the hole grown only 15 px. The rewriter sees two views
+  side by side (the surroundings and a close-up of the painted part) and gives the name alone,
+  since what it said lay behind an object was wrong too often; the detector is asked by that
+  name (then by its last two words, then its last word; the object's enclosed gaps go with
+  it), so a stroke over half a thin chain removes the whole necklace, and the point prompt is
+  the fallback for an object no bigger than the stroke's box and a half (it returned the face
+  for the glasses). A removal's request is at least 384 px a side, so a small dab still shows
+  the model real context; the result's tone is matched to the picture at the hole's edge; and
+  a removal runs two seeds, the vision-language model judging the two side by side (the edge's
+  colour and texture match the fallback), the other kept as a hidden variation. A classical
+  pre-fill under the model made things worse (the model keeps the copied rocks) and was
+  dropped. The fourteen-scene robustness set and its rounds are in `benchmarks.md` §5i.
 - **References on a fill.** `generate.fill` takes `references[]` like an edit; with no template
   named it runs the fill-from-reference template (the plain fill templates take none), whose
   wrapper names the grey hole and says to take the thing "exactly as the references show it".

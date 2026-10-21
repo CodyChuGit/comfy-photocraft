@@ -215,7 +215,9 @@ pub(super) fn remove(s: &mut Session, p: &Value) -> Result<Value> {
         let hole = hole(&plan, d.doc.selection.as_ref())?;
         let coverage: Vec<f32> = hole.iter().map(|m| if *m { 1.0 } else { 0.0 }).collect();
         let object = flag(p, "wholeObject", true).then(|| super::object_under_strokes(s, &plan.strokes)).flatten();
-        return crate::generate_cmds::generative_remove(s, label, plan.window, coverage, 0, false, false, object, flag(p, "enhance", true));
+        let variations = crate::generate_cmds::removal_variations(p);
+        let seed = p.get("seed").and_then(Value::as_u64);
+        return crate::generate_cmds::generative_remove(s, label, plan.window, coverage, 0, false, false, object, flag(p, "enhance", true), variations, seed);
     }
     let doc = d.doc.clone();
     let p = p.clone();
