@@ -4060,3 +4060,11 @@ navigator	Zoom	Zvětšení
 	Intersect	Průnik
 	Prompt	Zadání
 	Template	Šablona
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Rozšířit
+	Fill Holes	Vyplnit díry
+	Widen the object's mask by this many pixels (negative shrinks it)	Rozšířit masku objektu o tolik pixelů (záporná hodnota ji zmenší)
+	Fill the gaps the object's mask encloses	Vyplnit mezery, které maska objektu uzavírá
+	Feather the mask's edge by this many pixels	Prolnout okraj masky o tolik pixelů
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Rozšířit výběr o tolik pixelů před vyplněním, aby měla objemnější náhrada místo

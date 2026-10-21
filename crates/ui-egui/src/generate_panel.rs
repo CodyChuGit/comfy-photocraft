@@ -86,6 +86,9 @@ pub struct GeneratePanel {
     pub enhance: Option<bool>,
     /// Expand mode: pixels to add on the left, top, right and bottom.
     pub expand: [u32; 4],
+    /// Fill mode: widen the selection by this many pixels before the request (`grow`), so a
+    /// bulkier replacement has room.
+    pub grow: u32,
     /// The job the panel started (its button shows Cancel and the percent meanwhile).
     #[serde(skip)]
     pub job: Option<u64>,
@@ -135,6 +138,7 @@ impl Default for GeneratePanel {
             count: 1,
             enhance: None,
             expand: [0, 0, 256, 0],
+            grow: 0,
             job: None,
             enhance_job: None,
             focus: false,
@@ -399,7 +403,12 @@ pub fn request(app: &PhotocraftApp) -> Result<(&'static str, Value), String> {
             q["variations"] = json!(count);
             q["target"] = json!(if p.into == "layer" && app.session.active().is_some() { "layer" } else { "document" });
         }
-        "fill" => q["variations"] = json!(count),
+        "fill" => {
+            q["variations"] = json!(count);
+            if p.grow > 0 {
+                q["grow"] = json!(p.grow.min(photocraft_engine::generate_cmds::MAX_GROW));
+            }
+        }
         "edit" => q["variations"] = json!(count),
         _ => {
             let e = p.expand;
@@ -880,6 +889,14 @@ fn options_row(app: &mut PhotocraftApp, ui: &mut egui::Ui, mode: &str, template:
             widgets::dropdown(ui, "generate-count", &mut n, &counts, 40.0);
             app.ui.generate.count = n;
         }
+        if mode == "fill" {
+            // Widen the selection first (the fill's `grow`): room for a bulkier replacement.
+            ui.label(RichText::new(tl!("Widen")).small());
+            let mut g = app.ui.generate.grow as f32;
+            widgets::value_field(ui, &mut g, 0.0..=photocraft_engine::generate_cmds::MAX_GROW as f32, "px", 56.0)
+                .on_hover_text(tl!("Widen the selection by this many pixels before the fill, so a bulkier replacement has room"));
+            app.ui.generate.grow = g.round().clamp(0.0, photocraft_engine::generate_cmds::MAX_GROW as f32) as u32;
+        }
     });
     if mode == "image" && app.session.active().is_some() {
         ui.horizontal(|ui| {
@@ -1088,20 +1105,20 @@ pub fn inspect(app: &PhotocraftApp) -> Value {
         "mode": p.mode, "into": p.into, "prompt": p.prompt, "negative": p.negative, "references": p.references,
         "template": p.template, "effectiveTemplate": template, "aspect": p.aspect, "size": p.size,
         "width": p.width, "height": p.height, "imageSize": image_size(app), "count": p.count, "enhance": p.enhance,
-        "expand": p.expand, "job": p.job, "compact": p.compact, "eta": estimate(app, mode), "etaLabel": estimate(app, mode).map(eta_label),
+        "expand": p.expand, "grow": p.grow, "job": p.job, "compact": p.compact, "eta": estimate(app, mode), "etaLabel": estimate(app, mode).map(eta_label),
         "command": request.as_ref().ok().map(|(c, _)| *c), "params": request.as_ref().ok().map(|(_, q)| q.clone()),
         "blocked": request.err(), "referencesMax": refs_limit(app, mode),
     })
 }
 
 /// `ui.set {generatePanel: {mode, into, prompt, negative, template, aspect, size, width,
-/// height, count, enhance, references, expand, focus}}`: each field validated before any is
-/// applied; `focus: true` puts the keyboard in the prompt (then `ui.key` Enter with `command`
-/// generates through the panel).
+/// height, count, enhance, references, expand, grow, focus}}`: each field validated before any
+/// is applied; `focus: true` puts the keyboard in the prompt (then `ui.key` Enter with
+/// `command` generates through the panel).
 pub fn set(app: &mut PhotocraftApp, p: &Value) -> Result<(), String> {
     let Some(v) = p.get("generatePanel") else { return Ok(()) };
     let o = v.as_object().ok_or("generatePanel must be an object")?;
-    let known = ["mode", "into", "prompt", "negative", "template", "aspect", "size", "width", "height", "count", "enhance", "references", "expand", "focus"];
+    let known = ["mode", "into", "prompt", "negative", "template", "aspect", "size", "width", "height", "count", "enhance", "references", "expand", "grow", "focus"];
     if let Some(k) = o.keys().find(|k| !known.contains(&k.as_str())) {
         return Err(format!("generatePanel has no field `{k}`"));
     }
@@ -1148,6 +1165,10 @@ pub fn set(app: &mut PhotocraftApp, p: &Value) -> Result<(), String> {
     }
     if let Some(x) = o.get("count") {
         next.count = x.as_u64().filter(|n| (1..=4).contains(n)).ok_or("generatePanel.count must be 1 to 4")? as u8;
+    }
+    if let Some(x) = o.get("grow") {
+        let max = u64::from(photocraft_engine::generate_cmds::MAX_GROW);
+        next.grow = x.as_u64().filter(|n| *n <= max).ok_or(format!("generatePanel.grow must be 0 to {max} pixels"))? as u32;
     }
     if let Some(x) = o.get("enhance") {
         next.enhance = match x {

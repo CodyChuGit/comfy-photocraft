@@ -3461,3 +3461,11 @@ curves	Smooth	Glätten
 	Intersect	Schnittmenge
 	Prompt	Prompt
 	Template	Vorlage
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Erweitern
+	Fill Holes	Löcher füllen
+	Widen the object's mask by this many pixels (negative shrinks it)	Die Objektmaske um so viele Pixel erweitern (negativ verkleinert sie)
+	Fill the gaps the object's mask encloses	Die von der Objektmaske umschlossenen Lücken füllen
+	Feather the mask's edge by this many pixels	Die Maskenkante um so viele Pixel weichzeichnen
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Die Auswahl vor der Füllung um so viele Pixel erweitern, damit ein voluminöserer Ersatz Platz hat

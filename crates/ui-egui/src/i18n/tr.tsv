@@ -4183,3 +4183,11 @@ cameraData	Lens	Lens
 	ComfyUI	ComfyUI
 	Native runtime folders	Yerleşik çalışma zamanı klasörleri
 	Native models folder	Yerleşik modeller klasörü
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Genişlet
+	Fill Holes	Boşlukları Doldur
+	Widen the object's mask by this many pixels (negative shrinks it)	Nesnenin maskesini bu kadar piksel genişlet (negatif değer daraltır)
+	Fill the gaps the object's mask encloses	Nesne maskesinin çevrelediği boşlukları doldur
+	Feather the mask's edge by this many pixels	Maskenin kenarını bu kadar piksel yumuşat
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Doldurmadan önce seçimi bu kadar piksel genişlet; daha hacimli bir değiştirmeye yer açılsın

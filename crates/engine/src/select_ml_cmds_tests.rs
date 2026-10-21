@@ -66,6 +66,46 @@ fn by_point_selects_the_object_under_the_point() {
     }
 }
 
+/// The mask stack after the detector: `grow` widens (or shrinks) the mask, `fillHoles` fills
+/// what it encloses, `soften` feathers its edge; validated, in that order.
+#[test]
+fn grow_fill_holes_and_soften_finish_the_detectors_mask() {
+    let fake = FakeComfy::start().unwrap();
+    let mut s = session(&fake.url);
+    // The fake finds x 16..48, y 12..36; widened by 4 on every side.
+    s.execute(BY_POINT, json!({"x": 30, "y": 20, "grow": 4})).unwrap();
+    assert_eq!(selection_bounds(&s), Some(Rect::new(12, 8, 52, 40)));
+    s.execute(BY_POINT, json!({"x": 30, "y": 20, "grow": -4})).unwrap();
+    assert_eq!(selection_bounds(&s), Some(Rect::new(20, 16, 44, 32)), "shrunk");
+    // Soften: a hard rectangle gets a feathered edge and keeps its centre.
+    s.execute(BY_POINT, json!({"x": 30, "y": 20, "soften": 3})).unwrap();
+    let m = s.active().unwrap().doc.selection.clone().unwrap();
+    let inside = m.read_region(Rect::new(30, 20, 31, 21))[0];
+    let edge = m.read_region(Rect::new(16, 12, 17, 13))[0];
+    assert!(inside > 0.95 && edge < 0.75 && edge > 0.05, "feathered edge: {edge} vs {inside}");
+    for p in [json!({"x": 1, "y": 1, "grow": 999}), json!({"x": 1, "y": 1, "soften": -1}), json!({"x": 1, "y": 1, "fillHoles": "yes"})] {
+        assert!(matches!(s.execute(BY_POINT, p.clone()), Err(EngineError::BadParams { .. })), "{p}");
+    }
+    // Fill holes: a ring (and a notch open to the edge, which stays).
+    let (w, h) = (8usize, 8usize);
+    let mut ring = vec![0.0f32; w * h];
+    for y in 1..7 {
+        for x in 1..7 {
+            ring[y * w + x] = 1.0;
+        }
+    }
+    ring[3 * w + 3] = 0.0;
+    ring[4 * w + 4] = 0.0;
+    ring[1 * w + 1] = 0.0;
+    ring[w] = 0.0;
+    let filled = fill_enclosed(&ring, w, h);
+    assert_eq!((filled[3 * w + 3], filled[4 * w + 4]), (1.0, 1.0), "the enclosed gaps are filled");
+    assert_eq!(filled[1 * w + 1], 0.0, "the notch reaches the edge through (0, 1): kept");
+    assert_eq!(filled[0], 0.0);
+    assert_eq!(finish_coverage(ring.clone(), Rect::new(0, 0, 8, 8), 0.0, true, 0.0)[3 * w + 3], 1.0);
+    assert_eq!(finish_coverage(ring.clone(), Rect::new(0, 0, 8, 8), 0.0, false, 0.0), ring, "nothing asked: untouched");
+}
+
 #[test]
 fn a_box_and_negative_points_reach_the_detector_and_refine_softens_the_edge() {
     let fake = FakeComfy::start().unwrap();

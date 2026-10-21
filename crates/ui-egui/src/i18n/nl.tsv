@@ -4213,3 +4213,11 @@ curves	Smooth	Vloeiend maken
 	ComfyUI	ComfyUI
 	Native runtime folders	Mappen van de ingebouwde runtime
 	Native models folder	Map met ingebouwde modellen
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Verbreden
+	Fill Holes	Gaten vullen
+	Widen the object's mask by this many pixels (negative shrinks it)	Het masker van het object met zoveel pixels verbreden (negatief verkleint het)
+	Fill the gaps the object's mask encloses	De openingen vullen die het masker van het object omsluit
+	Feather the mask's edge by this many pixels	De rand van het masker over zoveel pixels verzachten
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	De selectie vóór de vulling met zoveel pixels verbreden, zodat een omvangrijkere vervanging ruimte heeft

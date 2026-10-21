@@ -111,6 +111,89 @@ struct Plan {
     refine: bool,
     /// Apply a kept probe instead of asking the server (`select.byPoint` with `probe`).
     probe: Option<u64>,
+    /// The mask stack after the detector (what the inpainting workflows put between a click
+    /// and a fill): widen the mask by this many pixels (negative shrinks it)…
+    grow: f32,
+    /// …fill the gaps it encloses…
+    fill_holes: bool,
+    /// …and soften its edge with a feather of this radius.
+    soften: f32,
+}
+
+/// Most pixels a detector mask may be widened or shrunk by.
+const MAX_GROW: f64 = 256.0;
+/// Largest feather radius for `soften`.
+const MAX_SOFTEN: f64 = 64.0;
+
+/// Widen (or shrink) a coverage mask by `grow` pixels, fill the gaps it encloses, soften its
+/// edge: the mask stack of the inpainting workflows, applied after the detector (and the edge
+/// refinement) so a bulkier replacement has room, a garment's gaps go with it, and a hard
+/// detector edge meets the picture gently.
+pub(crate) fn finish_coverage(mut cov: Vec<f32>, area: Rect, grow: f32, fill_holes: bool, soften: f32) -> Vec<f32> {
+    let (w, h) = (area.width() as usize, area.height() as usize);
+    if cov.len() != w * h || w == 0 || h == 0 {
+        return cov;
+    }
+    if grow > 0.0 {
+        cov = sel::expand(&cov, w, h, grow);
+    } else if grow < 0.0 {
+        cov = sel::contract(&cov, w, h, -grow);
+    }
+    if fill_holes {
+        cov = fill_enclosed(&cov, w, h);
+    }
+    if soften > 0.0 {
+        cov = sel::feather(&cov, w, h, soften);
+    }
+    cov
+}
+
+/// Every unselected pixel that cannot reach the canvas edge through unselected pixels (4-connected)
+/// becomes selected: the gaps inside an object (between an arm and the body, a hole in a
+/// garment's pattern) go with it.
+pub(crate) fn fill_enclosed(cov: &[f32], w: usize, h: usize) -> Vec<f32> {
+    let n = w * h;
+    if cov.len() != n || n == 0 {
+        return cov.to_vec();
+    }
+    let mut outside = vec![false; n];
+    let mut stack: Vec<usize> = Vec::new();
+    let mut seed = |i: usize, outside: &mut Vec<bool>, stack: &mut Vec<usize>| {
+        if cov.get(i).is_some_and(|c| *c < 0.5) && !outside.get(i).copied().unwrap_or(true) {
+            outside[i] = true;
+            stack.push(i);
+        }
+    };
+    for x in 0..w {
+        seed(x, &mut outside, &mut stack);
+        seed((h - 1) * w + x, &mut outside, &mut stack);
+    }
+    for y in 0..h {
+        seed(y * w, &mut outside, &mut stack);
+        seed(y * w + w - 1, &mut outside, &mut stack);
+    }
+    while let Some(i) = stack.pop() {
+        let (x, y) = (i % w, i / w);
+        let mut next = |j: usize| {
+            if cov.get(j).is_some_and(|c| *c < 0.5) && !outside.get(j).copied().unwrap_or(true) {
+                outside[j] = true;
+                stack.push(j);
+            }
+        };
+        if x > 0 {
+            next(i - 1);
+        }
+        if x + 1 < w {
+            next(i + 1);
+        }
+        if y > 0 {
+            next(i - w);
+        }
+        if y + 1 < h {
+            next(i + w);
+        }
+    }
+    cov.iter().enumerate().map(|(i, c)| if *c < 0.5 && !outside[i] { 1.0 } else { *c }).collect()
 }
 
 /// `[[x, y], …]` on the canvas.
@@ -185,7 +268,10 @@ fn plan(s: &Session, cmd: &str, p: &Value) -> Result<Plan> {
         None | Some(Value::Null) => None,
         Some(v) => Some(v.as_u64().ok_or_else(|| bad(cmd, "`probe` must be a probe id from select.probe"))?),
     };
-    Ok(Plan { common, mode, instance, threshold, all_layers, points, negatives, bbox, refine, probe })
+    let grow = opt_num(cmd, p, "grow", -MAX_GROW, MAX_GROW)?.unwrap_or(0.0) as f32;
+    let fill_holes = opt_bool(cmd, p, "fillHoles", false)?;
+    let soften = opt_num(cmd, p, "soften", 0.0, MAX_SOFTEN)?.unwrap_or(0.0) as f32;
+    Ok(Plan { common, mode, instance, threshold, all_layers, points, negatives, bbox, refine, probe, grow, fill_holes, soften })
 }
 
 /// Bounding box of the pixels with coverage ≥ 0.5, in document coordinates, and their count.
@@ -451,10 +537,11 @@ fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Resu
     let plan = plan(s, cmd, p)?;
     // A kept probe: the click applies what the hover found, no server round trip.
     if let Some(cov) = plan.probe.and_then(|id| probe_coverage(s, id)) {
-        let Plan { mode, all_layers, refine, .. } = plan;
+        let Plan { mode, all_layers, refine, grow, fill_holes, soften, .. } = plan;
         let (bounds, count, selected) = s.edit(label_prefix, |doc, active| {
             let area = doc.bounds();
             let cov = if refine { refine_coverage(doc, *active, all_layers, cov, area) } else { cov };
+            let cov = finish_coverage(cov, area, grow, fill_holes, soften);
             let (bounds, count) = coverage_bounds(&cov, area);
             doc.selection = sel::combine(doc.selection.as_ref(), &cov, area, mode);
             Ok((bounds, count, doc.selection.is_some()))
@@ -464,7 +551,7 @@ fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Resu
     }
     let pr = prompting(&plan);
     let (backend, server) = generate_cmds::backend_for(s, &pr.template_id)?;
-    let Plan { mode, instance, all_layers, points, bbox, refine, .. } = plan;
+    let Plan { mode, instance, all_layers, points, bbox, refine, grow, fill_holes, soften, .. } = plan;
     let label = if bbox.is_some() {
         "Select by Box".to_string()
     } else if points.is_empty() {
@@ -502,6 +589,7 @@ fn run_select(s: &mut Session, cmd: &str, p: &Value, label_prefix: &str) -> Resu
                 ctx.progress(0.97, "Refining edge");
                 mask = refine_coverage(doc, *active, all_layers, mask, area);
             }
+            let mask = finish_coverage(mask, area, grow, fill_holes, soften);
             doc.selection = sel::combine(doc.selection.as_ref(), &mask, area, mode);
             Ok((doc.selection.is_some(), instances_json(&instances), ms))
         },
@@ -646,7 +734,7 @@ pub fn specs() -> Vec<CommandSpec> {
             // Not a Photoshop menu item: listed after Photoshop's Select items (menus.rs "extra").
             menu: &["Select"],
             shortcut: None,
-            params: r#"{"prompt":text,"mode":"replace|add|subtract|intersect","threshold":0..1=0.5,"sampleAllLayers":bool=true,"instance":{1..?=all},"refine":bool=false,"template":{id?="sam3.1/segment"},"model":{file?}} → {"selected","count","instances":[{"index","bounds":[x,y,w,h],"pixels"}],"ms"} (prompt: a short phrase such as "the dog", "red car" or "eye:2", comma-separated terms allowed; instance picks one of the found instances, default all; refine softens the detector's hard edge with the classical refinement; a background job; needs a ComfyUI server with the SAM 3.1 checkpoint, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"mode":"replace|add|subtract|intersect","threshold":0..1=0.5,"sampleAllLayers":bool=true,"instance":{1..?=all},"refine":bool=false,"grow":-256..256=0,"fillHoles":bool=false,"soften":0..64=0,"template":{id?="sam3.1/segment"},"model":{file?}} → {"selected","count","instances":[{"index","bounds":[x,y,w,h],"pixels"}],"ms"} (prompt: a short phrase such as "the dog", "red car" or "eye:2", comma-separated terms allowed; instance picks one of the found instances, default all; refine softens the detector's hard edge with the classical refinement; grow widens the mask by that many pixels (negative shrinks it), fillHoles fills the gaps it encloses, soften feathers its edge by that radius, in that order after refine; a background job; needs a ComfyUI server with the SAM 3.1 checkpoint, see Preferences › AI Integrations)"#,
             enabled,
             run: run_by_text,
             journal: true,
@@ -656,7 +744,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Select by Point",
             menu: &[],
             shortcut: None,
-            params: r#"{"x":int?,"y":int?,"points":[[x,y]]?,"negativePoints":[[x,y]]?,"box":[x,y,w,h]?,"mode":"replace|add|subtract|intersect","threshold":0..1=0.5,"sampleAllLayers":bool=true,"refine":bool=false,"probe":{u64?},"template":{id?="sam3.1/segment-point", "sam3.1/segment-box" with a box},"model":{file?}} → {"selected","count","instances":[{"index","bounds":[x,y,w,h],"pixels"}],"ms","probe"?} (the object under the point(s) (x/y or points, up to 64), kept clear of negativePoints and searched for inside box, through SAM 3.1's prompts; probe = apply a mask select.probe kept for this document instead of asking the server (stale or unknown probes are ignored and the server asked); refine softens the hard edge; a background job; needs a ComfyUI server with the SAM 3.1 checkpoint)"#,
+            params: r#"{"x":int?,"y":int?,"points":[[x,y]]?,"negativePoints":[[x,y]]?,"box":[x,y,w,h]?,"mode":"replace|add|subtract|intersect","threshold":0..1=0.5,"sampleAllLayers":bool=true,"refine":bool=false,"grow":-256..256=0,"fillHoles":bool=false,"soften":0..64=0,"probe":{u64?},"template":{id?="sam3.1/segment-point", "sam3.1/segment-box" with a box},"model":{file?}} → {"selected","count","instances":[{"index","bounds":[x,y,w,h],"pixels"}],"ms","probe"?} (the object under the point(s) (x/y or points, up to 64), kept clear of negativePoints and searched for inside box, through SAM 3.1's prompts; probe = apply a mask select.probe kept for this document instead of asking the server (stale or unknown probes are ignored and the server asked); refine softens the hard edge; grow widens the mask by that many pixels (negative shrinks it), fillHoles fills the gaps it encloses, soften feathers its edge, in that order; a background job; needs a ComfyUI server with the SAM 3.1 checkpoint)"#,
             enabled,
             run: run_by_point,
             journal: true,
@@ -676,7 +764,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Select Subject (ML)",
             menu: &[],
             shortcut: None,
-            params: r#"{"what":"subject|person|face|hair|sky|animal|vehicle|text","mode":"replace|add|subtract|intersect","threshold":0..1=0.5,"sampleAllLayers":bool=true,"instance":{1..?=all},"refine":bool=false} → {"selected","count","instances","ms"} (Select by Text with a fixed phrase; the classical select.subject stays available without a server)"#,
+            params: r#"{"what":"subject|person|face|hair|sky|animal|vehicle|text","mode":"replace|add|subtract|intersect","threshold":0..1=0.5,"sampleAllLayers":bool=true,"instance":{1..?=all},"refine":bool=false,"grow":-256..256=0,"fillHoles":bool=false,"soften":0..64=0} → {"selected","count","instances","ms"} (Select by Text with a fixed phrase, the same grow / fillHoles / soften mask stack; the classical select.subject stays available without a server)"#,
             enabled,
             run: run_subject,
             journal: true,

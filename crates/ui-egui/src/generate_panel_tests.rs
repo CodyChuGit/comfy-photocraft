@@ -77,9 +77,14 @@ fn the_mode_decides_the_command_and_the_deck_follows_the_template() {
     assert_eq!((cmd, q["references"].as_array().map(Vec::len)), ("generate.fill", Some(1)));
     let want = photocraft_engine::generate_cmds::fill_ref_template(photocraft_engine::generate_cmds::quality(&app.session));
     assert_eq!(effective_template(&app, "fill"), want);
+    // Widen: the fill's `grow`, only when set.
+    assert!(q.get("grow").is_none());
+    app.ui.generate.grow = 6;
+    assert_eq!(request(&app).unwrap().1["grow"], 6);
     let r = generate(&mut app).unwrap();
     assert_eq!(r["template"], want);
     assert_eq!(fake.state().uploads.len(), 3, "the picture, its mask and the reference");
+    app.ui.generate.grow = 0;
     app.ui.generate.references.clear();
     app.ui.generate.mode = "edit".into();
     assert_eq!(refs_limit(&app, "edit"), 2);

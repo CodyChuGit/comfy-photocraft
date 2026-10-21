@@ -114,8 +114,10 @@ prompt that describes the thing as the reference shows it) and the prompt writer
    the plain fill recoloured the old cardigan and kept its buttons; Lightning 28 s, the 40-step
    tier 150 s. Still to judge over more seeds: `grow` 0 vs 8, `erase: false` on the reference
    template, typed vs enhanced.
-2. **Mask options on the Object Selection tool**: Grow, Fill Holes, Soften, a "next meaning"
-   cycle from the detector's other candidates (`select.byPoint` returns one mask today).
+2. ~~**Mask options on the Object Selection tool**: Widen, Fill Holes, Soften~~ (done later on
+   2026-10-21: `grow` / `fillHoles` / `soften` on the `select.*` detector commands, the options
+   bar's three controls, Widen on the fill page). Still open: a "next meaning" cycle from the
+   detector's other candidates (`select.byPoint` returns one mask today).
 3. **Stitch tone match**: measure the colour step across the seam on the bench fills; if it is
    there, a per-line offset estimated along the seam (AusBoss's "classic" tone match) is a
    small engine change on the result layer.

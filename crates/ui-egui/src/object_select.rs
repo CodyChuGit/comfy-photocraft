@@ -301,6 +301,21 @@ fn classical_finish(app: &mut PhotocraftApp, start: [f64; 2], end: [f64; 2], mod
     crate::retouch_ui::report_smart_result(app, r, tl!("Object Selection found nothing there — try a tighter rectangle"));
 }
 
+/// The options bar's mask stack (Widen, Fill Holes, Soften) on a detector query: only what is
+/// set goes along, so a plain click sends what it always did.
+pub fn mask_stack(app: &PhotocraftApp, q: &mut Value) {
+    let o = &app.ui.tool_options;
+    if o.object_widen != 0.0 {
+        q["grow"] = json!(o.object_widen);
+    }
+    if o.object_fill_holes {
+        q["fillHoles"] = json!(true);
+    }
+    if o.object_soften > 0.0 {
+        q["soften"] = json!(o.object_soften);
+    }
+}
+
 pub fn finish(app: &mut PhotocraftApp, start: [f64; 2], end: [f64; 2], mods: egui::Modifiers) {
     let (x, y) = (start[0].min(end[0]), start[1].min(end[1]));
     let (w, h) = ((end[0] - start[0]).abs(), (end[1] - start[1]).abs());
@@ -320,6 +335,7 @@ pub fn finish(app: &mut PhotocraftApp, start: [f64; 2], end: [f64; 2], mods: egu
         return;
     }
     let mut q = json!({"mode": mode, "sampleAllLayers": sample_all, "refine": refine});
+    mask_stack(app, &mut q);
     let (positives, bbox) = if click {
         q["points"] = json!([point]);
         // The finder's answer for this very spot applies at once.
@@ -366,6 +382,7 @@ fn refine_last(app: &mut PhotocraftApp, point: [f64; 2], include: bool) -> bool 
     }
     let o = &app.ui.tool_options;
     let mut q = json!({"mode": next.mode, "sampleAllLayers": o.sample_all.object_selection, "refine": o.refine_edge, "negativePoints": next.negatives});
+    mask_stack(app, &mut q);
     if !next.positives.is_empty() {
         q["points"] = json!(next.positives);
     }

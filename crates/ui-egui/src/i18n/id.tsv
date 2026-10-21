@@ -3454,3 +3454,11 @@ curves	Smooth	Haluskan
 	Intersect	Irisan
 	Prompt	Prompt
 	Template	Templat
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Perlebar
+	Fill Holes	Isi Lubang
+	Widen the object's mask by this many pixels (negative shrinks it)	Perlebar mask objek sebanyak piksel ini (nilai negatif mengecilkannya)
+	Fill the gaps the object's mask encloses	Isi celah yang dikelilingi mask objek
+	Feather the mask's edge by this many pixels	Haluskan tepi mask sebanyak piksel ini
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Perlebar seleksi sebanyak piksel ini sebelum pengisian, agar pengganti yang lebih besar punya ruang

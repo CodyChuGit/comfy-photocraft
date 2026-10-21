@@ -601,6 +601,15 @@ pub struct ToolOptions {
     pub refine_edge: bool,
     /// Object Selection's Refine mode: clicks add spots to the last object (⌥ excludes one).
     pub object_refine: bool,
+    /// Object Selection (SAM 3.1): the mask stack after the detector (`select.byPoint`'s
+    /// `grow`, `fillHoles`, `soften`): widen the mask by this many pixels (negative shrinks),
+    /// fill the gaps it encloses, feather its edge by this radius.
+    #[serde(default)]
+    pub object_widen: f32,
+    #[serde(default)]
+    pub object_fill_holes: bool,
+    #[serde(default)]
+    pub object_soften: f32,
     /// Pen: "path" (work path) or "shape" (shape layer).
     pub vector_mode: String,
     /// Shape tools: fill with the foreground colour, stroke width (0 = none), rectangle corner
@@ -885,6 +894,9 @@ impl Default for ToolOptions {
             select_text: String::new(),
             refine_edge: true,
             object_refine: false,
+            object_widen: 0.0,
+            object_fill_holes: false,
+            object_soften: 0.0,
             vector_mode: "path".into(),
             shape_fill: true,
             stroke_width: 0.0,

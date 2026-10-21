@@ -4526,3 +4526,11 @@ shape	Appearance	Izgled
 	ComfyUI	ComfyUI
 	Native runtime folders	Fascikle ugrađenog izvršnog okruženja
 	Native models folder	Fascikla ugrađenih modela
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Proširi
+	Fill Holes	Popuni rupe
+	Widen the object's mask by this many pixels (negative shrinks it)	Proširi masku objekta za toliko piksela (negativna vrednost je sužava)
+	Fill the gaps the object's mask encloses	Popuni praznine koje maska objekta okružuje
+	Feather the mask's edge by this many pixels	Omekšaj ivicu maske za toliko piksela
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Proširi izbor za toliko piksela pre popune, da krupnija zamena ima mesta

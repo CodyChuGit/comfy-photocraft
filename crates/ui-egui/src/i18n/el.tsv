@@ -4156,3 +4156,11 @@ curves	Smooth	Εξομάλυνση
 
 # PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
 	Best	Βέλτιστη
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Διεύρυνση
+	Fill Holes	Γέμισμα κενών
+	Widen the object's mask by this many pixels (negative shrinks it)	Διεύρυνση της μάσκας του αντικειμένου κατά τόσα εικονοστοιχεία (αρνητική τιμή τη συρρικνώνει)
+	Fill the gaps the object's mask encloses	Γέμισμα των κενών που περικλείει η μάσκα του αντικειμένου
+	Feather the mask's edge by this many pixels	Απάλυνση της ακμής της μάσκας κατά τόσα εικονοστοιχεία
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Διεύρυνση της επιλογής κατά τόσα εικονοστοιχεία πριν το γέμισμα, ώστε να χωρά μια ογκωδέστερη αντικατάσταση

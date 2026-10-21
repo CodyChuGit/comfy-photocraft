@@ -250,8 +250,8 @@ to shared files).
 | `generate.image` | Edit › Generate Image… | `{"prompt","model","seed","steps","width","height","transparent":bool=false,"references":[path|layer]?,"target":"layer"|"document"}` | backend |
 | `generate.edit` | Edit › Generative Edit… | `{"prompt":instruction,"negative"?,"steps"?,"guidance"?,"edge":"soft|hard","variations":1..4,"seed"?,"template":id?=auto,"model"?,"name"?}` → the composite re-rendered by instruction as a new layer, masked to the selection when there is one | document, backend |
 | `generate.removeBackground` | Edit › Remove Background (Generative)… | `{"prompt":str?=what to keep,"asSelection":bool=false,"sampleAllLayers":bool=false,"mode","layer":id?=active,"seed"?,"template":id?=auto,"model"?}` → the matte (Qwen-Image-2.1's alpha with the research opt-in, else SAM 3.1's union of instance masks) as the layer's mask or the selection | unlocked pixel layer, backend |
-| `select.byPoint` | the Object Selection tool's click (with a server configured; ⇧ adds, ⌥ subtracts; a drag stays the classical rectangle) | `{"x","y","mode","threshold","sampleAllLayers","template":id?=sam3.1/segment-point}` → the object under the point, as `select.byText` | document, backend |
-| `select.byText` | Select › Select by Text…; the Object Selection options bar's "Select by text" field (Enter) | `{"prompt","mode","threshold","sampleAllLayers","instance"?,"template":id?=sam3.1/segment}` → the instances SAM 3.1 finds for the phrase, as the selection | document, backend |
+| `select.byPoint` | the Object Selection tool's click (with a server configured; ⇧ adds, ⌥ subtracts; a drag stays the classical rectangle) | `{"x","y","mode","threshold","sampleAllLayers","refine","grow","fillHoles","soften","template":id?=sam3.1/segment-point}` → the object under the point, as `select.byText` | document, backend |
+| `select.byText` | Select › Select by Text…; the Object Selection options bar's "Select by text" field (Enter) | `{"prompt","mode","threshold","sampleAllLayers","instance"?,"refine","grow","fillHoles","soften","template":id?=sam3.1/segment}` → the instances SAM 3.1 finds for the phrase, as the selection | document, backend |
 | `select.subjectML` | the selection tools' Select Subject button when a server is configured (classical `select.subject` otherwise) | `{"what":"subject|person|face|hair|sky|…","mode",…}` → Select by Text with a fixed phrase | document, backend |
 | `generate.splitLayers` | Edit › Split into Layers (Generative)… | `{"layers":int=3,"prompt"?,"negative"?,"sampleAllLayers":bool=true,"steps"?,"guidance"?,"seed"?,"template":id?=qwen-layered/split,"model"?,"name"?}` → N RGBA layers (background first) above the active one | document, backend |
 | `generate.similar` | Edit › Generate Similar | `{"layer":id?=active,"seed"?,"variations":1..4}` → runs what made the layer again with a new seed in the same place (its mask is the area), a new layer above it | a generative layer, backend |
@@ -486,7 +486,12 @@ Each one is read by code in the same change that adds it, so the audit count doe
   (`refine_coverage`, the same as Remove Background). Ctrl stays the Move tool's, so the mode is
   a switch rather than a modifier; Object Selection no longer snaps its presses, because a
   prompt must land where the user pointed. Select › Subject and the Properties' Select Subject
-  go through `retouch_ui::select_subject` (the detector when online).
+  go through `retouch_ui::select_subject` (the detector when online). The options bar's **Widen
+  / Fill Holes / Soften** (2026-10-21, the mask stack of the inpainting workflows) travel as
+  `grow` (pixels, negative shrinks), `fillHoles` and `soften` on `select.byPoint`,
+  `select.byText` and `select.subjectML`; the engine applies them after the edge refinement
+  (`finish_coverage`: `sel::expand`/`contract`, a border flood that fills what the mask
+  encloses, `sel::feather`). Only what is set goes along, so a plain click sends what it did.
 - **Dock budget**: with the two generative groups open the filler (Layers) asks for 320 pt instead
   of 500, the other groups give way to their compact heights before the generative ones, and the
   generative groups fold to their tab strips when Layers would drop under 260 pt

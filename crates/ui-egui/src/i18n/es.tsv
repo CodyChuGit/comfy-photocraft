@@ -4415,3 +4415,11 @@ navigator	Zoom	Zoom
 	Intersect	Intersecar
 	Prompt	Instrucción
 	Template	Plantilla
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Ampliar
+	Fill Holes	Rellenar huecos
+	Widen the object's mask by this many pixels (negative shrinks it)	Ampliar la máscara del objeto en esta cantidad de píxeles (un valor negativo la reduce)
+	Fill the gaps the object's mask encloses	Rellenar los huecos que encierra la máscara del objeto
+	Feather the mask's edge by this many pixels	Desvanecer el borde de la máscara en esta cantidad de píxeles
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Ampliar la selección en esta cantidad de píxeles antes del relleno, para que un reemplazo más voluminoso tenga espacio

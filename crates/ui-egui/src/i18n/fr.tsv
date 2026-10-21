@@ -3467,3 +3467,11 @@ curves	Smooth	Lisser
 	Intersect	Intersection
 	Prompt	Invite
 	Template	Modèle
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Élargir
+	Fill Holes	Remplir les trous
+	Widen the object's mask by this many pixels (negative shrinks it)	Élargir le masque de l'objet de ce nombre de pixels (une valeur négative le réduit)
+	Fill the gaps the object's mask encloses	Remplir les vides que le masque de l'objet entoure
+	Feather the mask's edge by this many pixels	Adoucir le bord du masque sur ce nombre de pixels
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Élargir la sélection de ce nombre de pixels avant le remplissage, pour laisser de la place à un remplacement plus volumineux

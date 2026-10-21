@@ -4163,3 +4163,11 @@ curves	Smooth	Згладити
 	Intersect	Перетин
 	Prompt	Запит
 	Template	Шаблон
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Розширити
+	Fill Holes	Заповнити дірки
+	Widen the object's mask by this many pixels (negative shrinks it)	Розширити маску об’єкта на стільки пікселів (від’ємне значення звужує її)
+	Fill the gaps the object's mask encloses	Заповнити проміжки, які оточує маска об’єкта
+	Feather the mask's edge by this many pixels	Розтушувати край маски на стільки пікселів
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Розширити виділення на стільки пікселів перед заповненням, щоб об’ємнішій заміні вистачило місця

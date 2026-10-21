@@ -454,7 +454,9 @@ pub fn select_by_text(app: &mut PhotocraftApp) -> Result<Value, String> {
     if phrase.is_empty() {
         return Err("type what to select first".into());
     }
-    let r = app.run("select.byText", json!({"prompt": phrase, "mode": "replace", "sampleAllLayers": app.ui.tool_options.sample_all.object_selection}));
+    let mut q = json!({"prompt": phrase, "mode": "replace", "sampleAllLayers": app.ui.tool_options.sample_all.object_selection});
+    crate::object_select::mask_stack(app, &mut q);
+    let r = app.run("select.byText", q);
     if let Err(e) = &r {
         crate::notices::error(app, format!("Select by Text: {e}"));
     }
@@ -746,6 +748,14 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
                     .on_hover_text(tl!("Show what a click would select while the pointer rests"));
                 crate::widgets::checkbox(ui, &mut o.refine_edge, tl!("Refine edge"))
                     .on_hover_text(tl!("Soften the detector's hard edge from the pixels (hair, fur)"));
+                // The mask stack of the inpainting workflows: widen, fill holes, soften.
+                opt(ui, tl!("Widen"));
+                crate::widgets::value_field(ui, &mut o.object_widen, -64.0..=256.0, "px", 56.0)
+                    .on_hover_text(tl!("Widen the object's mask by this many pixels (negative shrinks it)"));
+                crate::widgets::checkbox(ui, &mut o.object_fill_holes, tl!("Fill Holes")).on_hover_text(tl!("Fill the gaps the object's mask encloses"));
+                opt(ui, tl!("Soften"));
+                crate::widgets::value_field(ui, &mut o.object_soften, 0.0..=64.0, "px", 52.0)
+                    .on_hover_text(tl!("Feather the mask's edge by this many pixels"));
                 let field = egui::TextEdit::singleline(&mut o.select_text).hint_text(tl!("Select by text…")).desired_width(150.0).id_salt("object-select-text");
                 let resp = ui.add(field);
                 by_text = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !o.select_text.trim().is_empty();
@@ -807,7 +817,15 @@ mod tests {
     use crate::canvas::{ToolEvent, tool_event};
 
     fn app() -> PhotocraftApp {
-        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let mut s = photocraft_engine::Session::new();
+        // PhotoshopEX: no generative server, so the Object Selection tool stays classical
+        // here even with a ComfyUI running on the development PC.
+        s.edit_prefs(|p| {
+            p.integrations.comfy_server.clear();
+            p.integrations.runtime_path.clear();
+            p.integrations.models_path.clear();
+        });
+        let mut app = PhotocraftApp::new(s, crate::Services::default());
         app.run("file.new", json!({"width": 100, "height": 60})).unwrap();
         app.run("tools.setBrush", json!({"brush": {"size": 16, "hardness": 1.0}})).unwrap();
         app

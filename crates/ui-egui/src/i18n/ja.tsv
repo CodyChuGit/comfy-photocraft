@@ -4133,3 +4133,11 @@ curves	Smooth	スムーズ
 	Intersect	交差
 	Prompt	プロンプト
 	Template	テンプレート
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	広げる
+	Fill Holes	穴を埋める
+	Widen the object's mask by this many pixels (negative shrinks it)	オブジェクトのマスクをこのピクセル数だけ広げます（負の値は縮めます）
+	Fill the gaps the object's mask encloses	オブジェクトのマスクが囲む隙間を埋めます
+	Feather the mask's edge by this many pixels	マスクの境界をこのピクセル数だけぼかします
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	塗りつぶしの前に選択範囲をこのピクセル数だけ広げ、かさばる置き換えに余地を与えます

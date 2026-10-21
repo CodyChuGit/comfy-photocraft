@@ -4372,3 +4372,11 @@ cameraRaw	Yellow	Sárga
 	ComfyUI	ComfyUI
 	Native runtime folders	Beépített futtatókörnyezet mappái
 	Native models folder	Beépített modellek mappája
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Szélesítés
+	Fill Holes	Lyukak kitöltése
+	Widen the object's mask by this many pixels (negative shrinks it)	Az objektum maszkjának szélesítése ennyi képponttal (negatív érték szűkíti)
+	Fill the gaps the object's mask encloses	Az objektum maszkja által közrezárt hézagok kitöltése
+	Feather the mask's edge by this many pixels	A maszk szélének lágyítása ennyi képponttal
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	A kijelölés szélesítése ennyi képponttal a kitöltés előtt, hogy a terjedelmesebb csere elférjen

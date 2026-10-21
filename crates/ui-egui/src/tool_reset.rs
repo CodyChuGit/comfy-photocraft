@@ -164,7 +164,7 @@ pub fn option_keys(tool: Tool) -> &'static [&'static str] {
         Tool::MagneticLasso => reset!(feather, anti_alias, magnetic_width, magnetic_contrast, magnetic_frequency, magnetic_pressure),
         Tool::MagicWand => reset!(tolerance, anti_alias, contiguous),
         Tool::QuickSelection => reset!(enhance_edge),
-        Tool::ObjectSelection => reset!(enhance_edge, object_finder, select_text, refine_edge, object_refine),
+        Tool::ObjectSelection => reset!(enhance_edge, object_finder, select_text, refine_edge, object_refine, object_widen, object_fill_holes, object_soften),
         Tool::Crop => reset!(
             crop_ratio,
             crop_delete,

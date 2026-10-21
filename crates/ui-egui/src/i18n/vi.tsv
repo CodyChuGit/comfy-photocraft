@@ -3944,3 +3944,11 @@ curves	Smooth	Làm mượt
 	ComfyUI	ComfyUI
 	Native runtime folders	Thư mục môi trường chạy tích hợp
 	Native models folder	Thư mục mô hình tích hợp
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Mở rộng
+	Fill Holes	Lấp lỗ
+	Widen the object's mask by this many pixels (negative shrinks it)	Mở rộng mặt nạ của đối tượng thêm chừng này điểm ảnh (giá trị âm thu hẹp lại)
+	Fill the gaps the object's mask encloses	Lấp các khoảng trống mà mặt nạ của đối tượng bao quanh
+	Feather the mask's edge by this many pixels	Làm mềm viền mặt nạ chừng này điểm ảnh
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Mở rộng vùng chọn thêm chừng này điểm ảnh trước khi tô, để vật thay thế to hơn có chỗ

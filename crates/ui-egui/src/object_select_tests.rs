@@ -79,7 +79,21 @@ fn a_drag_is_a_box_prompt_and_ctrl_clicks_refine_the_last_object() {
     // Refine edge off: the command is told.
     a.ui.tool_options.refine_edge = false;
     click(&mut a, 30.0, 30.0, none);
-    assert_eq!(last_params(&a).1["refine"], false);
+    let p = last_params(&a).1;
+    assert_eq!(p["refine"], false);
+    assert!(p.get("grow").is_none() && p.get("fillHoles").is_none() && p.get("soften").is_none(), "the mask stack goes along only when set: {p}");
+    // The options bar's Widen, Fill Holes and Soften travel as the command's mask stack.
+    let plain = selection_bounds(&a).unwrap();
+    a.ui.tool_options.object_widen = 6.0;
+    a.ui.tool_options.object_fill_holes = true;
+    click(&mut a, 30.0, 30.0, none);
+    let p = last_params(&a).1;
+    assert_eq!((p["grow"].as_f64(), p["fillHoles"].as_bool(), p.get("soften")), (Some(6.0), Some(true), None));
+    assert_eq!(selection_bounds(&a).map(|b| b.x0), Some(plain.x0 - 6), "the same object, widened");
+    // Soften feathers beyond the widened edge (a Gaussian tail), so only the parameter is checked.
+    a.ui.tool_options.object_soften = 2.5;
+    click(&mut a, 30.0, 30.0, none);
+    assert_eq!(last_params(&a).1["soften"].as_f64(), Some(2.5));
 }
 
 #[test]

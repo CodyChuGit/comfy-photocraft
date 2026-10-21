@@ -4057,3 +4057,11 @@ curves	Smooth	Wygładź
 	Intersect	Część wspólna
 	Prompt	Polecenie
 	Template	Szablon
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Poszerz
+	Fill Holes	Wypełnij dziury
+	Widen the object's mask by this many pixels (negative shrinks it)	Poszerz maskę obiektu o tyle pikseli (wartość ujemna ją zwęża)
+	Fill the gaps the object's mask encloses	Wypełnij luki zamknięte przez maskę obiektu
+	Feather the mask's edge by this many pixels	Wtop krawędź maski na tyle pikseli
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Poszerz zaznaczenie o tyle pikseli przed wypełnieniem, aby obszerniejsze zastępstwo miało miejsce

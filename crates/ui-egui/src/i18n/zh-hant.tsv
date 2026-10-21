@@ -3070,3 +3070,11 @@ curves	Smooth	平滑
 	Intersect	交集
 	Prompt	提示詞
 	Template	範本
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	加寬
+	Fill Holes	填補孔洞
+	Widen the object's mask by this many pixels (negative shrinks it)	將物件遮色片加寬這麼多像素（負值則縮小）
+	Fill the gaps the object's mask encloses	填補物件遮色片所包圍的空隙
+	Feather the mask's edge by this many pixels	將遮色片邊緣羽化這麼多像素
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	填色前將選取範圍加寬這麼多像素，讓更大的替換物有空間

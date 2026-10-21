@@ -41,11 +41,24 @@ can pick up.
   "red cable-knit sweater, crew neck, long sleeves, ribbed cuffs and hem, loose fit, textured
   pattern running down front and arms, worn over white top." (The first pass of the script
   printed `generate.info`'s `enhanced` from the wrong key; fixed.)
-- **Still to take** (the note's §4): Grow / Fill Holes / Soften on the Object Selection tool and
-  a "next meaning" cycle; a stitch tone match; a hard sampling mask separate from the feathered
-  layer mask; Krea 2 inpainting natively by the AnyPaint recipe (added to
-  `plan-native-engine.md` §9; the LoRA stays BYOM); size-scaled grow and blend with UI; more
-  seeds for the measurements.
+- **The mask stack on the tool (the same evening).** `select.byPoint` / `byText` / `subjectML`
+  take `grow` (−256..256 px, negative shrinks: `sel::expand` / `contract`), `fillHoles` (a
+  flood from the canvas edge; what the mask encloses becomes selected, `fill_enclosed`) and
+  `soften` (0..64, `sel::feather`), applied in that order after the edge refinement
+  (`finish_coverage`, on the probe path too). The Object Selection options bar gets **Widen**,
+  **Fill Holes** and **Soften** (`object_widen` / `object_fill_holes` / `object_soften`, in
+  Reset Tool; `object_select::mask_stack` adds only what is set, so a plain click sends what it
+  did); the Generate panel's fill page gets a **Widen** field (`generatePanel.grow`, the fill's
+  `grow`). Six strings ×20 ("Grow" was taken by Photoshop's Select › Grow, hence "Widen";
+  Russian lacked "Soften"). Tests: the engine's bounds after grow ±4, the feathered edge, the
+  ring with a notch for `fill_enclosed`, the parameter checks; the tool's query and widened
+  bounds; the panel's `grow`. The `retouch_ui` and `object_finder` test helpers now clear the
+  server URL: with ComfyUI running on this PC their Object Selection tests had turned into SAM
+  runs (the same trap `panic_hunt` hit on 2026-10-12).
+- **Still to take** (the note's §4): a "next meaning" cycle on the tool; a stitch tone match; a
+  hard sampling mask separate from the feathered layer mask; Krea 2 inpainting natively by the
+  AnyPaint recipe (added to `plan-native-engine.md` §9; the LoRA stays BYOM); size-scaled widen
+  and blend defaults; more seeds for the measurements.
 
 ## 2026-10-21: upstream merged (PhotoCraft 0.5.0 → 0.11.1, 2411 commits)
 

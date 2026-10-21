@@ -4242,3 +4242,11 @@ layerLabel	No Color	Sem cor
 	Intersect	Interseção
 	Prompt	Prompt
 	Template	Modelo
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Alargar
+	Fill Holes	Preencher buracos
+	Widen the object's mask by this many pixels (negative shrinks it)	Alargar a máscara do objeto nesta quantidade de pixels (um valor negativo a reduz)
+	Fill the gaps the object's mask encloses	Preencher as lacunas que a máscara do objeto envolve
+	Feather the mask's edge by this many pixels	Suavizar a borda da máscara nesta quantidade de pixels
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Alargar a seleção nesta quantidade de pixels antes do preenchimento, para que uma substituição mais volumosa tenha espaço

@@ -4570,3 +4570,11 @@ shape	Appearance	Aspetto
 	Intersect	Interseca
 	Prompt	Prompt
 	Template	Modello
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Widen	Allarga
+	Fill Holes	Riempi buchi
+	Widen the object's mask by this many pixels (negative shrinks it)	Allarga la maschera dell'oggetto di questo numero di pixel (un valore negativo la restringe)
+	Fill the gaps the object's mask encloses	Riempi i vuoti racchiusi dalla maschera dell'oggetto
+	Feather the mask's edge by this many pixels	Sfuma il bordo della maschera di questo numero di pixel
+	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Allarga la selezione di questo numero di pixel prima del riempimento, così una sostituzione più voluminosa ha spazio

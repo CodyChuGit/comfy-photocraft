@@ -220,7 +220,15 @@ mod tests {
 
     /// A 200 × 160 document: a red disc (centre 100, 80, radius 45) on blue.
     pub(crate) fn disc_app() -> PhotocraftApp {
-        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let mut s = photocraft_engine::Session::new();
+        // PhotoshopEX: no generative server, so the finder stays classical here even with a
+        // ComfyUI running on the development PC.
+        s.edit_prefs(|p| {
+            p.integrations.comfy_server.clear();
+            p.integrations.runtime_path.clear();
+            p.integrations.models_path.clear();
+        });
+        let mut app = PhotocraftApp::new(s, crate::Services::default());
         app.session.execute("file.new", json!({"width": 200, "height": 160})).unwrap();
         app.session
             .edit("paint", |doc, a| {
