@@ -471,7 +471,9 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
         Some(Action::Enhance) => {
             let _ = enhance(app);
         }
-        Some(Action::Cancel(j)) => crate::jobs_ui::cancel(app, j),
+        Some(Action::Cancel(j)) => {
+            crate::jobs_ui::cancel(app, j);
+        }
         Some(Action::Close) => app.ui.generative_bar.open = false,
         None => {}
     }

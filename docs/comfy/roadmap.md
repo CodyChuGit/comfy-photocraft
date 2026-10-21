@@ -289,4 +289,4 @@ health panel beyond Test connection.
 | wasm gate | Client behind `cfg(not(target_arch = "wasm32"))`; the crate and the commands compile everywhere |
 | Large transfers (2K RGBA PNG round trips) | Crop to selection bounds + margin; stream to disk when over a size cap; measure |
 | Brand licence on publication | [`upstream.md`](upstream.md) checklist before the first published build |
-| Upstream merges touching `menus.rs`, `commands.rs`, `state.rs` | Keep fork edits to those files surgical; put commands in a new module (`generate_cmds.rs`) |
+| Upstream merges touching `menus.rs`, `commands.rs`, `state.rs` | Keep fork edits to those files surgical; put commands in a new module (`generate_cmds.rs`). Last merge: upstream 0.11.1 on 2026-10-21 (dev log) |

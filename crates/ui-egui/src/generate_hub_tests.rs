@@ -13,12 +13,15 @@ fn card(id: &str) -> Card {
     *CARDS.iter().find(|c| c.id == id).unwrap()
 }
 
-/// An app with no document whose open dialog "picks" `pick` (a 32×24 picture), or nothing.
+/// An app with no document whose open dialog "picks" `pick` (a 32×24 picture), or has no file
+/// dialog at all.
 fn app(pick: Option<&str>) -> PhotocraftApp {
-    let mut pick = pick.map(|n| (n.to_string(), b"img".to_vec()));
+    let answer = pick.map(|n| crate::FileDialogAnswer::Contents(n.to_string(), b"img".to_vec()));
     let services = Services {
-        import: Some(Box::new(|name: &str, _bytes: &[u8]| Ok((Document::new(name, Size::new(32, 24), ColorMode::Rgb, SampleType::U8), Vec::new())))),
-        pick_open: Some(Box::new(move || pick.take().map(|(name, bytes)| (name, Ok(bytes))))),
+        import: Some(Box::new(|name: &str, _bytes: &[u8], _depth: usize| {
+            Ok((Document::new(name, Size::new(32, 24), ColorMode::Rgb, SampleType::U8), Vec::new()))
+        })),
+        file_dialog: pick.map(|_| crate::file_dialog::fake(vec![answer]).0),
         ..Services::default()
     };
     let mut s = photocraft_engine::Session::new();
@@ -57,9 +60,13 @@ fn image_opens_the_panel_with_nothing_open_and_edit_cards_ask_for_a_file_first()
     activate(&mut a, &ctx, &card("fill")).unwrap();
     assert_eq!((a.ui.hub.pending, a.ui.status.as_str()), (None, "Open a picture first"));
     assert_eq!(a.ui.generate.mode, "image", "unchanged");
-    // A file picked: it opens and Fill follows.
+    // A file picked: it opens (the dialog answers on a later frame) and Fill follows.
     let mut a = app(Some("boat.png"));
     activate(&mut a, &ctx, &card("fill")).unwrap();
+    assert_eq!(a.ui.hub.pending, Some("fill"));
+    tick(&mut a, &ctx);
+    assert_eq!(a.ui.hub.pending, Some("fill"), "still waiting for the dialog");
+    a.poll_file_dialog(&ctx, None);
     tick(&mut a, &ctx);
     assert_eq!(a.session.active().map(|d| d.doc.name.as_str()), Some("boat.png"));
     assert_eq!((a.ui.generate.mode.as_str(), a.ui.generative_bar.mode.as_str(), a.ui.hub.pending), ("fill", "fill", None));

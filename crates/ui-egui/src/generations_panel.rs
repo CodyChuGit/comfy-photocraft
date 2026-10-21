@@ -836,29 +836,43 @@ fn save(app: &mut PhotocraftApp, id: u64) {
 
 /// Save results with `generate.export`: into Preferences › AI Integrations › Save results dir
 /// under its naming pattern, or, with no folder set, where the save dialog says (one result:
-/// under the name typed; several: the pattern in that folder). True when something was saved.
+/// under the name typed; several: the pattern in that folder). True when something was saved,
+/// or will be once the dialog (which answers on a later frame) is confirmed.
 fn save_many(app: &mut PhotocraftApp, ids: &[u64]) -> bool {
     let Some(first) = ids.first().and_then(|id| app.session.generations.get(*id)) else { return false };
     let prefs = &app.session.prefs().integrations;
     let naming = prefs.save_results_naming.trim();
     let pattern = if naming.is_empty() { photocraft_engine::generate_jobs::DEFAULT_EXPORT_NAME.to_string() } else { naming.to_string() };
     let folder = prefs.save_results_dir.trim().to_string();
-    let (dir, name) = if folder.is_empty() {
-        let suggested = format!("{}.png", photocraft_engine::generate_jobs::export_name(&pattern, first, 1, false));
-        let Some(path) = app.services.pick_save.as_mut().and_then(|pick| pick(&suggested)) else {
-            if app.services.pick_save.is_none() {
-                app.ui.status = tl!("Saving files is not available here").to_string();
-                app.ui.status_error = true;
-            }
-            return false;
-        };
+    if !folder.is_empty() {
+        return export_many(app, ids, &folder, None) > 0;
+    }
+    let suggested = format!("{}.png", photocraft_engine::generate_jobs::export_name(&pattern, first, 1, false));
+    let ids = ids.to_vec();
+    let r = app.pick_save(&suggested, move |app, path| {
         let path = std::path::PathBuf::from(path);
         let dir = path.parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
         let name = (ids.len() == 1).then(|| path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()).filter(|n| !n.is_empty());
-        (dir, name)
-    } else {
-        (folder, None)
-    };
+        Ok(json!({"saved": export_many(app, &ids, &dir, name)}))
+    });
+    match r {
+        Ok(_) => true,
+        Err(e) => {
+            if e != crate::file_dialog::CANCELLED {
+                app.ui.status = e;
+                app.ui.status_error = true;
+            } else if app.services.file_dialog.is_none() {
+                app.ui.status = tl!("Saving files is not available here").to_string();
+                app.ui.status_error = true;
+            }
+            false
+        }
+    }
+}
+
+/// Exports `ids` into `dir` (one result under `name` when given), reporting the first failure
+/// or the count in the status bar; the number of files written.
+fn export_many(app: &mut PhotocraftApp, ids: &[u64], dir: &str, name: Option<String>) -> usize {
     let mut saved = 0usize;
     let mut failed = Vec::new();
     for id in ids {
@@ -878,7 +892,7 @@ fn save_many(app: &mut PhotocraftApp, ids: &[u64]) -> bool {
             app.ui.status_error = false;
         }
     }
-    saved > 0
+    saved
 }
 
 /// The rail button's badge: running jobs, else results that finished while the panel was hidden.

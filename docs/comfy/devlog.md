@@ -4,6 +4,68 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-21: upstream merged (PhotoCraft 0.5.0 → 0.11.1, 2411 commits)
+
+- **The merge.** `git merge --no-commit --no-ff upstream/main` at `b097800e` (storytold/photocraft,
+  2026-10-20): 1449 files, 42 in conflict. Conflicts were resolved hunk by hunk with two
+  scratchpad scripts (`hunks.py` dumps every hunk as ours/theirs, `resolve.py <file> ours|theirs|
+  both|theirs-ours…` applies one decision per hunk); the fork's rule held: upstream's version
+  of a shared file, the fork's lines re-added where they sat. The manual fix-ups after the
+  markers were gone are the interesting part:
+  - **Upstream APIs that moved under the fork's code:** file dialogs are asynchronous now
+    (`Services::pick_open/pick_open_paths/pick_save` are gone; `ask_file`/`pick_save`/
+    `pick_file_bytes` answer on a later frame) → the Generate panel's File…, the Generations
+    panel's Save (`export_many` runs in the dialog's continuation) and the hub's "open a
+    picture first" (`hub.pending` waits while the dialog is open, `file_dialog_open()`);
+    `layer_thumb` returns `(TextureId, Rect)`; `jobs_ui::cancel` returns bool;
+    `reveal_command` returns `Result`; `ToolOptions.sample_all_layers` became
+    `sample_all.<tool>`; `after_command` takes `nested_from`; a missing layer is explained
+    (`UnknownLayer`); `select.object` checks for pixels under the sampled layers (the fork's
+    test paints on an empty layer: `sampleAllLayers`); upstream now has its own Object
+    Finder (#4087): the fork's `object_select::finish` keeps the SAM 3.1 route and falls back
+    to upstream's classical click/dab/rectangle when no server answers (`classical_finish`);
+    `inspect`'s `json!` grew past serde_json's recursion limit → the fork's keys are inserted
+    after the macro; `UI_COMMANDS` is `shell_commands::SHELL_COMMANDS` (the Generate /
+    Generations toggles and Help › Generative Features… live there now); `dock::Group::ALL` has
+    nine groups (upstream's Brushes); workspace presets: Essentials shows Generate and
+    Generations, the focused presets hide them (`apply_workspace`).
+  - **Upstream tests the fork changes:** the Navigator-preview and Properties-column layout
+    tests measure with the two generative groups hidden (they squeeze the dock at 1000 pt);
+    the ⌥+wheel zoom tests set Zoom with Scroll Wheel off (the fork's default is on); the
+    Space-reposition snap test leaves out Object Selection (the fork never snaps its box,
+    `snap_ui::is_point_tool`); the SVG icon test skips the vector-mask check when the icon
+    has no clip path (PhotoshopEX's "Px" tile); the workspace-presets table names the fork's
+    Essentials. Each carries a one-line comment. A detached worktree of pristine
+    `upstream/main` with its own `CARGO_TARGET_DIR` settled which failures were the merge's
+    and which the machine's (the ⌥+wheel, snap, SVG-icon and CLI font-warning tests pass on
+    upstream, so those were ours to fix; the GPU ones fail there too).
+  - **i18n.** Upstream has 20 languages and all count as complete: the fork's ~190 strings
+    were added in Ukrainian, Serbian (Latin), Greek, Hungarian, Dutch, Turkish and Vietnamese
+    (`i18n_fix.py` in the scratchpad dedupes a catalog and appends the rows a language
+    lacks), the Select by Text dialog's labels (Instance, Intersect, Prompt, Template) in all
+    twenty, and 60-odd rows upstream added that the fork already had were deduplicated
+    (`bundled_catalogs_are_consistent`). The MCP `ui_set` description names the fork's fields
+    again (#1548's guard).
+- **Gates.** `cargo check --workspace --tests` clean; targeted suites (ui-egui generative,
+  object selection, dock, presets, i18n, engine generate, automation mcp, cli, io svg, xtask)
+  green; `cargo xtask layers`, `parity` (`docs/parity-checklist.md` regenerated),
+  `scorecard` (`docs/scorecard.md`: settings that do nothing 26 of 194); `cargo xtask wasm`
+  green. **Full workspace run: 9838 passed, 5 failed, 83 ignored**; the five are this
+  machine's GPU family (`gpu --test timing`, `full_res_preview` ×3, `pattern_preview_canvas`),
+  not the merge's: all five fail the same way on the pristine `upstream/main` worktree (the
+  new baseline on this PC; the old one's 7 egui-wgpu canvas tests and the eyedropper test
+  pass now). The release build of the app could not replace
+  `target\release\photocraft.exe` while the pinned app was running (os error 5): rebuild it
+  after closing the app; a build into a separate target dir checked that it compiles.
+- **What upstream brought that matters here** (worth a read in their `docs/`): async file
+  dialogs, the Brushes dock group, the Object Finder, slices and Save for Web, Camera Raw,
+  a 20-language UI, the MCP server's `ui_set` schema, `shell_commands.rs` as the one table
+  of UI commands, workspace presets per layout, many Photoshop-parity items (parity checklist
+  now 642 menu items, all live). Nothing generative; `docs/roadmap.md` still defers it (#41).
+- Open after the merge: the native-diffusion feature build (`nvcc`) was not rebuilt this
+  session (the genai crate compiles without the feature; the worker is a separate process);
+  Krea 2 under `auto` (fp8 GEMM), style reference, LoRAs, task-bar previews, as before.
+
 ## 2026-10-20 (night): plan Phase 4, Krea 2 Turbo native
 
 - **Weights.** Krea 2 Turbo and its Qwen3-VL-4B encoder exist on this machine only as

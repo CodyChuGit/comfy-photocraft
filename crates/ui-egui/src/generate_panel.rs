@@ -581,7 +581,9 @@ fn apply(app: &mut PhotocraftApp, a: Action) {
         Action::Generate => {
             let _ = generate(app);
         }
-        Action::Cancel(j) => crate::jobs_ui::cancel(app, j),
+        Action::Cancel(j) => {
+            crate::jobs_ui::cancel(app, j);
+        }
         Action::Enhance => {
             let _ = enhance(app);
         }
@@ -606,8 +608,16 @@ fn apply(app: &mut PhotocraftApp, a: Action) {
             }
         }
         Action::PickFile => {
-            if let Some(path) = app.services.pick_open_paths.as_mut().and_then(|f| f()).and_then(|p| p.into_iter().next()) {
-                add_reference(app, json!({"path": path}));
+            // The dialog answers on a later frame (`file_dialog`); on the desktop the name is
+            // the file's path, which the worker reads itself.
+            let r = app.pick_file_bytes(|app, name, _bytes| {
+                add_reference(app, json!({"path": name}));
+                Ok(Value::Null)
+            });
+            if let Err(e) = r
+                && e != crate::file_dialog::CANCELLED
+            {
+                crate::notices::error(app, e);
             }
         }
         Action::ClearAll => {
@@ -955,7 +965,7 @@ fn add_menu(app: &mut PhotocraftApp, ui: &mut egui::Ui, action: &mut Option<Acti
             });
         }
     }
-    if app.services.pick_open_paths.is_some() && ui.button(tl!("File…")).clicked() {
+    if app.services.file_dialog.is_some() && ui.button(tl!("File…")).clicked() {
         *action = Some(Action::PickFile);
     }
     let recent: Vec<(u64, String)> = app
@@ -1004,7 +1014,7 @@ fn reference_texture(app: &mut PhotocraftApp, ctx: &egui::Context, spec: &Value)
     if let Some(id) = spec["layer"].as_u64() {
         let doc = app.session.active()?.doc.clone();
         let layer = doc.layer(photocraft_doc::LayerId(id))?.clone();
-        return Some(app.layer_thumb(ctx, &doc, &layer));
+        return Some(app.layer_thumb(ctx, &doc, &layer).0);
     }
     if let Some(id) = spec["job"].as_u64() {
         return crate::generations_panel::thumbnail(app, ctx, id).map(|t| t.id());

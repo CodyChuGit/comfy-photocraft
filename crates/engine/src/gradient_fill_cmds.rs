@@ -17,7 +17,7 @@ use photocraft_doc::{Document, Fill, GradientStyle, Layer, LayerContent, LayerId
 use photocraft_geom::Rect;
 use serde_json::{Value, json};
 
-use crate::commands::{CommandSpec, blend_from_str, layer_param};
+use crate::commands::{CommandSpec, blend_from_str, check_pixels_unlocked, layer_param};
 use crate::presets::gradients::{GradientPreset, transparency_param};
 use crate::{EngineError, Result, Session};
 
@@ -28,9 +28,10 @@ pub const GET: &str = "gradient.fill.get";
 
 /// Largest coordinate accepted for a start/end point (pixels).
 const MAX_COORD: f32 = 1.0e7;
-/// Scale range of a gradient fill (a fraction): Photoshop allows 10–150 % (the PSD stores a
-/// percentage). A handle drag past it clamps, so the far handle stops where the scale does.
-const SCALE_RANGE: (f32, f32) = (0.1, 1.5);
+
+/// Scale range of a Gradient Fill layer (a fraction): Photoshop allows 1–1000 %.
+/// Gradient Overlay effects have a separate range; the live tool creates fill layers.
+pub const SCALE_RANGE: (f32, f32) = (0.01, 10.0);
 
 fn bad(cmd: &str, msg: impl Into<String>) -> EngineError {
     EngineError::BadParams { cmd: cmd.into(), msg: msg.into() }
@@ -149,7 +150,7 @@ fn has_doc(s: &Session) -> std::result::Result<(), String> {
     s.active().map(|_| ()).ok_or_else(|| "no document open".into())
 }
 
-fn clamp_scale(v: f32) -> f32 {
+pub(crate) fn clamp_scale(v: f32) -> f32 {
     v.clamp(SCALE_RANGE.0, SCALE_RANGE.1)
 }
 
@@ -303,11 +304,12 @@ pub fn new_layer(s: &Session, doc: &Document, p: &Value) -> Result<Layer> {
         return Err(bad(CMD, "the document is empty"));
     }
     let (angle, scale, offset) = gf::from_handles(style, from, to, canvas, 0.0);
-    let fill = Fill::Gradient { stops, angle, scale: clamp_scale(scale), style, reverse, opacity_stops, midpoints: Vec::new(), offset, dither, align: false };
+    let fill = Fill::Gradient { stops, angle, scale: clamp_scale(scale), style, reverse, opacity_stops, midpoints: Vec::new(), offset, dither, align: false }
+        .in_mode(doc.mode);
     let mut l = Layer::new(doc.next_layer_name("Gradient Fill"), LayerContent::Fill(fill));
     l.opacity = opacity;
     l.blend = blend;
-    l.mask = crate::commands::selection_mask(doc);
+    l.mask = crate::commands::selection_mask(doc)?;
     Ok(l)
 }
 
@@ -340,9 +342,14 @@ fn set(s: &mut Session, p: &Value) -> Result<Value> {
 }
 
 fn replace_fill(s: &mut Session, id: LayerId, label: &str, new: Fill) -> Result<()> {
+    {
+        let doc = &s.active().ok_or(EngineError::NoDocument)?.doc;
+        check_pixels_unlocked(doc, id)?;
+    }
     s.edit(label, |doc, _| {
+        let mode = doc.mode;
         let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
-        l.content = LayerContent::Fill(new);
+        l.content = LayerContent::Fill(new.in_mode(mode));
         Ok(())
     })
 }

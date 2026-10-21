@@ -407,7 +407,11 @@ fn variations_are_hidden_siblings_and_the_variation_command_switches_them() {
     ] {
         assert!(matches!(s.execute(VARIATION, p.clone()), Err(EngineError::BadParams { .. })), "{p}");
     }
-    assert!(matches!(s.execute(VARIATION, json!({"layers": [999_999], "index": 1})), Err(EngineError::NoLayer(_))));
+    // (`Session::execute` explains a missing layer with the document's listing.)
+    assert!(matches!(
+        s.execute(VARIATION, json!({"layers": [999_999], "index": 1})),
+        Err(EngineError::NoLayer(_) | EngineError::UnknownLayer { .. })
+    ));
     let twice = json!({"layers": [ids[0].0, ids[0].0], "index": 1});
     assert!(matches!(s.execute(VARIATION, twice), Err(EngineError::BadParams { .. })));
 }

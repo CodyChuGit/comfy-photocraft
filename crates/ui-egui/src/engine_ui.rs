@@ -139,9 +139,13 @@ fn show_log(app: &mut PhotocraftApp) {
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
-        let (program, args) = photocraft_engine::layer_menu_cmds::reveal_command(&path);
-        if let Err(e) = std::process::Command::new(program).args(&args).spawn() {
-            crate::notices::error(app, format!("{program}: {e}"));
+        match photocraft_engine::layer_menu_cmds::reveal_command(&path) {
+            Ok((program, args)) => {
+                if let Err(e) = std::process::Command::new(program).args(&args).spawn() {
+                    crate::notices::error(app, format!("{program}: {e}"));
+                }
+            }
+            Err(e) => crate::notices::error(app, e.to_string()),
         }
     }
 }

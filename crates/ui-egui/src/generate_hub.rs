@@ -210,19 +210,15 @@ pub fn activate(app: &mut PhotocraftApp, ctx: &egui::Context, card: &Card) -> Re
         return Err(tl!("Not in this build yet").to_string());
     }
     if !card.create && app.session.active().is_none() {
-        app.ui.hub.pending = Some(card.id);
-        app.open_dialog_file();
-        // Cancelled (or no file dialog here): nothing will open, so nothing waits.
-        if app.session.active().is_none() && app.jobs.opens.is_empty() {
-            app.ui.hub.pending = None;
+        // The dialog answers on a later frame (`file_dialog`): the card carries on in `tick`
+        // once the picture is open. No file dialog here: nothing will open, so nothing waits.
+        if app.open_dialog_file().is_err() {
             app.ui.status = tl!("Open a picture first").to_string();
             app.ui.status_error = false;
             return Ok(json!({"waiting": false}));
         }
-        if app.session.active().is_none() {
-            return Ok(json!({"waiting": true}));
-        }
-        app.ui.hub.pending = None;
+        app.ui.hub.pending = Some(card.id);
+        return Ok(json!({"waiting": true}));
     }
     run(app, ctx, card)
 }
@@ -249,7 +245,7 @@ fn run(app: &mut PhotocraftApp, ctx: &egui::Context, card: &Card) -> Result<Valu
 }
 
 /// Each frame: an Edit card that asked for a file carries on once a picture is open (and gives
-/// up when the opening failed).
+/// up when the dialog was cancelled or the opening failed).
 pub fn tick(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let Some(id) = app.ui.hub.pending else { return };
     if app.session.active().is_some() {
@@ -259,7 +255,7 @@ pub fn tick(app: &mut PhotocraftApp, ctx: &egui::Context) {
         {
             crate::notices::error(app, e);
         }
-    } else if app.jobs.opens.is_empty() {
+    } else if app.jobs.opens.is_empty() && !app.file_dialog_open() {
         app.ui.hub.pending = None;
     }
 }

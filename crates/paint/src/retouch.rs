@@ -102,7 +102,8 @@ pub fn dab_rect(d: &Dab) -> Rect {
 
 /// Rasterize one dab's coverage.
 pub fn footprint(d: &Dab, index: usize, hardness: f32) -> Footprint {
-    let rect = dab_rect(d);
+    // A soft tip paints past its nominal radius.
+    let rect = crate::render::rect_around(d, crate::tip_reach(d.radius, hardness).max(d.radius));
     let (cx, cy) = (d.center.x as f32, d.center.y as f32);
     let mut cov = Vec::with_capacity(rect.width() as usize * rect.height() as usize);
     for y in rect.y0..rect.y1 {
@@ -127,6 +128,24 @@ pub fn stroke_coverage(stroke: &Stroke) -> (Rect, Vec<f32>) {
     r.push(&stroke.points);
     r.finish();
     r.dense_coverage()
+}
+
+/// [`stroke_coverage`] that admits the **rendered** extent before it is made dense: `None` when the
+/// stroke covers more than `max_pixels`.
+///
+/// Rendering itself is tiled, so it holds only the tiles the dabs touch. The bounds are read from
+/// those tiles, after tips, dynamics and scattering have placed every dab, so this is the stroke's
+/// real extent rather than an estimate from the input points. Only then is the `width × height`
+/// buffer allocated, which is what callers need bounded.
+pub fn stroke_coverage_within(stroke: &Stroke, max_pixels: u64) -> Option<(Rect, Vec<f32>)> {
+    let mut r = crate::StrokeRenderer::new(&stroke.brush, None, 1.0);
+    r.push(&stroke.points);
+    r.finish();
+    let b = r.bounds();
+    if u64::from(b.width()).saturating_mul(u64::from(b.height())) > max_pixels {
+        return None;
+    }
+    Some(r.dense_coverage())
 }
 
 /// Index of the alpha channel, if the format has one.
@@ -240,13 +259,21 @@ pub fn apply_dab_stroke(
     for (i, d) in ds.iter().enumerate() {
         effect(&mut work, &ctx.footprint(d, i));
     }
+    mix_back(target, &orig, &work, bounds, stroke.brush.opacity, selection, lock_transparency);
+    bounds
+}
+
+/// Mix a sequential-dab stroke's working pixels `work` back over the original `orig` at
+/// `opacity × selection` inside `rect`, and write that area to `target`: the last step of
+/// [`apply_dab_stroke`], shared with live previews that run the dabs as they come.
+pub fn mix_back(target: &mut Surface, orig: &Region, work: &Region, rect: Rect, opacity: f32, selection: Option<&Surface>, lock_transparency: bool) {
     let fmt = target.format();
     let a = alpha_index(&fmt);
-    let mut out = orig.crop(bounds);
+    let mut out = orig.crop(rect);
     let n = out.ch;
-    let opacity = stroke.brush.opacity.clamp(0.0, 1.0);
-    for y in bounds.y0..bounds.y1 {
-        for x in bounds.x0..bounds.x1 {
+    let opacity = opacity.clamp(0.0, 1.0);
+    for y in rect.y0..rect.y1 {
+        for x in rect.x0..rect.x1 {
             let k = opacity * selection.map_or(1.0, |s| s.sample_channel(x, y, 0));
             if k <= 0.0 {
                 continue;
@@ -269,7 +296,6 @@ pub fn apply_dab_stroke(
         }
     }
     out.write(target);
-    bounds
 }
 
 /// `dst ← lerp(dst, src, k)` in premultiplied space (straight in, straight out; `a` = alpha index).
@@ -416,6 +442,7 @@ fn premultiply(px: &mut [f32], alpha: Option<usize>) {
 mod tests {
     use super::*;
     use crate::{BrushSettings, StrokePoint};
+    use photocraft_geom::Point;
 
     fn stroke(points: &[(f64, f64)], size: f32, hardness: f32) -> Stroke {
         Stroke {
@@ -543,5 +570,41 @@ mod tests {
         let mut d = [0.5, 0.5];
         mix_premultiplied(&mut d, &[1.0, 1.0], 7, 0.5);
         assert_eq!(d, [0.5, 0.5]);
+    }
+
+    #[test]
+    fn footprint_stays_inside_the_tips_reach() {
+        let radius = 10.5f32;
+        for hardness in [1.0, 0.5, 0.0] {
+            let dab = Dab::round(Point::new(32.0, 32.0), radius, 1.0);
+            let fp = footprint(&dab, 0, hardness);
+            let mut painted = 0usize;
+            let mut farthest = 0.0f64;
+            for y in fp.rect.y0..fp.rect.y1 {
+                for x in fp.rect.x0..fp.rect.x1 {
+                    let dist = ((x as f64 + 0.5 - dab.center.x).powi(2) + (y as f64 + 0.5 - dab.center.y).powi(2)).sqrt();
+                    if fp.at(x, y) <= 0.0 {
+                        continue;
+                    }
+                    painted += 1;
+                    farthest = farthest.max(dist);
+                    let reach = f64::from(crate::tip_reach(radius, hardness));
+                    assert!(
+                        dist < reach.max(radius as f64) + 0.5,
+                        "hardness {hardness}: pixel ({x}, {y}) at {dist} px from \
+                         the centre is painted past the Full Size ring of \
+                         {radius} px"
+                    );
+                }
+            }
+            assert!(painted > 0, "hardness {hardness}: nothing painted");
+            if hardness == 1.0 {
+                assert!(
+                    farthest > radius as f64,
+                    "a hard tip painted only {farthest} px out, so the Full \
+                     Size ring at {radius} px is never reached"
+                );
+            }
+        }
     }
 }

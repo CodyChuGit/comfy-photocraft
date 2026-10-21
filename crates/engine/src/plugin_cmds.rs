@@ -77,10 +77,17 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
             *surf = plugin.apply(surf, canvas, selection.as_ref(), &resolved).map_err(err)?;
             return Ok(());
         }
+        crate::commands::check_pixels_unlocked(doc, layer)?;
+        let keep_alpha = doc.effective_locks(layer).transparency;
         let l = doc.layer_mut(layer).ok_or(EngineError::NoLayer(layer))?;
         match &mut l.content {
             LayerContent::Raster(surf) => {
+                // Lock Transparency: the plug-in may change colour but not alpha (as built-in filters).
+                let before = keep_alpha.then(|| surf.clone());
                 *surf = plugin.apply(surf, canvas, selection.as_ref(), &resolved).map_err(err)?;
+                if let Some(before) = &before {
+                    crate::filters::keep_alpha(before, surf);
+                }
                 Ok(())
             }
             LayerContent::Smart(_) => {
@@ -93,7 +100,7 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
                 };
                 crate::smart_cmds::add_smart_filter(doc, layer, sf, selection.as_ref())
             }
-            other => Err(EngineError::Other(format!("plug-in filters need a pixel layer (active layer is a {} layer)", other.kind_name()))),
+            other => Err(EngineError::Other(format!("plug-in filters need a pixel layer (active layer is {} {} layer)", other.article(), other.kind_name()))),
         }
     })?;
     Ok(json!({"layer": layer.0, "plugin": id}))

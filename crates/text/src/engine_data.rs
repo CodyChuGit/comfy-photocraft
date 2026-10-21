@@ -46,7 +46,8 @@ impl Value {
     pub fn as_f64(&self) -> Option<f64> {
         match self {
             Value::Int(i) => Some(*i as f64),
-            Value::Real(r) => Some(*r),
+            // `inf`, `nan` and `1e999` parse as reals but are never a valid style number.
+            Value::Real(r) if r.is_finite() => Some(*r),
             _ => None,
         }
     }
@@ -224,6 +225,25 @@ pub fn write(v: &Value) -> Vec<u8> {
     let mut out = b"\n\n".to_vec();
     write_value(v, 0, &mut out);
     out.push(b'\n');
+    out
+}
+
+/// Serializes `/key value` pairs without an enclosing dictionary: the layout of the document's
+/// `Txt2` block (see [`crate::psd::build_txt2`]), which `parse_txt2` wraps in `<< >>` to parse.
+pub fn write_bare(items: &[(String, Value)]) -> Vec<u8> {
+    let mut out = b"\n\n".to_vec();
+    for (k, v) in items {
+        out.push(b'/');
+        out.extend_from_slice(k.as_bytes());
+        if is_container(v) {
+            out.push(b'\n');
+            indent(&mut out, 1);
+        } else {
+            out.push(b' ');
+        }
+        write_value(v, 1, &mut out);
+        out.push(b'\n');
+    }
     out
 }
 

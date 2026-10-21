@@ -63,6 +63,7 @@ fn composite_area(
     coverage: impl Fn(i32, i32) -> f32 + Sync,
     color: impl Fn(i32, i32) -> [f32; 4] + Sync,
     lock_transparency: bool,
+    inks: Option<[f32; 4]>,
 ) {
     // Composite tile by tile (in parallel on native); tiles with zero coverage are left untouched,
     // so their copy-on-write storage (and GPU residency) survives.
@@ -93,6 +94,14 @@ fn composite_area(
                     o[3] = d[3];
                 }
                 from_rgba_into(&fmt, o, &mut enc);
+                // A colour picked as CMYK inks replaces fully covered pixels of a CMYK target as it is.
+                if let Some(i) = inks
+                    && fmt.mode == photocraft_color::ColorMode::Cmyk
+                    && blend_mode == BlendMode::Normal
+                    && k >= 1.0
+                {
+                    enc[..4].copy_from_slice(&i);
+                }
                 px.copy_from_slice(&enc[..n]);
             }
         }
@@ -144,6 +153,7 @@ pub fn paint_gradient(
             c
         },
         lock_transparency,
+        None,
     );
 }
 
@@ -180,16 +190,69 @@ pub fn bucket_fill_src(
     lock_transparency: bool,
     src: impl Fn(i32, i32) -> [f32; 4] + Sync,
 ) -> bool {
+    bucket_fill_inks(s, area, seed, tolerance, contiguous, anti_alias, opacity, selection, lock_transparency, src, None)
+}
+
+/// [`bucket_fill_src`] where `inks` (CMYK, 0..1) are what a fully covered pixel of a CMYK target
+/// gets instead of `src`'s sRGB stand-in (a colour that was picked as CMYK).
+#[allow(clippy::too_many_arguments)]
+pub fn bucket_fill_inks(
+    s: &mut Surface,
+    area: Rect,
+    seed: (i32, i32),
+    tolerance: f32,
+    contiguous: bool,
+    anti_alias: bool,
+    opacity: f32,
+    selection: Option<&Surface>,
+    lock_transparency: bool,
+    src: impl Fn(i32, i32) -> [f32; 4] + Sync,
+    inks: Option<[f32; 4]>,
+) -> bool {
     if !area.contains(seed.0, seed.1) {
         return false;
     }
     let img = crate::selection::rgba8_image(s, area);
     let Some(region) = crate::selection::wand_region(&img, area, seed, tolerance, contiguous, anti_alias) else { return false };
     drop(img);
+    bucket_fill_region_inks(s, &region, opacity, selection, lock_transparency, src, inks);
+    true
+}
+
+/// Paints a bucket region sampled before the edit, so its boundary can come from the visible
+/// composite while only `s` receives the colour or pattern. Selection coverage still clips it.
+pub fn bucket_fill_region_src(
+    s: &mut Surface,
+    region: &crate::selection::Region,
+    opacity: f32,
+    selection: Option<&Surface>,
+    lock_transparency: bool,
+    src: impl Fn(i32, i32) -> [f32; 4] + Sync,
+) {
+    bucket_fill_region_inks(s, region, opacity, selection, lock_transparency, src, None);
+}
+
+/// [`bucket_fill_region_src`] with the CMYK `inks` of [`bucket_fill_inks`].
+pub fn bucket_fill_region_inks(
+    s: &mut Surface,
+    region: &crate::selection::Region,
+    opacity: f32,
+    selection: Option<&Surface>,
+    lock_transparency: bool,
+    src: impl Fn(i32, i32) -> [f32; 4] + Sync,
+    inks: Option<[f32; 4]>,
+) {
     // Composite only over the filled region's box.
     let b = region.bbox;
-    composite_area(s, b, BlendMode::Normal, |x, y| region.at(x, y) * opacity * selection.map_or(1.0, |m| m.sample_channel(x, y, 0)), src, lock_transparency);
-    true
+    composite_area(
+        s,
+        b,
+        BlendMode::Normal,
+        |x, y| region.at(x, y) * opacity * selection.map_or(1.0, |m| m.sample_channel(x, y, 0)),
+        src,
+        lock_transparency,
+        inks,
+    );
 }
 
 #[cfg(test)]
@@ -243,5 +306,18 @@ mod tests {
         assert_eq!(s.pixel(2, 2), vec![1.0, 0.0, 0.0, 1.0]);
         assert_eq!(s.pixel(8, 2), vec![1.0, 1.0, 1.0, 1.0]);
         assert!(!bucket_fill(&mut s, a, (50, 1), 10.0, true, false, [1.0, 0.0, 0.0, 1.0], 1.0, None, false));
+    }
+
+    #[test]
+    fn bucket_region_uses_document_coordinates_and_multiplies_coverage() {
+        let mut s = Surface::new(PixelFormat::RGBA8);
+        let region = crate::selection::Region { bbox: Rect::new(-3, 4, 0, 5), mask: vec![255, 128, 255] };
+        let mut selection = Surface::new(PixelFormat::GRAY8);
+        selection.fill_rect(Rect::new(-3, 4, -1, 5), &[0.5]);
+        bucket_fill_region_src(&mut s, &region, 0.5, Some(&selection), false, |_, _| [1.0, 0.0, 0.0, 1.0]);
+        assert!((s.rgba(-3, 4)[3] - 0.25).abs() < 0.005);
+        assert!((s.rgba(-2, 4)[3] - 0.125).abs() < 0.005);
+        assert_eq!(s.rgba(-1, 4), [0.0; 4], "outside the selection");
+        assert_eq!(s.rgba(-4, 4), [0.0; 4], "outside the region");
     }
 }

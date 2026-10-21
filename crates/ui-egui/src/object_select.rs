@@ -192,7 +192,7 @@ pub fn tick(app: &mut PhotocraftApp, ctx: &egui::Context) {
     if !online(app, now) {
         return;
     }
-    let sample_all = app.ui.tool_options.sample_all_layers;
+    let sample_all = app.ui.tool_options.sample_all.object_selection;
     app.ui.object_select.probes_asked += 1;
     match app.run("select.probe", json!({"x": p[0].round(), "y": p[1].round(), "sampleAllLayers": sample_all})) {
         Ok(v) if v.get("job").is_some() => app.ui.object_select.pending = v["job"].as_u64().map(|j| (j, cell)),
@@ -262,19 +262,55 @@ fn object_mode(mods: egui::Modifiers) -> &'static str {
 
 /// The gesture ended: a click, a box, or a Ctrl-click refinement; the classical rectangle when
 /// no server answers.
+/// Without a server: upstream's classical tool. A click (or a sub-2 px nudge) selects the
+/// object under it when the Object Finder is on, as hovering highlighted it (#4087; ⇧ adds,
+/// ⌥ subtracts, ⇧⌥ intersects); with the finder off it is a Quick Selection dab at the brush
+/// size instead of looking dead (⌥ subtracts). A larger drag runs the rectangle GrabCut (⌥
+/// subtracts, ⇧ adds, otherwise replaces).
+fn classical_finish(app: &mut PhotocraftApp, start: [f64; 2], end: [f64; 2], mods: egui::Modifiers, sample_all: bool) {
+    let (x, y) = (start[0].min(end[0]), start[1].min(end[1]));
+    let (w, h) = ((end[0] - start[0]).abs(), (end[1] - start[1]).abs());
+    let click = w < 2.0 || h < 2.0;
+    if click && app.ui.tool_options.object_finder {
+        let mode = match (mods.shift, mods.alt) {
+            (true, true) => "intersect",
+            (true, false) => "add",
+            (false, true) => "subtract",
+            (false, false) => "replace",
+        };
+        let r = app.run("select.object", json!({"point": [end[0], end[1]], "mode": mode, "sampleAllLayers": sample_all}));
+        crate::object_finder::clear(app);
+        crate::retouch_ui::report_smart_result(app, r, tl!("No object found there — drag a rectangle around it"));
+        return;
+    }
+    if click {
+        let size = app.session.tools.brush.size;
+        let mode = if mods.alt { "subtract" } else { "add" };
+        let r = app.run("select.quick", json!({"points": [[end[0], end[1]]], "size": size, "mode": mode, "sampleAllLayers": sample_all}));
+        crate::retouch_ui::report_smart_result(app, r, tl!("Quick Selection found nothing there"));
+        return;
+    }
+    let mode = if mods.alt {
+        "subtract"
+    } else if mods.shift {
+        "add"
+    } else {
+        "replace"
+    };
+    let r = app.run("select.object", json!({"rect": [x.round(), y.round(), w.round(), h.round()], "mode": mode, "sampleAllLayers": sample_all}));
+    crate::retouch_ui::report_smart_result(app, r, tl!("Object Selection found nothing there — try a tighter rectangle"));
+}
+
 pub fn finish(app: &mut PhotocraftApp, start: [f64; 2], end: [f64; 2], mods: egui::Modifiers) {
     let (x, y) = (start[0].min(end[0]), start[1].min(end[1]));
     let (w, h) = ((end[0] - start[0]).abs(), (end[1] - start[1]).abs());
     let click = w < 2.0 || h < 2.0;
     let mode = object_mode(mods);
     let o = &app.ui.tool_options;
-    let (sample_all, refine) = (o.sample_all_layers, o.refine_edge);
+    let (sample_all, refine) = (o.sample_all.object_selection, o.refine_edge);
     let now = app.ui.object_select.hover.map_or(0.0, |(_, t)| t);
     if !online(app, now) {
-        // Without a server a click has no classical meaning; a drag is the rectangle finder.
-        if !click {
-            let _ = app.run("select.object", json!({"rect": [x.round(), y.round(), w.round(), h.round()], "mode": mode, "sampleAllLayers": sample_all}));
-        }
+        classical_finish(app, start, end, mods, sample_all);
         return;
     }
     let point = [start[0].round(), start[1].round()];
@@ -329,7 +365,7 @@ fn refine_last(app: &mut PhotocraftApp, point: [f64; 2], include: bool) -> bool 
         next.negatives.push(point);
     }
     let o = &app.ui.tool_options;
-    let mut q = json!({"mode": next.mode, "sampleAllLayers": o.sample_all_layers, "refine": o.refine_edge, "negativePoints": next.negatives});
+    let mut q = json!({"mode": next.mode, "sampleAllLayers": o.sample_all.object_selection, "refine": o.refine_edge, "negativePoints": next.negatives});
     if !next.positives.is_empty() {
         q["points"] = json!(next.positives);
     }

@@ -13,6 +13,8 @@ fn app(url: &str) -> PhotocraftApp {
     a.run("layer.new.layer", json!({})).unwrap();
     a.session.edit_prefs(|p| p.integrations.comfy_server = url.to_string());
     a.ui.tool = Tool::ObjectSelection;
+    // The new, empty layer is active: the classical rectangle wants pixels under it.
+    a.ui.tool_options.sample_all.object_selection = true;
     a.sync_views();
     a
 }
