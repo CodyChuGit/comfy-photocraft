@@ -3462,3 +3462,8 @@ curves	Smooth	Haluskan
 	Fill the gaps the object's mask encloses	Isi celah yang dikelilingi mask objek
 	Feather the mask's edge by this many pixels	Haluskan tepi mask sebanyak piksel ini
 	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Perlebar seleksi sebanyak piksel ini sebelum pengisian, agar pengganti yang lebih besar punya ruang
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Generative	Generatif
+	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Isi dengan model generatif: lebih lambat, jauh lebih baik untuk tekstur dan pola (perlu server ComfyUI atau mesin native)
+	The preview shows the classical fill; OK and Apply run the model onto a new layer.	Pratinjau menampilkan isian klasik; OK dan Terapkan menjalankan model ke layer baru.

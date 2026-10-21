@@ -101,6 +101,9 @@ pub struct CafOpts {
     pub mirror: bool,
     /// current | new | duplicate (Photoshop opens on New Layer)
     pub output: String,
+    /// PhotoshopEX: OK and Apply fill through the generative model (`edit.contentAwareFill`
+    /// `generative`): a masked layer above the active one, no preview.
+    pub generative: bool,
 }
 
 impl Default for CafOpts {
@@ -117,6 +120,7 @@ impl Default for CafOpts {
             scale: false,
             mirror: false,
             output: "new".into(),
+            generative: false,
         }
     }
 }
@@ -132,6 +136,7 @@ impl CafOpts {
             ("sampleAllLayers", &mut self.sample_all),
             ("scale", &mut self.scale),
             ("mirror", &mut self.mirror),
+            ("generative", &mut self.generative),
         ] {
             if let Some(b) = flag(k) {
                 *slot = b;
@@ -182,6 +187,7 @@ impl CafOpts {
             "scale": self.scale,
             "mirror": self.mirror,
             "output": self.output,
+            "generative": self.generative,
         })
     }
 }
@@ -318,6 +324,7 @@ fn plan_params(w: &CafWorkspace, strokes: bool) -> Value {
         "scale": o.scale,
         "mirror": o.mirror,
         "output": o.output,
+        "generative": o.generative,
         "layer": w.layer.0,
         "fillEdits": w.fill_edits,
     });
@@ -1016,8 +1023,11 @@ fn drive_preview(app: &mut PhotocraftApp, ctx: &egui::Context, dragging: bool) {
     if pv.running.is_some() || pv.shown == pv.want || dragging {
         return;
     }
+    // PhotoshopEX: the generative fill has no preview (the model runs on OK); the classical
+    // preview of the same area is still worth a look, so it is computed as before.
     let Some(doc) = doc else { return };
-    let (layer, p, generation, limit) = (w.layer, plan_params(w, true), w.preview.want, w.texture_limit);
+    let (layer, mut p, generation, limit) = (w.layer, plan_params(w, true), w.preview.want, w.texture_limit);
+    p["generative"] = Value::Bool(false);
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
     let job = photocraft_engine::jobs::JobCtx::new();
     let work = job.clone();
@@ -1367,6 +1377,12 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                 widgets::checkbox(ui, &mut w.opts.scale, tl!("Scale"));
                 widgets::checkbox(ui, &mut w.opts.mirror, tl!("Mirror"));
             });
+            // PhotoshopEX: OK runs the fill model instead of the patch fill.
+            widgets::checkbox(ui, &mut w.opts.generative, tl!("Generative"))
+                .on_hover_text(tl!("Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)"));
+            if w.opts.generative {
+                ui.label(egui::RichText::new(tl!("The preview shows the classical fill; OK and Apply run the model onto a new layer.")).size(11.0).color(t.text_faint));
+            }
             widgets::hairline(ui);
             widgets::section_label(ui, tl!("Output Settings"));
             ui.horizontal(|ui| {

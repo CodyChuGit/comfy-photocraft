@@ -3093,3 +3093,8 @@ curves	Smooth	平滑
 	Fill the gaps the object's mask encloses	填补对象蒙版所包围的空隙
 	Feather the mask's edge by this many pixels	将蒙版边缘羽化这么多像素
 	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	填充前将选区加宽这么多像素，让更大的替换物有空间
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Generative	生成式
+	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	用生成模型填充：较慢，但在纹理和图案上好得多（需要 ComfyUI 服务器或原生引擎）
+	The preview shows the classical fill; OK and Apply run the model onto a new layer.	预览显示的是经典填充；“确定”和“应用”会把模型结果放到新图层上。

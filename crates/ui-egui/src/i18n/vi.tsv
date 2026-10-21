@@ -3952,3 +3952,8 @@ curves	Smooth	Làm mượt
 	Fill the gaps the object's mask encloses	Lấp các khoảng trống mà mặt nạ của đối tượng bao quanh
 	Feather the mask's edge by this many pixels	Làm mềm viền mặt nạ chừng này điểm ảnh
 	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Mở rộng vùng chọn thêm chừng này điểm ảnh trước khi tô, để vật thay thế to hơn có chỗ
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Generative	Sinh tạo
+	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Tô bằng mô hình sinh tạo: chậm hơn nhưng tốt hơn nhiều với kết cấu và hoa văn (cần máy chủ ComfyUI hoặc bộ máy tích hợp)
+	The preview shows the classical fill; OK and Apply run the model onto a new layer.	Bản xem trước hiển thị cách tô cổ điển; OK và Áp dụng chạy mô hình lên một lớp mới.

@@ -4065,3 +4065,8 @@ curves	Smooth	Wygładź
 	Fill the gaps the object's mask encloses	Wypełnij luki zamknięte przez maskę obiektu
 	Feather the mask's edge by this many pixels	Wtop krawędź maski na tyle pikseli
 	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Poszerz zaznaczenie o tyle pikseli przed wypełnieniem, aby obszerniejsze zastępstwo miało miejsce
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Generative	Generatywne
+	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Wypełnij modelem generatywnym: wolniej, ale znacznie lepiej na teksturach i wzorach (wymaga serwera ComfyUI lub silnika natywnego)
+	The preview shows the classical fill; OK and Apply run the model onto a new layer.	Podgląd pokazuje klasyczne wypełnienie; OK i Zastosuj uruchamiają model na nowej warstwie.

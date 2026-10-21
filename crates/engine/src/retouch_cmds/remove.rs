@@ -209,6 +209,13 @@ pub(super) fn remove(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan(s, p)?;
     let label = "Remove";
     let d = s.active().ok_or(EngineError::NoDocument)?;
+    // PhotoshopEX: `generative` fills the hole through the fill model (a masked layer above the
+    // target, the selection already in the hole) when a backend is set up.
+    if flag(p, "generative", false) && targets_pixels(p) && crate::generate_cmds::generative_configured(s) {
+        let hole = hole(&plan, d.doc.selection.as_ref())?;
+        let coverage: Vec<f32> = hole.iter().map(|m| if *m { 1.0 } else { 0.0 }).collect();
+        return crate::generate_cmds::generative_remove(s, label, plan.window, coverage, 0, false, false);
+    }
     let doc = d.doc.clone();
     let p = p.clone();
     let id = plan.id;

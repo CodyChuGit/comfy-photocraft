@@ -220,7 +220,7 @@ fn quick_select_detector(app: &mut PhotocraftApp, points: &[[f64; 3]], mode: &st
 
 /// `paint.remove` params from the options bar (without the strokes).
 fn remove_params(o: &crate::state::ToolOptions) -> Value {
-    json!({"sampleAllLayers": o.sample_all.remove, "newLayer": o.remove_new_layer})
+    json!({"sampleAllLayers": o.sample_all.remove, "newLayer": o.remove_new_layer, "generative": o.remove_generative})
 }
 
 /// The selection a queued Remove stroke was drawn against. A later selection must not
@@ -562,6 +562,11 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
                     o.spot_type = k.into();
                 }
             }
+            // PhotoshopEX: the stroke healed through the fill model.
+            let mut on = o.spot_type == "generative";
+            if crate::widgets::checkbox(ui, &mut on, tl!("Generative")).on_hover_text(tl!("Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)")).clicked() {
+                o.spot_type = "generative".into();
+            }
             crate::widgets::vline(ui, 22.0);
             crate::widgets::checkbox(ui, &mut o.sample_all.spot_healing, tl!("Sample All Layers"));
         }
@@ -571,6 +576,9 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
             crate::widgets::checkbox(ui, &mut o.sample_all.remove, tl!("Sample All Layers"));
             crate::widgets::checkbox(ui, &mut o.remove_new_layer, tl!("Create a new layer"));
             crate::widgets::checkbox(ui, &mut o.remove_after_each_stroke, tl!("Remove after each stroke"));
+            // PhotoshopEX: the hole filled through the fill model (a masked layer either way).
+            crate::widgets::checkbox(ui, &mut o.remove_generative, tl!("Generative"))
+                .on_hover_text(tl!("Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)"));
             if !app.remove_pending.is_empty() {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if crate::widgets::primary_button(ui, "✓", 32.0)

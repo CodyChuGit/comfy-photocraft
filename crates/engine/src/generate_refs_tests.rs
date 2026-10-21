@@ -162,6 +162,49 @@ fn grow_widens_the_selection_and_erase_is_a_choice() {
     assert!(matches!(s.execute(FILL, json!({"prompt": "x", "grow": 9999})), Err(EngineError::BadParams { .. })));
 }
 
+/// Content-Aware Fill, the Remove tool and Spot Healing go through the fill model when asked
+/// (`generative`), with the removal instruction and the hole flattened to grey, each as a masked
+/// layer; without a backend configured they fall back to their classical fills, in place.
+#[test]
+fn the_classical_tools_go_through_the_model_when_asked_and_fall_back_without_a_server() {
+    let fake = FakeComfy::start().unwrap();
+    let (mut s, _, _) = session(&fake.url);
+    let layers = s.active().unwrap().doc.layers.len();
+    let r = s.execute("edit.contentAwareFill", json!({"generative": true})).unwrap();
+    assert!(r["layer"].is_number(), "a generative layer: {r}");
+    assert_eq!(s.active().unwrap().doc.layers.len(), layers + 1);
+    {
+        let st = fake.state();
+        let prompt = st.prompts[0].1["6"]["inputs"]["prompt"].as_str().unwrap_or_default();
+        assert!(prompt.starts_with("Remove the object in the selected area") && prompt.contains("change nothing else"), "{prompt}");
+        // Selection 20×16 at (10, 8): the 32×32 request from (5, 3) at 512²; (200, 200) is inside
+        // and keeps the picture's pixels (a grey hole is painted back as a panel: measured).
+        let sent = photocraft_genai::png::decode_rgba8(&st.uploads[0].1).unwrap();
+        assert_ne!(sent.get(200, 200).map(|p| [p[0], p[1], p[2]]), Some([128, 128, 128]), "the pixels stay");
+    }
+    let made = LayerId(r["layer"].as_u64().unwrap());
+    let info = generative_info(s.active().unwrap().doc.layer(made).unwrap()).unwrap();
+    assert_eq!((info.command.as_str(), info.erase, info.name.as_str()), (FILL, false, "Content-Aware Fill"));
+    // The Remove tool and Spot Healing: a stroke each, a layer each.
+    s.execute("paint.remove", json!({"points": [[20, 16], [26, 16]], "size": 6, "generative": true})).unwrap();
+    s.execute("paint.spotHealing", json!({"points": [[22, 18]], "size": 6, "type": "generative"})).unwrap();
+    assert_eq!(s.active().unwrap().doc.layers.len(), layers + 3);
+    assert_eq!(fake.state().prompts.len(), 3);
+    // No backend configured: the classical fills, in place, no layer.
+    s.edit_prefs(|p| {
+        p.integrations.comfy_server.clear();
+        p.integrations.runtime_path.clear();
+        p.integrations.models_path.clear();
+    });
+    let n = s.active().unwrap().doc.layers.len();
+    let r = s.execute("edit.contentAwareFill", json!({"generative": true})).unwrap();
+    assert!(r.get("filled").is_some() && r.get("runId").is_none(), "the classical fill: {r}");
+    s.execute("paint.remove", json!({"points": [[20, 16], [26, 16]], "size": 6, "generative": true})).unwrap();
+    s.execute("paint.spotHealing", json!({"points": [[22, 18]], "size": 6, "type": "generative"})).unwrap();
+    assert_eq!(s.active().unwrap().doc.layers.len(), n);
+    assert_eq!(fake.state().prompts.len(), 3, "nothing more was asked of the server");
+}
+
 #[test]
 fn an_image_from_a_reference_switches_template_and_variations_fill_one_document() {
     let fake = FakeComfy::start().unwrap();

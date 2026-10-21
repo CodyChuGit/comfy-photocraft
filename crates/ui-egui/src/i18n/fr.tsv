@@ -3475,3 +3475,8 @@ curves	Smooth	Lisser
 	Fill the gaps the object's mask encloses	Remplir les vides que le masque de l'objet entoure
 	Feather the mask's edge by this many pixels	Adoucir le bord du masque sur ce nombre de pixels
 	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Élargir la sélection de ce nombre de pixels avant le remplissage, pour laisser de la place à un remplacement plus volumineux
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Generative	Génératif
+	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Remplir avec le modèle génératif : plus lent, bien meilleur sur les textures et les motifs (nécessite un serveur ComfyUI ou le moteur natif)
+	The preview shows the classical fill; OK and Apply run the model onto a new layer.	L'aperçu montre le remplissage classique ; OK et Appliquer exécutent le modèle sur un nouveau calque.

@@ -790,6 +790,132 @@ pub fn fill_ref_template(quality: &str) -> &'static str {
     if quality == "best" { BEST_FILL_REF_TEMPLATE } else { DEFAULT_FILL_REF_TEMPLATE }
 }
 
+/// The request rectangle of a fill over `bounds`: the bounds grown by `margin` of their longer
+/// side, on the canvas, on the 16-px grid the VAE and the patch grid want (so a template that
+/// samples at the request's own size needs no padding and the result no resampling); refused
+/// above the request cap.
+pub(crate) fn fill_rect(bounds: Rect, margin: f64, canvas: Rect) -> Result<Rect> {
+    let longer = i64::from(bounds.width()).max(i64::from(bounds.height()));
+    let m = (margin * longer as f64).round().clamp(0.0, 65_536.0) as i32;
+    let rect = Rect::new(bounds.x0.saturating_sub(m), bounds.y0.saturating_sub(m), bounds.x1.saturating_add(m), bounds.y1.saturating_add(m)).intersect(&canvas);
+    if rect.is_empty() {
+        return Err(EngineError::Other("the selection is empty".into()));
+    }
+    let rect = align_to_grid(rect, canvas);
+    let pixels = u64::from(rect.width()) * u64::from(rect.height());
+    if pixels > MAX_REQUEST_PIXELS {
+        return Err(EngineError::Other(format!(
+            "the selected area with its margin is {}×{} pixels; Generative Fill handles up to 16 megapixels at a time: select a smaller area or lower `margin`",
+            rect.width(),
+            rect.height()
+        )));
+    }
+    Ok(rect)
+}
+
+/// What the generative Content-Aware Fill, Remove tool and Spot Healing ask the fill model,
+/// with the picture's pixels kept under the noise mask. "Remove" opens the fill templates'
+/// imperative wrapper, which adds "fit the scene, change nothing else". Measured on the
+/// lighthouse's boat (2026-10-21, `caf-matrix-live.ps1`): this generic instruction removes the
+/// object and continues the sea; naming the object does no better; the mask-guided template
+/// matches it at twice the time; a hole flattened to grey is painted back as a grey panel by
+/// 2511 (the `erase` that serves a swap from a reference defeats a removal).
+pub const REMOVE_PROMPT: &str = "Remove the object in the selected area and fill its place with the surrounding scene continued seamlessly (its background, surfaces, textures, patterns and lines), as if nothing had ever been there";
+
+/// Is a generative backend set up: a ComfyUI server, or the native worker's folders? The
+/// classical tools go through the model only then, and fall back to their own algorithms
+/// otherwise (a server that is set up but down is reported by the job instead).
+pub fn generative_configured(s: &Session) -> bool {
+    let i = &s.prefs().integrations;
+    let native = !i.runtime_path.trim().is_empty() && !i.models_path.trim().is_empty();
+    match i.engine.trim() {
+        "native" => native,
+        "comfy" => !i.comfy_server.trim().is_empty(),
+        _ => native || !i.comfy_server.trim().is_empty(),
+    }
+}
+
+/// `cov` (one value per pixel of `bounds`) laid over `rect`, zero elsewhere.
+fn embed_coverage(bounds: Rect, cov: &[f32], rect: Rect) -> Vec<f32> {
+    let (w, h) = (rect.width() as usize, rect.height() as usize);
+    let bw = bounds.width().max(1) as usize;
+    let mut out = vec![0.0f32; w * h];
+    for (i, c) in cov.iter().enumerate() {
+        if *c <= 0.0 {
+            continue;
+        }
+        let (x, y) = (bounds.x0 + (i % bw) as i32, bounds.y0 + (i / bw) as i32);
+        if rect.contains(x, y)
+            && let Some(o) = out.get_mut((y - rect.y0) as usize * w + (x - rect.x0) as usize)
+        {
+            *o = *c;
+        }
+    }
+    out
+}
+
+/// Remove what `coverage` marks (one value per pixel of `bounds`) with the fill model, as
+/// Generative Fill does with [`REMOVE_PROMPT`]: the hole widened by `grow`, its pixels kept in
+/// the request (or flattened to grey when `erase`, which 2511 paints back: measured), the
+/// result a masked layer named `label` above the active one.
+/// The classical Content-Aware Fill, Remove tool and Spot Healing run this when asked to be
+/// generative and a backend is configured ([`generative_configured`]). With `within_selection`
+/// a selection limits the hole, as it limits a brush.
+pub(crate) fn generative_remove(s: &mut Session, label: &str, bounds: Rect, coverage: Vec<f32>, grow: u32, erase: bool, within_selection: bool) -> Result<Value> {
+    let d = s.active().ok_or(EngineError::NoDocument)?;
+    let canvas = d.doc.bounds();
+    let bounds = bounds.intersect(&canvas);
+    let mut coverage = coverage;
+    if within_selection && let Some(sel) = d.doc.selection.as_ref() {
+        let k = sel.channels().max(1);
+        for (c, s) in coverage.iter_mut().zip(sel.read_region(bounds).chunks_exact(k)) {
+            *c *= s.first().copied().unwrap_or(0.0).clamp(0.0, 1.0);
+        }
+    }
+    let (hole, _) = crate::select_ml_cmds::coverage_bounds(&coverage, bounds);
+    if hole.is_empty() {
+        return Err(EngineError::Other("nothing to remove: the stroke covers no pixel that can change (check the selection)".into()));
+    }
+    let rect = fill_rect(hole.inflate(grow.min(MAX_GROW) as i32).intersect(&canvas), 0.25, canvas)?;
+    let coverage = embed_coverage(bounds, &coverage, rect);
+    let (default_template, default_model) = {
+        let i = &s.prefs().integrations;
+        (template_or(&i.default_fill_template, AUTO_TEMPLATE), i.default_edit_model.clone())
+    };
+    let auto = default_template == AUTO_TEMPLATE;
+    let base = if auto { DEFAULT_FILL_TEMPLATE.to_string() } else { default_template };
+    let Common { template, prompt, negative, seed, steps, guidance, models, .. } =
+        plan_common(s, FILL, &json!({"prompt": REMOVE_PROMPT}), &base, Task::Fill, &default_model)?;
+    let (backend, server) = backend_for(s, &template.meta.id)?;
+    let job = FillJob {
+        backend,
+        server,
+        command: FILL,
+        template_id: template.meta.id.clone(),
+        auto,
+        auto_order: auto_order(FILL, quality(s)),
+        prompt,
+        negative,
+        seed,
+        steps,
+        guidance,
+        name: label.to_string(),
+        models,
+        variations: 1,
+        edge: Edge::Soft,
+        enhance: false,
+        refs: Default::default(),
+        grow,
+        erase,
+    };
+    crate::jobs::edit_job(
+        s,
+        label,
+        move |doc, active, ctx| fill_region(doc, active, ctx, job, rect, coverage, None),
+        move |(made, w, h, request, template_id)| made_json(&made, w, h, request, &template_id),
+    )
+}
+
 fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
     let (default_template, default_model) = {
         let integrations = &s.prefs().integrations;
@@ -831,23 +957,7 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
     if bounds.is_empty() {
         return Err(EngineError::Other("the selection is empty".into()));
     }
-    let longer = i64::from(bounds.width()).max(i64::from(bounds.height()));
-    let m = (margin * longer as f64).round().clamp(0.0, 65_536.0) as i32;
-    let rect = Rect::new(bounds.x0.saturating_sub(m), bounds.y0.saturating_sub(m), bounds.x1.saturating_add(m), bounds.y1.saturating_add(m)).intersect(&canvas);
-    if rect.is_empty() {
-        return Err(EngineError::Other("the selection is empty".into()));
-    }
-    // Sides on the 16-px grid the VAE and the patch grid want, so a template that samples at
-    // the request's own size needs no padding and the result needs no resampling.
-    let rect = align_to_grid(rect, canvas);
-    let pixels = u64::from(rect.width()) * u64::from(rect.height());
-    if pixels > MAX_REQUEST_PIXELS {
-        return Err(EngineError::Other(format!(
-            "the selected area with its margin is {}×{} pixels; Generative Fill handles up to 16 megapixels at a time: select a smaller area or lower `margin`",
-            rect.width(),
-            rect.height()
-        )));
-    }
+    let rect = fill_rect(bounds, margin, canvas)?;
     let name = name.unwrap_or_else(|| format!("Generative Fill: {}", short(&prompt)));
     let enhance = opt_bool(FILL, p, "enhance", s.prefs().integrations.enhance_prompts)?;
     // A plain fill's model sees the picture around the selection and takes no references; a

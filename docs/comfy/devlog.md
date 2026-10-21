@@ -4,6 +4,40 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-21 (evening): Content-Aware Fill, the Remove tool and Spot Healing through the model
+
+- **The ask**: "content aware fill that works for anything, including complex patterns and
+  textures". Upstream's Content-Aware Fill is already PatchMatch with the Wexler vote, Image
+  Melding's colour adaptation and the Photoshop-measured sampling window; the Remove tool is
+  Newson's non-local completion with texture features; Spot Healing has Proximity Match and
+  Efros–Freeman texture synthesis (`crates/algo/{content_aware,inpaint,nonlocal,remove}.rs`).
+  Patch copying has a ceiling: it cannot invent what a pattern does behind an object. The
+  diffusion fill can, so the three tools got a **generative switch**.
+- **What landed**: `generate_cmds::generative_remove` (the hole, widened by `grow`, as a
+  Generative Fill with `REMOVE_PROMPT`, a soft edge, the `auto` fill template; a masked layer
+  above the active one) behind `edit.contentAwareFill {generative}`, `paint.remove
+  {generative}` and `paint.spotHealing {type: generative}`; `generative_configured` (a server
+  URL or the native folders) decides, and the classical fill runs as before otherwise. UI: a
+  **Generative** checkbox on the Remove tool's options bar (on by default; `remove_generative`,
+  in Reset Tool), a **Generative** type on Spot Healing's, a **Generative** checkbox in the
+  Content-Aware Fill workspace (the preview stays classical and says so; OK runs the model).
+  Three strings ×20. Tests: the three tools against the fake (a layer each, the instruction, the
+  pixels kept), then the fallback with the server cleared (in place, nothing asked).
+- **Measured on the lighthouse's boat** (`benchmarks.md` §5i, `caf-generative-live.ps1` and
+  `caf-matrix-live.ps1`): the first version flattened the hole to grey, as the reference swap
+  does, and **2511 painted the grey rectangle back as a panel** (40 steps and Lightning, plain
+  and mask-guided alike; the Remove tool's smaller organic hole happened to work). With the
+  pixels kept, the generic "Remove the object in the selected area and fill its place with the
+  surrounding scene continued seamlessly…" removes the boat and continues the sea in **11.6 s**
+  on Lightning (56 s on the 40-step tier); naming the object ("the red boat") does no better,
+  the guided template matches it at twice the time. So `REMOVE_PROMPT` is that wording and
+  `erase` is off for removals (still a param). The classical fills: 0.4 s, boat gone, rock
+  copies in the water.
+- Open: more pictures and seeds; a "next meaning" cycle; the stitch tone match; whether the
+  Lightning tier should be the removal default under Quality `best` (56 s is long for a
+  retouch stroke); the native 2.1 fill under `auto` serves the same path once its folders are
+  set (not timed here).
+
 ## 2026-10-21 (later): Generative Fill from a reference, learnt from AusBoss's Krea 2 clothing workflow
 
 - **The study** (`docs/comfy/research/notes/ausboss-krea2-clothing-workflow.md`): the owner's

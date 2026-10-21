@@ -704,6 +704,22 @@ fn content_aware_fill_as(s: &mut Session, p: &Value, cmd: &'static str, label: &
     }
     .map_err(EngineError::Other)?;
     let st = s.active().ok_or(EngineError::NoDocument)?;
+    // PhotoshopEX: through the fill model when asked and a backend is set up (the selection,
+    // widened by the workspace's expand edits; the lasso edits are the workspace's own and stay
+    // classical). The result is a masked layer above the active one, whatever `output` says.
+    if bool_or(p, "generative", false) && crate::generate_cmds::generative_configured(s) {
+        let sel = st.doc.selection.as_ref().ok_or_else(|| bad(cmd, "no selection"))?;
+        let sb = sel.content_bounds().intersect(&st.doc.bounds());
+        if sb.is_empty() {
+            return Err(bad(cmd, "the selection is outside the canvas"));
+        }
+        let k = sel.channels().max(1);
+        let coverage: Vec<f32> = sel.read_region(sb).chunks_exact(k).map(|c| c.first().copied().unwrap_or(0.0).clamp(0.0, 1.0)).collect();
+        let mut budget = MAX_CAF_POINTS;
+        let grow: i32 = fill_edits(p, cmd, &mut budget)?.iter().map(|e| if let FillEdit::Grow(b) = e { b.max(&0) } else { &0 }).sum();
+        let erase = bool_or(p, "erase", false);
+        return crate::generate_cmds::generative_remove(s, label, sb, coverage, grow.clamp(0, 512) as u32, erase, false);
+    }
     let doc = st.doc.clone();
     // Check the params before the job starts.
     caf_params(&doc, id, p, cmd)?;
@@ -1491,7 +1507,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Content-Aware Fill…",
             ["Edit"],
             None,
-            r##"{"sampling":"auto|rectangular|custom","margin":px?,"area":[x,y,w,h]?,"channel":index|name?,"samplingStrokes":[{"mode":"add|subtract","size":px,"points":[[x,y],…]}]? (the workspace's Sampling Brush, after the sampling option's area; added strokes may lie outside the window),"fillEdits":[{"op":"new|add|subtract|intersect","points":[[x,y],…]}|{"op":"expand|contract","by":px}]? (the workspace's lasso edits of the fill area, in order),"sampleAllLayers":bool=false,"colorAdaptation":"default|none|high|veryHigh","rotationAdaptation":"none|low|medium|high|full","scale":bool=false,"mirror":bool=false,"output":"current|new|duplicate","layer":id?=active (the layer filled and sampled),"seed":u64=1}"##,
+            r##"{"sampling":"auto|rectangular|custom","margin":px?,"area":[x,y,w,h]?,"channel":index|name?,"samplingStrokes":[{"mode":"add|subtract","size":px,"points":[[x,y],…]}]? (the workspace's Sampling Brush, after the sampling option's area; added strokes may lie outside the window),"fillEdits":[{"op":"new|add|subtract|intersect","points":[[x,y],…]}|{"op":"expand|contract","by":px}]? (the workspace's lasso edits of the fill area, in order),"sampleAllLayers":bool=false,"colorAdaptation":"default|none|high|veryHigh","rotationAdaptation":"none|low|medium|high|full","scale":bool=false,"mirror":bool=false,"output":"current|new|duplicate","layer":id?=active (the layer filled and sampled),"seed":u64=1,"generative":bool=false (PhotoshopEX: the fill through the generative model, as Generative Fill with an instruction to continue the surroundings into the selection: the result is a masked layer above the active one, whatever `output` says; the classical fill when no ComfyUI server or native engine is configured),"erase":bool=false (generative: the selection flattened to grey in the request; off, since the model paints such a hole back as a grey panel)}"##,
             can_caf,
             content_aware_fill
         ),

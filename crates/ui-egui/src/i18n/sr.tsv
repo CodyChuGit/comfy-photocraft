@@ -4534,3 +4534,8 @@ shape	Appearance	Izgled
 	Fill the gaps the object's mask encloses	Popuni praznine koje maska objekta okružuje
 	Feather the mask's edge by this many pixels	Omekšaj ivicu maske za toliko piksela
 	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	Proširi izbor za toliko piksela pre popune, da krupnija zamena ima mesta
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Generative	Generativno
+	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Popuna generativnim modelom: sporije, mnogo bolje na teksturama i šarama (zahteva ComfyUI server ili ugrađenu mašinu)
+	The preview shows the classical fill; OK and Apply run the model onto a new layer.	Pregled prikazuje klasičnu popunu; OK i Primeni pokreću model na novom sloju.

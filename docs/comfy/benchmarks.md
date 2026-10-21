@@ -383,6 +383,39 @@ swap (28 s against 150 s, the same garment); one reference on a fill costs about
 on an edit (benchmarks §5g). Not yet judged over more seeds, and `erase: false` on the
 reference template is untested live.
 
+## 5i. Content-Aware Fill, Remove and Spot Healing through the model (PhotoshopEX, 2026-10-21)
+
+The lighthouse picture's red boat (`final-fill-s11.png`, 1024², the 200×120 rectangle at
+300,600 that `edit-live.ps1` edits), ComfyUI on the 5090, the release CLI, one process per
+run. First the classical fills against the model (`caf-generative-live.ps1`, Quality `best`:
+the 40-step 2511 fill):
+
+| Run | Time | What came back |
+|---|---|---|
+| Content-Aware Fill, classical (PatchMatch, auto sampling) | 0.4 s | boat gone; a copied rock blob in the water and a ghost of the horizon |
+| Content-Aware Fill, generative, the hole flat grey | 56 s | **the grey rectangle, painted back as a panel** |
+| the same, pixels kept, "fill the flat grey area" wording | 44 s | the boat, untouched (there was no grey to fill) |
+| Remove tool, classical (non-local patches) | 0.4 s | boat gone; rock copies at the stroke's end |
+| Remove tool, generative, the stroke's hole grey | 47 s | boat gone, the sea continued cleanly |
+
+Then the instruction matrix on the Lightning tier (`caf-matrix-live.ps1`, Quality
+`balanced`, seed 7, the same rectangle):
+
+| Variant | Time | Result |
+|---|---|---|
+| A: pixels kept, "Remove the object in the selected area and fill its place with the surrounding scene continued seamlessly…" | 11.6 s | boat gone, the sea and the horizon continued |
+| B: the mask-guided template (`fill-guided`), pixels kept | 21.5 s | the same |
+| C: pixels kept, the object named ("Remove the red boat…") | 15.9 s | the same |
+| D: the hole grey, "Fill the flat grey area…" | 5.9 s | the grey panel |
+| E: the guided template with the hole grey | 21.6 s | the grey panel |
+
+So the removal path keeps the pixels and sends A's generic wording (`REMOVE_PROMPT`): 2511
+reads the picture under the mask as truth and must be told what to do with it, and a flat
+hole is "content" to it (the grey-hole trick serves a swap from a reference, where the
+reference says what goes there; AnyPaint's model card says the same of Krea 2 on dark or
+saturated pictures). Naming the object, which would cost a VLM pass, buys nothing here. One
+picture, one seed: judge on more before trusting the margins.
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP

@@ -213,6 +213,22 @@ visible; one new document holds them all with `target: document`).
   Both come from AusBoss's Krea 2 clothing workflow (2026-10-21,
   `research/notes/ausboss-krea2-clothing-workflow.md`); the fill-from-reference templates
   (`qwen-edit-2511/fill-ref*`, `eraseSelection: true`) erase by default, the plain fills do not.
+- **The classical tools through the model** (2026-10-21). Edit › Content-Aware Fill
+  (`generative: true`), the Remove tool (`paint.remove` `generative`) and the Spot Healing Brush
+  (`type: generative`) run `generate_cmds::generative_remove`: the hole (the selection, or the
+  stroke's footprint with its enclosed loops and 2-px dilation, limited to the selection as a
+  brush is) goes out as a Generative Fill with `REMOVE_PROMPT` ("Remove the object in the
+  selected area and fill its place with the surrounding scene continued seamlessly…", which
+  opens the fill templates' imperative wrapper), the pixels kept under the noise mask, a soft
+  edge, the request rect and resampling of any fill; the result is a masked layer above the
+  active one, whatever the classical tool's output option. Only when a backend is configured
+  (`generative_configured`: a server URL or the native folders); otherwise the tool's own
+  PatchMatch / non-local / proximity fill runs as before, in place. The patch fills copy pixels
+  and cannot invent what a pattern does behind an object; the model can, at 6–55 s a run. Measured
+  on the lighthouse's boat (`benchmarks.md` §5i): the generic instruction with the pixels kept
+  removes the boat and continues the sea; naming the object does no better; the mask-guided
+  template matches it at twice the time; a grey hole (`erase`) is painted back as a grey panel,
+  so a swap from a reference erases and a removal does not.
 - **References on a fill.** `generate.fill` takes `references[]` like an edit; with no template
   named it runs the fill-from-reference template (the plain fill templates take none), whose
   wrapper names the grey hole and says to take the thing "exactly as the references show it".

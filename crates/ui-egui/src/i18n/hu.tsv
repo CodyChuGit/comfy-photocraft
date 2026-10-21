@@ -4380,3 +4380,8 @@ cameraRaw	Yellow	Sárga
 	Fill the gaps the object's mask encloses	Az objektum maszkja által közrezárt hézagok kitöltése
 	Feather the mask's edge by this many pixels	A maszk szélének lágyítása ennyi képponttal
 	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	A kijelölés szélesítése ennyi képponttal a kitöltés előtt, hogy a terjedelmesebb csere elférjen
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Generative	Generatív
+	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Kitöltés a generatív modellel: lassabb, textúrákon és mintákon sokkal jobb (ComfyUI-kiszolgáló vagy a beépített motor kell hozzá)
+	The preview shows the classical fill; OK and Apply run the model onto a new layer.	Az előnézet a klasszikus kitöltést mutatja; az OK és az Alkalmaz a modellt futtatja egy új rétegre.

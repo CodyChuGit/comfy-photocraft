@@ -261,6 +261,8 @@ health panel beyond Test connection.
 ✅ Generative Fill from a reference image (2026-10-21: `fill-ref` templates, `grow`, `erase`,
 the side-by-side rewriter; learnt from AusBoss's Krea 2 clothing workflow, see
 `research/notes/ausboss-krea2-clothing-workflow.md` for what is still to take);
+✅ Content-Aware Fill, the Remove tool and Spot Healing through the fill model (2026-10-21,
+`generative_remove`: the classical PatchMatch fills stay as the fallback);
 ⬜ everything else below.
 
 - Harmonize, Generative Upscale, Generate Similar.

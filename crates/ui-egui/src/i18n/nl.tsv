@@ -4221,3 +4221,8 @@ curves	Smooth	Vloeiend maken
 	Fill the gaps the object's mask encloses	De openingen vullen die het masker van het object omsluit
 	Feather the mask's edge by this many pixels	De rand van het masker over zoveel pixels verzachten
 	Widen the selection by this many pixels before the fill, so a bulkier replacement has room	De selectie vóór de vulling met zoveel pixels verbreden, zodat een omvangrijkere vervanging ruimte heeft
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Generative	Generatief
+	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Vullen met het generatieve model: trager, veel beter bij texturen en patronen (vereist een ComfyUI-server of de ingebouwde engine)
+	The preview shows the classical fill; OK and Apply run the model onto a new layer.	De voorvertoning toont de klassieke vulling; OK en Toepassen laten het model op een nieuwe laag werken.

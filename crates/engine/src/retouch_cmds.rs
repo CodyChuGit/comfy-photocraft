@@ -836,11 +836,18 @@ fn spot_healing(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "paint.spotHealing";
     let (stroke, id) = parse_brush(s, p, CMD)?;
     reject_huge_stroke(CMD, &stroke)?;
+    // PhotoshopEX: `generative` heals through the fill model (a masked layer above the
+    // target) when a backend is set up, and as Content-Aware otherwise.
     let kind = match string(p, "type", "contentAware") {
         "contentAware" => SpotType::ContentAware,
         "createTexture" => SpotType::CreateTexture,
         "proximityMatch" => SpotType::ProximityMatch,
-        o => return Err(bad(CMD, format!("unknown type `{o}` (contentAware|createTexture|proximityMatch)"))),
+        "generative" if crate::generate_cmds::generative_configured(s) && targets_pixels(p) => {
+            let (bounds, cov) = coverage(CMD, &stroke)?;
+            return crate::generate_cmds::generative_remove(s, "Spot Healing Brush", bounds, cov, 0, false, true);
+        }
+        "generative" => SpotType::ContentAware,
+        o => return Err(bad(CMD, format!("unknown type `{o}` (contentAware|createTexture|proximityMatch|generative)"))),
     };
     let all = sample_all_layers(p);
     let dmg = run_stroke(s, "Spot Healing Brush", id, p, |pre, surf, sel, lock| spot_heal_surface(surf, pre, &stroke, kind, all, sel, lock))?;
@@ -1334,7 +1341,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Spot Healing Brush",
             menu: &[],
             shortcut: None,
-            params: brush_params!(r#","type":"contentAware|createTexture|proximityMatch"="contentAware","sampleAllLayers":bool=false"#),
+            params: brush_params!(r#","type":"contentAware|createTexture|proximityMatch|generative"="contentAware","sampleAllLayers":bool=false (generative: the stroke healed through the generative fill model with an instruction to continue the surroundings, as a masked layer above the target; Content-Aware when no ComfyUI server or native engine is configured)"#),
             enabled: has_pixel_layer,
             run: spot_healing,
             journal: true,
@@ -1365,7 +1372,7 @@ pub fn specs() -> Vec<CommandSpec> {
             menu: &[],
             shortcut: None,
             params: brush_params!(
-                r#","strokes":[[[x,y,pressure?],…],…]? (several strokes removed together, as one job and one undo step; else "points"),"closeLoops":bool=true (a stroke around an object removes what it encloses),"sampleAllLayers":bool=false,"newLayer":bool=false (the fill goes to a new layer above the target, which stays as it was) → {"damage","layer"?} (a background job)"#
+                r#","strokes":[[[x,y,pressure?],…],…]? (several strokes removed together, as one job and one undo step; else "points"),"closeLoops":bool=true (a stroke around an object removes what it encloses),"sampleAllLayers":bool=false,"newLayer":bool=false (the fill goes to a new layer above the target, which stays as it was),"generative":bool=false (PhotoshopEX: the hole filled through the generative fill model with an instruction to continue the surroundings, always as a masked layer above the target; the classical fill when no ComfyUI server or native engine is configured) → {"damage","layer"?} (a background job)"#
             ),
             enabled: has_pixel_layer,
             run: remove::remove,
