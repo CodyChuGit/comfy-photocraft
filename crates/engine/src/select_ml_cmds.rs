@@ -745,15 +745,14 @@ pub(crate) struct ObjectUnderStroke {
     backend: Arc<dyn photocraft_genai::GenerativeBackend>,
     server: String,
     prompting: Prompting,
+    /// The text template, for a second ask by the name the rewriter finds (a point prompt on a
+    /// thin object returns only the brushed part of it; a text prompt the whole).
+    text: Option<(Arc<dyn photocraft_genai::GenerativeBackend>, String, Prompting)>,
 }
 
-/// A finder for the object under `points` (canvas pixels, see [`stroke_prompt`]), or `None`
-/// when no backend serves the point template (the removal goes on from the stroke alone).
-pub(crate) fn object_under_stroke(s: &Session, points: Vec<[f64; 2]>) -> Option<ObjectUnderStroke> {
-    if points.is_empty() {
-        return None;
-    }
-    let common = generate_cmds::plan_common(s, BY_POINT, &json!({"prompt": "point", "seed": 0}), DEFAULT_POINT_TEMPLATE, Task::Segment, "").ok()?;
+/// A detector's prompting for `template` with `prompt`, and the backend that serves it.
+fn prompting_for(s: &Session, cmd: &str, template: &str, prompt: &str) -> Option<(Arc<dyn photocraft_genai::GenerativeBackend>, String, Prompting)> {
+    let common = generate_cmds::plan_common(s, cmd, &json!({"prompt": prompt, "seed": 0}), template, Task::Segment, "").ok()?;
     let (backend, server) = generate_cmds::backend_for(s, &common.template.meta.id).ok()?;
     let Common { template, prompt, models, .. } = common;
     let prompting = Prompting {
@@ -762,35 +761,68 @@ pub(crate) fn object_under_stroke(s: &Session, points: Vec<[f64; 2]>) -> Option<
         models,
         declared: template.meta.placeholders.keys().cloned().collect(),
         threshold: 0.5,
-        points,
+        points: Vec::new(),
         negatives: Vec::new(),
         bbox: None,
     };
-    Some(ObjectUnderStroke { backend, server, prompting })
+    Some((backend, server, prompting))
+}
+
+/// A finder for the object under `points` (canvas pixels, see [`stroke_prompt`]), or `None`
+/// when no backend serves the point template (the removal goes on from the stroke alone).
+pub(crate) fn object_under_stroke(s: &Session, points: Vec<[f64; 2]>) -> Option<ObjectUnderStroke> {
+    if points.is_empty() {
+        return None;
+    }
+    let (backend, server, mut prompting) = prompting_for(s, BY_POINT, DEFAULT_POINT_TEMPLATE, "point")?;
+    prompting.points = points;
+    let text = prompting_for(s, BY_TEXT, DEFAULT_SEGMENT_TEMPLATE, "object");
+    Some(ObjectUnderStroke { backend, server, prompting, text })
+}
+
+/// The union of the instances `pr` finds, as coverage over the canvas with its bounds and
+/// pixel count; `Ok(None)` when nothing was found or the detector failed (the job goes on
+/// from the stroke alone), `Err` only when the job was cancelled.
+fn find_union(
+    backend: &dyn photocraft_genai::GenerativeBackend,
+    server: &str,
+    pr: &Prompting,
+    doc: &Document,
+    active: Option<LayerId>,
+    ctx: &JobCtx,
+) -> Result<Option<(Vec<f32>, Rect, u64)>> {
+    let area = doc.bounds();
+    let Ok((image, _)) = detector_image(doc, active, true, MAX_SEGMENT_REQUEST_PIXELS) else { return Ok(None) };
+    let masks = match detect(backend, server, image, area, pr, ctx) {
+        Ok((masks, _)) => masks,
+        Err(_) => {
+            ctx.check()?;
+            return Ok(None);
+        }
+    };
+    let instances = without_specks(instances_of(&masks, area)?);
+    if instances.is_empty() {
+        return Ok(None);
+    }
+    let n = area.width() as usize * area.height() as usize;
+    let cov = pick(&instances, None, n, &pr.prompt)?;
+    let (bounds, count) = coverage_bounds(&cov, area);
+    Ok((count > 0).then_some((cov, bounds, count)))
 }
 
 impl ObjectUnderStroke {
-    /// The union of the instances the detector finds, as coverage over the canvas with its
-    /// bounds and pixel count; `Ok(None)` when nothing was found or the detector failed (the
-    /// job goes on from the stroke alone), `Err` only when the job was cancelled.
+    /// The object under the stroke's spots (the point prompt): see [`find_union`].
     pub(crate) fn find(&self, doc: &Document, active: Option<LayerId>, ctx: &JobCtx) -> Result<Option<(Vec<f32>, Rect, u64)>> {
-        let area = doc.bounds();
-        let Ok((image, _)) = detector_image(doc, active, true, MAX_SEGMENT_REQUEST_PIXELS) else { return Ok(None) };
-        let masks = match detect(self.backend.as_ref(), &self.server, image, area, &self.prompting, ctx) {
-            Ok((masks, _)) => masks,
-            Err(_) => {
-                ctx.check()?;
-                return Ok(None);
-            }
-        };
-        let instances = without_specks(instances_of(&masks, area)?);
-        if instances.is_empty() {
-            return Ok(None);
-        }
-        let n = area.width() as usize * area.height() as usize;
-        let cov = pick(&instances, None, n, &self.prompting.prompt)?;
-        let (bounds, count) = coverage_bounds(&cov, area);
-        Ok((count > 0).then_some((cov, bounds, count)))
+        find_union(self.backend.as_ref(), &self.server, &self.prompting, doc, active, ctx)
+    }
+
+    /// The object called `name` (the text prompt), every instance of it: see [`find_union`].
+    /// `Ok(None)` when no backend serves the text template.
+    pub(crate) fn find_by_text(&self, name: &str, doc: &Document, active: Option<LayerId>, ctx: &JobCtx) -> Result<Option<(Vec<f32>, Rect, u64)>> {
+        let Some((backend, server, pr)) = &self.text else { return Ok(None) };
+        let mut pr = pr.clone();
+        pr.prompt = name.to_string();
+        find_union(backend.as_ref(), server, &pr, doc, active, ctx)
     }
 }
 

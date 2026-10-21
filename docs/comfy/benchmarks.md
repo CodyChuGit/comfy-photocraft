@@ -477,6 +477,24 @@ Through the tools (`necklace-strokes-live.ps1`; the rewriter's words in each cas
 Each tool stroke is 23–25 s wall on Lightning: the detector, the rewriter and the fill, with
 the server loading each in turn.
 
+**Asked again by name** (`remove-note-live.ps1`, `necklace-strokes-live.ps1` rerun). The
+rewriter's sentence names the object ("Remove the gold necklace and replace it…" →
+`named_object` → "gold necklace"), and the detector is asked a second time by that name (the
+text template, every instance that the stroke covers a quarter of):
+
+| Stroke | Before | Now |
+|---|---|---|
+| Spot Healing along the left half of the chain | the left half and the pendant gone, the right half left with a loose end | **the whole necklace gone** (the name ask returns the whole chain, 5296 px; the hole grows 64) |
+| one dab on the pendant | the pendant gone, the chain joined | the same ("gold disc pendant": the dab covers all of it, the chain is not asked for) |
+| the Remove tool along the whole chain | clean | clean |
+| the boat's three strokes | clean | clean; one soft-brush run of seven put a rock where the boat was (the rewriter's "ocean and rocky shore… rock textures"), the other six are sea |
+
+A removal note of its own for the rewriter ("name that object precisely, then only what lies
+directly behind it") was tried against the rock and dropped: it named "the gold circular
+pendant" where the fill note named "the gold necklace", so the name ask found less and the
+half-necklace stroke regressed to half; the boat was clean either way. On a fresh server the
+three asks come to 14–17 s wall a stroke on Lightning (the first stroke after a start 40 s).
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP

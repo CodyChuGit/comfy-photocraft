@@ -4,6 +4,29 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-21 (later still): the detector asked again by the name the rewriter found
+
+- **Closed the open item**: a stroke over half a thin necklace now removes the whole of it.
+  `generative_remove` runs the rewriter before the request (with the picture around the hole
+  in view), `named_object` takes the object's name out of its sentence ("Remove the gold
+  necklace and replace it…" → "gold necklace"; up to six words, or nothing), the detector is
+  asked by that name through the text template (`ObjectUnderStroke::find_by_text`) and every
+  instance the stroke covers a quarter of joins the hole; the fill then takes the rewritten
+  prompt as is (`FillJob::rewritten`, so the layer still remembers it as the rewrite). Point
+  prompt first, name second: the point ask is what a compact object needs, the name ask what
+  a thin one needs. Tests: the fake names "the red hat", the name ask widens the hole, the
+  graph carries the name; `named_object` on six sentences.
+- **Tried and dropped**: a rewriter note of its own for removals (name precisely, then only
+  what is behind), against one boat run in seven that put a rock where the boat was. It named
+  the pendant instead of the necklace and the half-necklace stroke regressed; the fill note
+  stays (`benchmarks.md` §5i, "Asked again by name").
+- Through the tools: the half-necklace stroke, the pendant dab, the Remove tool along the
+  chain and the boat's three strokes all clean; 14–17 s wall a stroke on a fresh server.
+- Open: a one-in-seven hallucination at the seed (the Generations panel's retry covers it;
+  a second variation by default would double the time); the rewriter's wording lists the
+  scene's neighbours, and a removal-specific note has to be found that keeps the whole-object
+  naming.
+
 ## 2026-10-21 (late): a necklace, and the rewriter names what a stroke removes
 
 - **The test**: "removing a necklace or something like that". A portrait with a 6-px gold chain

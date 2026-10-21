@@ -118,6 +118,10 @@ Reply with the sentence only: no explanation, no quotes, no markdown.";
 /// Added to the system turn for a fill: where the selection is and what the instruction means
 /// there.
 const ENHANCE_FILL_NOTE: &str = "The user selected the {place} of the image; the instruction says what should be generated inside that selection so that it blends with its surroundings. Describe what appears there.";
+// A removal uses the fill note with `REMOVE_PROMPT` as the instruction. A note of its own
+// ("name that object precisely, then only what lies directly behind it", tried 2026-10-21
+// after one boat run came back with a rock in its place) named the pendant where the fill
+// note named the whole necklace, so the second detector ask found less; the rock was 1 of 7.
 
 /// The system turn for a fill from a reference image. The rewriter sees the picture (its
 /// selection flattened to grey) and the reference side by side, as AusBoss's Krea 2 clothing
@@ -898,6 +902,62 @@ fn at_least(rect: Rect, min_side: i32, canvas: Rect) -> Rect {
     align_to_grid(Rect::new(x0, y0, x1, y1).intersect(&canvas), canvas)
 }
 
+/// Whether a stroke (`stroke`, one value per pixel of `sb`) covers enough of an object (`obj`
+/// over the canvas, `on` pixels of it) for a removal to take the object whole
+/// ([`WHOLE_OBJECT_MIN_COVERED`], [`WHOLE_OBJECT_MAX_CANVAS`]).
+fn stroke_takes(stroke: &[f32], sb: Rect, obj: &[f32], on: u64, canvas: Rect) -> bool {
+    let cw = canvas.width().max(1) as usize;
+    let bw = sb.width().max(1) as usize;
+    let covered = stroke
+        .iter()
+        .enumerate()
+        .filter(|(i, c)| {
+            **c >= 0.5 && {
+                let (x, y) = (sb.x0 + (*i % bw) as i32, sb.y0 + (*i / bw) as i32);
+                canvas.contains(x, y) && obj.get((y - canvas.y0) as usize * cw + (x - canvas.x0) as usize).copied().unwrap_or(0.0) >= 0.5
+            }
+        })
+        .count() as f64;
+    let canvas_px = f64::from(canvas.width()) * f64::from(canvas.height());
+    covered >= WHOLE_OBJECT_MIN_COVERED * on as f64 && (on as f64) <= WHOLE_OBJECT_MAX_CANVAS * canvas_px
+}
+
+/// `coverage` (over `area`) unioned with an object's coverage `obj` (over the canvas, its
+/// bounds `ob`): the union over `area ∪ ob`, limited to the selection `sel` when there is one.
+fn take_in(area: Rect, coverage: &[f32], obj: &[f32], ob: Rect, canvas: Rect, sel: Option<&photocraft_raster::Surface>) -> (Rect, Vec<f32>) {
+    let a = area.union(&ob);
+    let mut u = embed_coverage(area, coverage, a);
+    let (cw, aw) = (canvas.width().max(1) as usize, a.width().max(1) as usize);
+    for (i, v) in u.iter_mut().enumerate() {
+        let (x, y) = (a.x0 + (i % aw) as i32, a.y0 + (i / aw) as i32);
+        if canvas.contains(x, y) {
+            *v = v.max(obj.get((y - canvas.y0) as usize * cw + (x - canvas.x0) as usize).copied().unwrap_or(0.0));
+        }
+    }
+    if let Some(sel) = sel {
+        let k = sel.channels().max(1);
+        for (c, s) in u.iter_mut().zip(sel.read_region(a).chunks_exact(k)) {
+            *c *= s.first().copied().unwrap_or(0.0).clamp(0.0, 1.0);
+        }
+    }
+    (a, u)
+}
+
+/// The object a rewritten removal names: "Remove the gold necklace and replace it with…" →
+/// "gold necklace"; `None` when the rewrite does not start by removing something, or names
+/// it in more than six words (a sentence, not a name). What the detector is then asked for.
+pub(crate) fn named_object(rewritten: &str) -> Option<String> {
+    let t = rewritten.trim();
+    let rest = ["Remove the ", "remove the ", "Remove ", "remove "].iter().find_map(|p| t.strip_prefix(p))?;
+    let cut = [", ", " and replace", " and fill", " from ", " with ", " so ", ".", ";", " replacing", " completely", " entirely", " to ", " in the ", " on the "]
+        .iter()
+        .filter_map(|m| rest.find(m))
+        .min()
+        .unwrap_or(rest.len());
+    let name = rest.get(..cut).unwrap_or("").trim();
+    (!name.is_empty() && name.split_whitespace().count() <= 6).then(|| name.to_string())
+}
+
 /// How far a removal's hole of bounds `b` grows.
 fn remove_grow(b: Rect) -> u32 {
     let side = f64::from(b.width().max(b.height()));
@@ -979,43 +1039,52 @@ pub(crate) fn generative_remove(
         refs: Default::default(),
         grow,
         erase,
+        rewritten: None,
     };
     crate::jobs::edit_job(
         s,
         label,
         move |doc, active, ctx| {
             let mut job = job;
+            let stroke = (bounds, coverage.clone());
             let (mut area, mut coverage) = (bounds, coverage);
+            let sel = if within_selection { doc.selection.as_ref() } else { None };
             // The object under the stroke, whole, when the stroke covers enough of it.
             if let Some(finder) = &object {
                 ctx.progress(0.0, "Finding the object");
-                if let Some((obj, ob, on)) = finder.find(doc, *active, ctx)? {
-                    let cw = canvas.width() as usize;
-                    let at = |x: i32, y: i32| obj.get((y - canvas.y0) as usize * cw + (x - canvas.x0) as usize).copied().unwrap_or(0.0);
-                    let bw = bounds.width().max(1) as usize;
-                    let covered = coverage
-                        .iter()
-                        .enumerate()
-                        .filter(|(i, c)| **c >= 0.5 && at(bounds.x0 + (*i % bw) as i32, bounds.y0 + (*i / bw) as i32) >= 0.5)
-                        .count() as f64;
-                    let canvas_px = f64::from(canvas.width()) * f64::from(canvas.height());
-                    if covered >= WHOLE_OBJECT_MIN_COVERED * on as f64 && (on as f64) <= WHOLE_OBJECT_MAX_CANVAS * canvas_px {
-                        let a = bounds.union(&ob);
-                        let mut u = embed_coverage(bounds, &coverage, a);
-                        let aw = a.width().max(1) as usize;
-                        for (i, v) in u.iter_mut().enumerate() {
-                            *v = v.max(at(a.x0 + (i % aw) as i32, a.y0 + (i / aw) as i32));
-                        }
-                        if within_selection && let Some(sel) = doc.selection.as_ref() {
-                            let k = sel.channels().max(1);
-                            for (c, s) in u.iter_mut().zip(sel.read_region(a).chunks_exact(k)) {
-                                *c *= s.first().copied().unwrap_or(0.0).clamp(0.0, 1.0);
-                            }
-                        }
-                        (area, coverage) = (a, u);
-                    }
+                if let Some((obj, ob, on)) = finder.find(doc, *active, ctx)?
+                    && stroke_takes(&stroke.1, stroke.0, &obj, on, canvas)
+                {
+                    (area, coverage) = take_in(area, &coverage, &obj, ob, canvas, sel);
                 }
                 ctx.check()?;
+                // The rewriter names it with the picture in view, and the detector is asked
+                // again by that name: a point prompt on a thin object (a necklace's chain)
+                // returns only the brushed part, a text prompt the whole of it (measured).
+                if job.enhance {
+                    ctx.progress(0.01, "Naming the object");
+                    let (hole, _) = crate::select_ml_cmds::coverage_bounds(&coverage, area);
+                    let r0 = at_least(fill_rect(hole.inflate(remove_grow(hole) as i32).intersect(&canvas), 0.25, canvas)?, REMOVE_MIN_REQUEST, canvas);
+                    let seen = photocraft_compose::render(doc, r0).to_rgba8();
+                    let seen = Rgba8::new(seen.width, seen.height, seen.pixels).map_err(gen_err)?;
+                    let (rw, rh) = request_size(seen.width, seen.height);
+                    let seen = if (rw, rh) == (seen.width, seen.height) { seen } else { resize_rgba8(&seen, rw, rh)? };
+                    let place = place_in_words(hole, r0);
+                    if let Ok(Some(p)) =
+                        enhance_prompt(job.backend.as_ref(), EnhanceKind::Fill, &job.prompt, Some(&seen), Some(&place), job.seed, &JobProgress::span(ctx, 0.01, 0.04))
+                    {
+                        if let Some(name) = named_object(&p) {
+                            ctx.progress(0.04, &format!("Finding the {name}"));
+                            if let Some((obj, ob, on)) = finder.find_by_text(&name, doc, *active, ctx)?
+                                && stroke_takes(&stroke.1, stroke.0, &obj, on, canvas)
+                            {
+                                (area, coverage) = take_in(area, &coverage, &obj, ob, canvas, sel);
+                            }
+                        }
+                        job.rewritten = Some(p);
+                    }
+                    ctx.check()?;
+                }
             }
             let (hole, _) = crate::select_ml_cmds::coverage_bounds(&coverage, area);
             if hole.is_empty() {
@@ -1747,6 +1816,10 @@ struct FillJob {
     grow: u32,
     /// Flatten the selection to grey in the request image (fills).
     erase: bool,
+    /// The prompt already rewritten by the vision-language model (a removal names its object
+    /// before the request, so it can ask the detector for it by name); the fill takes it as
+    /// the rewritten prompt instead of rewriting again.
+    rewritten: Option<String>,
 }
 
 /// The layers a job made: (id, seed, run id, ms, timings), the primary one first.
@@ -1804,6 +1877,7 @@ fn fill_region(
         refs,
         grow,
         erase,
+        rewritten,
     } = job;
     // `grow`: the selection widened, so the repainted area (and the result's mask) takes in a
     // band of the old object's surroundings; a bulkier replacement then has room.
@@ -1840,7 +1914,9 @@ fn fill_region(
     // The prompt the model gets: as typed, or rewritten by the vision-language model with the
     // picture in view (an expand keeps its own wording).
     let typed = prompt.clone();
-    let prompt = if enhance && outpaint.is_none() {
+    let prompt = if let Some(r) = rewritten {
+        r
+    } else if enhance && outpaint.is_none() {
         ctx.progress(0.02, "Improving the prompt");
         // A fill from a reference shows the rewriter the picture (its hole grey) and the first
         // reference side by side, so it can name what to take as the reference shows it.
@@ -2088,6 +2164,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
         refs,
         grow,
         erase,
+        rewritten: None,
     };
     crate::jobs::edit_job(
         s,
@@ -2278,6 +2355,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
         refs,
         grow,
         erase,
+        rewritten: None,
     };
     crate::jobs::edit_job(
         s,
@@ -2482,6 +2560,7 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
         refs,
         grow,
         erase,
+        rewritten: None,
     };
     crate::jobs::edit_job(
         s,
@@ -3134,6 +3213,7 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
         refs,
         grow: info.grow,
         erase: info.erase,
+        rewritten: None,
     };
     let label = format!("Generate Similar: {}", short(&info.prompt));
     crate::jobs::edit_job(

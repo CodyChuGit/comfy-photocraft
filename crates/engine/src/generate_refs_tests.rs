@@ -213,20 +213,35 @@ fn the_classical_tools_go_through_the_model_when_asked_and_fall_back_without_a_s
 #[test]
 fn a_generative_stroke_takes_the_object_under_it_whole_when_it_covers_enough_of_it() {
     use photocraft_genai::fake::Options;
-    // A 400×300 picture; the detector "finds" an object at (100, 100)–(220, 170): 8400 pixels.
-    let fake = FakeComfy::start_with(Options { segments: vec![[0.25, 1.0 / 3.0, 0.55, 170.0 / 300.0]], ..Options::default() }).unwrap();
+    // A 400×300 picture; the detector "finds" an object at (100, 100)–(220, 170) under the
+    // stroke's spots (8400 pixels), and, asked by the name the rewriter gives it, the whole
+    // "red hat" at (100, 100)–(300, 170) (14000 pixels: a thin object's point prompt returns
+    // only the brushed part).
+    let fake = FakeComfy::start_with(Options {
+        segments: vec![[0.25, 1.0 / 3.0, 0.55, 170.0 / 300.0]],
+        segments_for: vec![("red hat".into(), vec![[0.25, 1.0 / 3.0, 0.75, 170.0 / 300.0]])],
+        enhanced_text: Some("Remove the red hat and replace it with the wall behind it, blending seamlessly.".into()),
+        ..Options::default()
+    })
+    .unwrap();
     let (mut s, _, _) = session(&fake.url);
     s.execute("file.new", json!({"width": 400, "height": 300})).unwrap();
-    // A stroke across the object (its footprint 150×51, from x 85 to 235): over a third of it,
-    // so it goes whole, the hole grown by 15 % of its larger side (150 → 23).
+    // A stroke across the object (its footprint 150×51, from x 85 to 235): over a third of
+    // the hat either way, so it goes whole, the hole grown by 15 % of its larger side (the
+    // stroke and the whole hat: x 85 to 300 → 215 → 32).
     let r = s.execute("paint.spotHealing", json!({"points": [[110, 135], [210, 135]], "size": 30, "hardness": 1, "type": "generative", "seed": 3})).unwrap();
     let made = LayerId(r["layer"].as_u64().unwrap());
     let info = generative_info(s.active().unwrap().doc.layer(made).unwrap()).unwrap();
-    assert_eq!(info.grow, 23, "{info:?}");
+    assert_eq!(info.grow, 32, "{info:?}");
+    assert!(info.enhanced.starts_with("Remove the red hat"), "{info:?}");
     let rect = photocraft_geom::Rect::new(info.rect[0], info.rect[1], info.rect[0] + info.rect[2], info.rect[1] + info.rect[3]);
-    assert!(rect.contains(70, 70) && rect.contains(250, 200), "the request takes in the whole object, its growth and margin: {rect:?}");
-    assert_eq!(fake.state().prompts.len(), 3, "the detector, the rewriter, the fill");
-    // A dab on one spot of it (a blemish, not the object): the object stays, the dab is healed
+    assert!(rect.contains(70, 70) && rect.contains(330, 200), "the request takes in the whole hat, its growth and margin: {rect:?}");
+    {
+        let st = fake.state();
+        assert_eq!(st.prompts.len(), 4, "the detector by point, the rewriter, the detector by name, the fill");
+        assert!(st.prompts[2].1.to_string().contains("\"text\":\"red hat\""), "asked by the rewriter's name: {}", st.prompts[2].1);
+    }
+    // A dab on one spot of it (a blemish, not the object): the hat stays, the dab is healed
     // with the least growth.
     let r = s.execute("paint.spotHealing", json!({"points": [[120, 130]], "size": 8, "hardness": 1, "type": "generative", "seed": 3})).unwrap();
     let made = LayerId(r["layer"].as_u64().unwrap());
@@ -236,10 +251,21 @@ fn a_generative_stroke_takes_the_object_under_it_whole_when_it_covers_enough_of_
     // The request is widened to at least 384 px a side (the canvas is 300 tall) so the model
     // sees context around the dab, but no further.
     assert!(rect.width() == 384 && rect.height() == 300 && !rect.contains(399, 10), "a dab's request: {rect:?}");
-    assert_eq!(fake.state().prompts.len(), 6);
+    assert_eq!(fake.state().prompts.len(), 8);
     // `wholeObject: false` never asks the detector; `enhance: false` never asks the rewriter.
     s.execute("paint.remove", json!({"points": [[110, 135], [210, 135]], "size": 30, "generative": true, "wholeObject": false, "enhance": false})).unwrap();
-    assert_eq!(fake.state().prompts.len(), 7, "the fill alone for the Remove stroke");
+    assert_eq!(fake.state().prompts.len(), 9, "the fill alone for the Remove stroke");
+}
+
+#[test]
+fn a_rewritten_removal_names_its_object() {
+    use crate::generate_cmds::named_object;
+    assert_eq!(named_object("Remove the gold necklace and replace it with the surrounding skin, collarbone, and dark grey fabric."), Some("gold necklace".into()));
+    assert_eq!(named_object("Remove the gold pendant and chain, replacing them with skin."), Some("gold pendant and chain".into()));
+    assert_eq!(named_object("Remove the red boat from the water so the sea continues."), Some("red boat".into()));
+    assert_eq!(named_object("remove the small bird on the wire."), Some("small bird".into()));
+    assert_eq!(named_object("Fill the area with sea."), None, "not a removal");
+    assert_eq!(named_object("Remove the very long and winding description of something that goes on and on."), None, "a sentence, not a name");
 }
 
 #[test]
