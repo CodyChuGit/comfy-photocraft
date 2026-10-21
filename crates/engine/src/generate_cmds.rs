@@ -854,14 +854,49 @@ fn embed_coverage(bounds: Rect, cov: &[f32], rect: Rect) -> Vec<f32> {
     out
 }
 
+/// A removal's hole widened by this share of its larger side (at least [`REMOVE_GROW_MIN`], at
+/// most [`REMOVE_GROW_MAX`] pixels). The fill model redraws an object whose hole hugs it and
+/// removes one whose hole reaches well past it: the boat (145×37) grown 15 px came back at
+/// both seeds, grown 30 at one of two, grown 45 and 60 was gone at both; the roomy rectangle
+/// of the matrix was 35–50 px past it (`caf-grow-live.ps1`, `caf-shape-live.ps1`,
+/// 2026-10-21). A hole exactly the stroke also left a smudge of the boat's reflection.
+const REMOVE_GROW_SHARE: f64 = 0.30;
+const REMOVE_GROW_MIN: u32 = 32;
+const REMOVE_GROW_MAX: u32 = 192;
+
+/// A stroke removes the object the detector finds under it whole only when the stroke covers
+/// at least this share of that object: a dab on a blemish must heal the blemish, not remove the
+/// face the detector finds under it.
+const WHOLE_OBJECT_MIN_COVERED: f64 = 0.25;
+/// …and never an object larger than this share of the canvas.
+const WHOLE_OBJECT_MAX_CANVAS: f64 = 0.4;
+
+/// How far a removal's hole of bounds `b` grows.
+fn remove_grow(b: Rect) -> u32 {
+    let side = f64::from(b.width().max(b.height()));
+    ((side * REMOVE_GROW_SHARE).round() as u32).clamp(REMOVE_GROW_MIN, REMOVE_GROW_MAX)
+}
+
 /// Remove what `coverage` marks (one value per pixel of `bounds`) with the fill model, as
-/// Generative Fill does with [`REMOVE_PROMPT`]: the hole widened by `grow`, its pixels kept in
-/// the request (or flattened to grey when `erase`, which 2511 paints back: measured), the
-/// result a masked layer named `label` above the active one.
+/// Generative Fill does with [`REMOVE_PROMPT`]: the hole widened by `grow` (or, when `grow`
+/// is 0, by [`remove_grow`]), its pixels kept in the request (or flattened to grey when
+/// `erase`, which 2511 paints back: measured), the result a masked layer named `label` above
+/// the active one. With `object`, the detector is asked first for the object under the stroke
+/// and the hole takes it in whole when the stroke covers enough of it (the fill model redraws
+/// an object part of which stays in view: measured on the boat's bow).
 /// The classical Content-Aware Fill, Remove tool and Spot Healing run this when asked to be
 /// generative and a backend is configured ([`generative_configured`]). With `within_selection`
 /// a selection limits the hole, as it limits a brush.
-pub(crate) fn generative_remove(s: &mut Session, label: &str, bounds: Rect, coverage: Vec<f32>, grow: u32, erase: bool, within_selection: bool) -> Result<Value> {
+pub(crate) fn generative_remove(
+    s: &mut Session,
+    label: &str,
+    bounds: Rect,
+    coverage: Vec<f32>,
+    grow: u32,
+    erase: bool,
+    within_selection: bool,
+    object: Option<crate::select_ml_cmds::ObjectUnderStroke>,
+) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let canvas = d.doc.bounds();
     let bounds = bounds.intersect(&canvas);
@@ -872,12 +907,16 @@ pub(crate) fn generative_remove(s: &mut Session, label: &str, bounds: Rect, cove
             *c *= s.first().copied().unwrap_or(0.0).clamp(0.0, 1.0);
         }
     }
+    // A removal's hole is all or nothing wherever the brush touched: a soft brush's partial
+    // coverage went into the noise mask as partial values, which told the model to keep that
+    // much of the object's rim, and the boat stayed (measured 2026-10-21, `spot-generative-live.ps1`).
+    for c in coverage.iter_mut() {
+        *c = if *c > 0.0 { 1.0 } else { 0.0 };
+    }
     let (hole, _) = crate::select_ml_cmds::coverage_bounds(&coverage, bounds);
     if hole.is_empty() {
         return Err(EngineError::Other("nothing to remove: the stroke covers no pixel that can change (check the selection)".into()));
     }
-    let rect = fill_rect(hole.inflate(grow.min(MAX_GROW) as i32).intersect(&canvas), 0.25, canvas)?;
-    let coverage = embed_coverage(bounds, &coverage, rect);
     let (default_template, default_model) = {
         let i = &s.prefs().integrations;
         (template_or(&i.default_fill_template, AUTO_TEMPLATE), i.default_edit_model.clone())
@@ -911,7 +950,51 @@ pub(crate) fn generative_remove(s: &mut Session, label: &str, bounds: Rect, cove
     crate::jobs::edit_job(
         s,
         label,
-        move |doc, active, ctx| fill_region(doc, active, ctx, job, rect, coverage, None),
+        move |doc, active, ctx| {
+            let mut job = job;
+            let (mut area, mut coverage) = (bounds, coverage);
+            // The object under the stroke, whole, when the stroke covers enough of it.
+            if let Some(finder) = &object {
+                ctx.progress(0.0, "Finding the object");
+                if let Some((obj, ob, on)) = finder.find(doc, *active, ctx)? {
+                    let cw = canvas.width() as usize;
+                    let at = |x: i32, y: i32| obj.get((y - canvas.y0) as usize * cw + (x - canvas.x0) as usize).copied().unwrap_or(0.0);
+                    let bw = bounds.width().max(1) as usize;
+                    let covered = coverage
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, c)| **c >= 0.5 && at(bounds.x0 + (*i % bw) as i32, bounds.y0 + (*i / bw) as i32) >= 0.5)
+                        .count() as f64;
+                    let canvas_px = f64::from(canvas.width()) * f64::from(canvas.height());
+                    if covered >= WHOLE_OBJECT_MIN_COVERED * on as f64 && (on as f64) <= WHOLE_OBJECT_MAX_CANVAS * canvas_px {
+                        let a = bounds.union(&ob);
+                        let mut u = embed_coverage(bounds, &coverage, a);
+                        let aw = a.width().max(1) as usize;
+                        for (i, v) in u.iter_mut().enumerate() {
+                            *v = v.max(at(a.x0 + (i % aw) as i32, a.y0 + (i / aw) as i32));
+                        }
+                        if within_selection && let Some(sel) = doc.selection.as_ref() {
+                            let k = sel.channels().max(1);
+                            for (c, s) in u.iter_mut().zip(sel.read_region(a).chunks_exact(k)) {
+                                *c *= s.first().copied().unwrap_or(0.0).clamp(0.0, 1.0);
+                            }
+                        }
+                        (area, coverage) = (a, u);
+                    }
+                }
+                ctx.check()?;
+            }
+            let (hole, _) = crate::select_ml_cmds::coverage_bounds(&coverage, area);
+            if hole.is_empty() {
+                return Err(EngineError::Other("nothing to remove: the stroke covers no pixel that can change (check the selection)".into()));
+            }
+            if job.grow == 0 {
+                job.grow = remove_grow(hole);
+            }
+            let rect = fill_rect(hole.inflate(job.grow.min(MAX_GROW) as i32).intersect(&canvas), 0.25, canvas)?;
+            let coverage = embed_coverage(area, &coverage, rect);
+            fill_region(doc, active, ctx, job, rect, coverage, None)
+        },
         move |(made, w, h, request, template_id)| made_json(&made, w, h, request, &template_id),
     )
 }

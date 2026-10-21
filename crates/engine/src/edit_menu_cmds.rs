@@ -718,7 +718,7 @@ fn content_aware_fill_as(s: &mut Session, p: &Value, cmd: &'static str, label: &
         let mut budget = MAX_CAF_POINTS;
         let grow: i32 = fill_edits(p, cmd, &mut budget)?.iter().map(|e| if let FillEdit::Grow(b) = e { b.max(&0) } else { &0 }).sum();
         let erase = bool_or(p, "erase", false);
-        return crate::generate_cmds::generative_remove(s, label, sb, coverage, grow.clamp(0, 512) as u32, erase, false);
+        return crate::generate_cmds::generative_remove(s, label, sb, coverage, grow.clamp(0, 512) as u32, erase, false, None);
     }
     let doc = st.doc.clone();
     // Check the params before the job starts.

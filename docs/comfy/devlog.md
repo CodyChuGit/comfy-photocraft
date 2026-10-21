@@ -4,6 +4,36 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-21 (night): a generative stroke removes the object whole
+
+- **The report**: the generative Spot Healing Brush "just recreates the selected item slightly
+  different". Reproduced through the tool's own command on the boat (`spot-generative-live.ps1`):
+  a stroke over the middle of the boat came back as a redrawn, ribbed boat; a stroke over the
+  whole boat left a smudge of its reflection. 2511 keeps whatever of an object stays in view,
+  and an object whose hole hugs it.
+- **Tried and dropped**: pre-filling the hole classically (PatchMatch) before the model, the
+  LaMa-then-diffuse trick. Worse here: the model keeps the patch fill's copied rocks as a smear
+  (`benchmarks.md` §5i). Code removed, the measurement kept.
+- **What fixed it** (`generate_cmds::generative_remove`, measured step by step in §5i):
+  the detector (SAM 3.1, the point template, the stroke's spots as the Quick Selection tool
+  sends them: `select_ml_cmds::object_under_stroke`) finds the object under the stroke and
+  the hole takes it whole when the stroke covers ≥ 25 % of it and it is < 40 % of the canvas
+  (a dab on a blemish must not remove the face under it); the hole is all-or-nothing wherever
+  the brush touched (a soft brush's partial coverage kept the boat's rim); the hole grows by
+  30 % of its larger side, 32–192 px (grown 15 the boat stayed at both seeds, 30 at one, 45
+  and 60 gone at both: `caf-grow-live.ps1`; the shape does not matter: `caf-shape-live.ps1`).
+  `wholeObject` (default true) on `paint.spotHealing` and `paint.remove` turns the detector
+  ask off. Content-Aware Fill's generative switch takes the growth, not the detector.
+  The three strokes are clean now, 20–22 s wall each on Lightning (the server switches
+  between SAM and 2511). Test: the fake "finds" an object; a stroke across it grows by 45
+  and the request takes it all in; a dab on it grows by 32 and stays near the dab;
+  `wholeObject: false` never asks.
+- Open: the Remove tool's classical `closeLoops` is not applied to the detector mask (a
+  stroke around an object still removes the enclosed area through the classical hole first);
+  a tap on a soft-edged object's shadow; the 20 s of model switching, which the native engine
+  can avoid by keeping both models resident. The app's binary for this is in `target-app`
+  (the running app pinned `target\release\photocraft.exe` during the build).
+
 ## 2026-10-21 (evening): Content-Aware Fill, the Remove tool and Spot Healing through the model
 
 - **The ask**: "content aware fill that works for anything, including complex patterns and

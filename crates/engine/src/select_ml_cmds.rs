@@ -158,7 +158,7 @@ pub(crate) fn fill_enclosed(cov: &[f32], w: usize, h: usize) -> Vec<f32> {
     }
     let mut outside = vec![false; n];
     let mut stack: Vec<usize> = Vec::new();
-    let mut seed = |i: usize, outside: &mut Vec<bool>, stack: &mut Vec<usize>| {
+    let seed = |i: usize, outside: &mut Vec<bool>, stack: &mut Vec<usize>| {
         if cov.get(i).is_some_and(|c| *c < 0.5) && !outside.get(i).copied().unwrap_or(true) {
             outside[i] = true;
             stack.push(i);
@@ -709,6 +709,89 @@ fn run_probe(s: &mut Session, p: &Value) -> Result<Value> {
             Ok(json!({"probe": id, "width": mw, "height": mh, "bounds": bounds, "mask": encoded, "ms": ms}))
         },
     )
+}
+
+/// The spots along a stroke (canvas pixels) the detector is asked about: at most
+/// [`STROKE_PROMPT_POINTS`], evenly spaced along the samples, whole pixels inside `canvas`, no
+/// repeats (the Quick Selection tool's rule: 1–4 spots give the whole object, 16 fragment it).
+pub(crate) fn stroke_prompt(points: &[[f64; 2]], canvas: Rect) -> Vec<[f64; 2]> {
+    let inside: Vec<[f64; 2]> = points
+        .iter()
+        .map(|p| [p[0].round(), p[1].round()])
+        .filter(|p| p[0].is_finite() && p[1].is_finite() && canvas.contains(p[0] as i32, p[1] as i32))
+        .collect();
+    let n = inside.len();
+    let k = n.min(STROKE_PROMPT_POINTS);
+    let mut out: Vec<[f64; 2]> = Vec::with_capacity(k);
+    for i in 0..k {
+        let idx = if k < 2 { 0 } else { i * (n - 1) / (k - 1) };
+        if let Some(p) = inside.get(idx).copied()
+            && !out.contains(&p)
+        {
+            out.push(p);
+        }
+    }
+    out
+}
+
+/// Most spots of a stroke sent as one point prompt.
+pub(crate) const STROKE_PROMPT_POINTS: usize = 4;
+
+/// What the generative Remove tool and Spot Healing ask the detector before they fill: the
+/// object under the stroke's spots, so a stroke across part of it removes it whole (the fill
+/// model redraws an object whose rest stays in view: measured on the lighthouse's boat,
+/// 2026-10-21). Built on the session (backend and prompts), run inside the fill's job.
+pub(crate) struct ObjectUnderStroke {
+    backend: Arc<dyn photocraft_genai::GenerativeBackend>,
+    server: String,
+    prompting: Prompting,
+}
+
+/// A finder for the object under `points` (canvas pixels, see [`stroke_prompt`]), or `None`
+/// when no backend serves the point template (the removal goes on from the stroke alone).
+pub(crate) fn object_under_stroke(s: &Session, points: Vec<[f64; 2]>) -> Option<ObjectUnderStroke> {
+    if points.is_empty() {
+        return None;
+    }
+    let common = generate_cmds::plan_common(s, BY_POINT, &json!({"prompt": "point", "seed": 0}), DEFAULT_POINT_TEMPLATE, Task::Segment, "").ok()?;
+    let (backend, server) = generate_cmds::backend_for(s, &common.template.meta.id).ok()?;
+    let Common { template, prompt, models, .. } = common;
+    let prompting = Prompting {
+        template_id: template.meta.id.clone(),
+        prompt,
+        models,
+        declared: template.meta.placeholders.keys().cloned().collect(),
+        threshold: 0.5,
+        points,
+        negatives: Vec::new(),
+        bbox: None,
+    };
+    Some(ObjectUnderStroke { backend, server, prompting })
+}
+
+impl ObjectUnderStroke {
+    /// The union of the instances the detector finds, as coverage over the canvas with its
+    /// bounds and pixel count; `Ok(None)` when nothing was found or the detector failed (the
+    /// job goes on from the stroke alone), `Err` only when the job was cancelled.
+    pub(crate) fn find(&self, doc: &Document, active: Option<LayerId>, ctx: &JobCtx) -> Result<Option<(Vec<f32>, Rect, u64)>> {
+        let area = doc.bounds();
+        let Ok((image, _)) = detector_image(doc, active, true, MAX_SEGMENT_REQUEST_PIXELS) else { return Ok(None) };
+        let masks = match detect(self.backend.as_ref(), &self.server, image, area, &self.prompting, ctx) {
+            Ok((masks, _)) => masks,
+            Err(_) => {
+                ctx.check()?;
+                return Ok(None);
+            }
+        };
+        let instances = without_specks(instances_of(&masks, area)?);
+        if instances.is_empty() {
+            return Ok(None);
+        }
+        let n = area.width() as usize * area.height() as usize;
+        let cov = pick(&instances, None, n, &self.prompting.prompt)?;
+        let (bounds, count) = coverage_bounds(&cov, area);
+        Ok((count > 0).then_some((cov, bounds, count)))
+    }
 }
 
 /// Standard base64 with padding (a probe mask is at most a few hundred kilobytes).

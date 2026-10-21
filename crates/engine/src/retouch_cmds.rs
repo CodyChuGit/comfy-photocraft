@@ -116,6 +116,15 @@ fn targets_pixels(p: &Value) -> bool {
 fn num(p: &Value, k: &str, d: f32) -> f32 {
     p.get(k).and_then(Value::as_f64).map_or(d, |v| v as f32)
 }
+/// PhotoshopEX: the detector asked for the object under `strokes` (their spots as one point
+/// prompt), for a generative removal that takes the object whole; `None` without a backend
+/// for it or for strokes off the canvas.
+fn object_under_strokes(s: &Session, strokes: &[Stroke]) -> Option<crate::select_ml_cmds::ObjectUnderStroke> {
+    let canvas = s.active()?.doc.bounds();
+    let points: Vec<[f64; 2]> = strokes.iter().flat_map(|st| st.points.iter().map(|p| [p.x, p.y])).collect();
+    crate::select_ml_cmds::object_under_stroke(s, crate::select_ml_cmds::stroke_prompt(&points, canvas))
+}
+
 fn flag(p: &Value, k: &str, d: bool) -> bool {
     p.get(k).and_then(Value::as_bool).unwrap_or(d)
 }
@@ -844,7 +853,8 @@ fn spot_healing(s: &mut Session, p: &Value) -> Result<Value> {
         "proximityMatch" => SpotType::ProximityMatch,
         "generative" if crate::generate_cmds::generative_configured(s) && targets_pixels(p) => {
             let (bounds, cov) = coverage(CMD, &stroke)?;
-            return crate::generate_cmds::generative_remove(s, "Spot Healing Brush", bounds, cov, 0, false, true);
+            let object = flag(p, "wholeObject", true).then(|| object_under_strokes(s, std::slice::from_ref(&stroke))).flatten();
+            return crate::generate_cmds::generative_remove(s, "Spot Healing Brush", bounds, cov, 0, false, true, object);
         }
         "generative" => SpotType::ContentAware,
         o => return Err(bad(CMD, format!("unknown type `{o}` (contentAware|createTexture|proximityMatch|generative)"))),
@@ -1341,7 +1351,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Spot Healing Brush",
             menu: &[],
             shortcut: None,
-            params: brush_params!(r#","type":"contentAware|createTexture|proximityMatch|generative"="contentAware","sampleAllLayers":bool=false (generative: the stroke healed through the generative fill model with an instruction to continue the surroundings, as a masked layer above the target; Content-Aware when no ComfyUI server or native engine is configured)"#),
+            params: brush_params!(r#","type":"contentAware|createTexture|proximityMatch|generative"="contentAware","sampleAllLayers":bool=false,"wholeObject":bool=true (generative: the stroke healed through the generative fill model with an instruction to continue the surroundings, as a masked layer above the target, the hole widened by a tenth of its size; wholeObject = the object the segmentation model finds under the stroke goes with it when the stroke covers at least a quarter of it, since the fill model redraws an object part of which stays in view; Content-Aware when no ComfyUI server or native engine is configured)"#),
             enabled: has_pixel_layer,
             run: spot_healing,
             journal: true,
@@ -1372,7 +1382,7 @@ pub fn specs() -> Vec<CommandSpec> {
             menu: &[],
             shortcut: None,
             params: brush_params!(
-                r#","strokes":[[[x,y,pressure?],…],…]? (several strokes removed together, as one job and one undo step; else "points"),"closeLoops":bool=true (a stroke around an object removes what it encloses),"sampleAllLayers":bool=false,"newLayer":bool=false (the fill goes to a new layer above the target, which stays as it was),"generative":bool=false (PhotoshopEX: the hole filled through the generative fill model with an instruction to continue the surroundings, always as a masked layer above the target; the classical fill when no ComfyUI server or native engine is configured) → {"damage","layer"?} (a background job)"#
+                r#","strokes":[[[x,y,pressure?],…],…]? (several strokes removed together, as one job and one undo step; else "points"),"closeLoops":bool=true (a stroke around an object removes what it encloses),"sampleAllLayers":bool=false,"newLayer":bool=false (the fill goes to a new layer above the target, which stays as it was),"generative":bool=false,"wholeObject":bool=true (PhotoshopEX: the hole filled through the generative fill model with an instruction to continue the surroundings, always as a masked layer above the target, the hole widened by a tenth of its size; wholeObject = the object the segmentation model finds under the stroke goes with it when the stroke covers at least a quarter of it; the classical fill when no ComfyUI server or native engine is configured) → {"damage","layer"?} (a background job)"#
             ),
             enabled: has_pixel_layer,
             run: remove::remove,

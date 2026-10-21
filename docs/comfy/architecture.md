@@ -228,7 +228,13 @@ visible; one new document holds them all with `target: document`).
   on the lighthouse's boat (`benchmarks.md` §5i): the generic instruction with the pixels kept
   removes the boat and continues the sea; naming the object does no better; the mask-guided
   template matches it at twice the time; a grey hole (`erase`) is painted back as a grey panel,
-  so a swap from a reference erases and a removal does not.
+  so a swap from a reference erases and a removal does not. A stroke's hole is shaped for the
+  model, which keeps whatever of an object stays in view and redraws an object its hole hugs:
+  the detector (SAM 3.1, the stroke's spots as one point prompt) finds the object under the
+  stroke and it goes whole when the stroke covers a quarter of it (`wholeObject`), the hole is
+  all-or-nothing wherever the brush touched, and it grows by 30 % of its larger side (32–192
+  px; grown 15 the boat stayed, 45 it was gone). A classical pre-fill under the model made
+  things worse (the model keeps the copied rocks) and was dropped.
 - **References on a fill.** `generate.fill` takes `references[]` like an edit; with no template
   named it runs the fill-from-reference template (the plain fill templates take none), whose
   wrapper names the grey hole and says to take the thing "exactly as the references show it".
