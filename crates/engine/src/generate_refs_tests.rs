@@ -175,8 +175,10 @@ fn the_classical_tools_go_through_the_model_when_asked_and_fall_back_without_a_s
     assert_eq!(s.active().unwrap().doc.layers.len(), layers + 1);
     {
         let st = fake.state();
-        let prompt = st.prompts[0].1["6"]["inputs"]["prompt"].as_str().unwrap_or_default();
-        assert!(prompt.starts_with("Remove the object in the selected area") && prompt.contains("change nothing else"), "{prompt}");
+        // The rewriter names the object first (the fake echoes the instruction), then the fill.
+        assert_eq!(st.prompts.len(), 2, "the rewriter's ask, then the fill");
+        let prompt = st.prompts[1].1["6"]["inputs"]["prompt"].as_str().unwrap_or_default();
+        assert!(prompt.contains("Remove the object in the selected area") && prompt.to_lowercase().contains("change nothing else"), "{prompt}");
         // Selection 20×16 at (10, 8): the 32×32 request from (5, 3) at 512²; (200, 200) is inside
         // and keeps the picture's pixels (a grey hole is painted back as a panel: measured).
         let sent = photocraft_genai::png::decode_rgba8(&st.uploads[0].1).unwrap();
@@ -185,12 +187,14 @@ fn the_classical_tools_go_through_the_model_when_asked_and_fall_back_without_a_s
     let made = LayerId(r["layer"].as_u64().unwrap());
     let info = generative_info(s.active().unwrap().doc.layer(made).unwrap()).unwrap();
     assert_eq!((info.command.as_str(), info.erase, info.name.as_str()), (FILL, false, "Content-Aware Fill"));
+    assert!(info.enhanced.starts_with("Enhanced: Remove the object"), "the rewritten instruction is remembered: {info:?}");
     // The Remove tool and Spot Healing: a stroke each, a layer each; each asks the detector
-    // for the object under the stroke first (the fake finds nothing: the stroke alone).
+    // for the object under the stroke first (the fake finds nothing: the stroke alone), then
+    // the rewriter, then the fill.
     s.execute("paint.remove", json!({"points": [[20, 16], [26, 16]], "size": 6, "generative": true})).unwrap();
     s.execute("paint.spotHealing", json!({"points": [[22, 18]], "size": 6, "type": "generative"})).unwrap();
     assert_eq!(s.active().unwrap().doc.layers.len(), layers + 3);
-    assert_eq!(fake.state().prompts.len(), 5, "two fills and two detector asks");
+    assert_eq!(fake.state().prompts.len(), 8, "two detector asks, two rewrites, two fills more");
     // No backend configured: the classical fills, in place, no layer.
     s.edit_prefs(|p| {
         p.integrations.comfy_server.clear();
@@ -203,7 +207,7 @@ fn the_classical_tools_go_through_the_model_when_asked_and_fall_back_without_a_s
     s.execute("paint.remove", json!({"points": [[20, 16], [26, 16]], "size": 6, "generative": true})).unwrap();
     s.execute("paint.spotHealing", json!({"points": [[22, 18]], "size": 6, "type": "generative"})).unwrap();
     assert_eq!(s.active().unwrap().doc.layers.len(), n);
-    assert_eq!(fake.state().prompts.len(), 5, "nothing more was asked of the server");
+    assert_eq!(fake.state().prompts.len(), 8, "nothing more was asked of the server");
 }
 
 #[test]
@@ -214,26 +218,28 @@ fn a_generative_stroke_takes_the_object_under_it_whole_when_it_covers_enough_of_
     let (mut s, _, _) = session(&fake.url);
     s.execute("file.new", json!({"width": 400, "height": 300})).unwrap();
     // A stroke across the object (its footprint 150×51, from x 85 to 235): over a third of it,
-    // so it goes whole, the hole grown by three tenths of its larger side (150 → 45).
+    // so it goes whole, the hole grown by 15 % of its larger side (150 → 23).
     let r = s.execute("paint.spotHealing", json!({"points": [[110, 135], [210, 135]], "size": 30, "hardness": 1, "type": "generative", "seed": 3})).unwrap();
     let made = LayerId(r["layer"].as_u64().unwrap());
     let info = generative_info(s.active().unwrap().doc.layer(made).unwrap()).unwrap();
-    assert_eq!(info.grow, 45, "{info:?}");
+    assert_eq!(info.grow, 23, "{info:?}");
     let rect = photocraft_geom::Rect::new(info.rect[0], info.rect[1], info.rect[0] + info.rect[2], info.rect[1] + info.rect[3]);
     assert!(rect.contains(70, 70) && rect.contains(250, 200), "the request takes in the whole object, its growth and margin: {rect:?}");
-    assert_eq!(fake.state().prompts.len(), 2, "one detector ask, one fill");
+    assert_eq!(fake.state().prompts.len(), 3, "the detector, the rewriter, the fill");
     // A dab on one spot of it (a blemish, not the object): the object stays, the dab is healed
     // with the least growth.
     let r = s.execute("paint.spotHealing", json!({"points": [[120, 130]], "size": 8, "hardness": 1, "type": "generative", "seed": 3})).unwrap();
     let made = LayerId(r["layer"].as_u64().unwrap());
     let info = generative_info(s.active().unwrap().doc.layer(made).unwrap()).unwrap();
-    assert_eq!(info.grow, 32, "{info:?}");
+    assert_eq!(info.grow, 16, "{info:?}");
     let rect = photocraft_geom::Rect::new(info.rect[0], info.rect[1], info.rect[0] + info.rect[2], info.rect[1] + info.rect[3]);
-    assert!(!rect.contains(250, 200), "a dab's request stays near the dab: {rect:?}");
-    assert_eq!(fake.state().prompts.len(), 4);
-    // `wholeObject: false` never asks.
-    s.execute("paint.remove", json!({"points": [[110, 135], [210, 135]], "size": 30, "generative": true, "wholeObject": false})).unwrap();
-    assert_eq!(fake.state().prompts.len(), 5, "no detector ask for the Remove stroke");
+    // The request is widened to at least 384 px a side (the canvas is 300 tall) so the model
+    // sees context around the dab, but no further.
+    assert!(rect.width() == 384 && rect.height() == 300 && !rect.contains(399, 10), "a dab's request: {rect:?}");
+    assert_eq!(fake.state().prompts.len(), 6);
+    // `wholeObject: false` never asks the detector; `enhance: false` never asks the rewriter.
+    s.execute("paint.remove", json!({"points": [[110, 135], [210, 135]], "size": 30, "generative": true, "wholeObject": false, "enhance": false})).unwrap();
+    assert_eq!(fake.state().prompts.len(), 7, "the fill alone for the Remove stroke");
 }
 
 #[test]

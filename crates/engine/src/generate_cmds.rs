@@ -855,14 +855,18 @@ fn embed_coverage(bounds: Rect, cov: &[f32], rect: Rect) -> Vec<f32> {
 }
 
 /// A removal's hole widened by this share of its larger side (at least [`REMOVE_GROW_MIN`], at
-/// most [`REMOVE_GROW_MAX`] pixels). The fill model redraws an object whose hole hugs it and
-/// removes one whose hole reaches well past it: the boat (145×37) grown 15 px came back at
-/// both seeds, grown 30 at one of two, grown 45 and 60 was gone at both; the roomy rectangle
-/// of the matrix was 35–50 px past it (`caf-grow-live.ps1`, `caf-shape-live.ps1`,
-/// 2026-10-21). A hole exactly the stroke also left a smudge of the boat's reflection.
-const REMOVE_GROW_SHARE: f64 = 0.30;
-const REMOVE_GROW_MIN: u32 = 32;
-const REMOVE_GROW_MAX: u32 = 192;
+/// most [`REMOVE_GROW_MAX`] pixels). Unnamed ("the object in the selected area"), the fill
+/// model redraws an object whose hole hugs it: the boat (145×37) grown 15 px came back at both
+/// seeds, grown 30 at one of two, grown 45 and 60 was gone at both, and the necklace (a 6-px
+/// chain) came back at one seed of two even grown 123. Named by the vision-language rewriter
+/// ("Remove the red boat…", "Remove the gold necklace…") the boat went at 15 and 30 and the
+/// necklace at 64 and 123, every seed, so the growth only has to take in the object's halo,
+/// soft edge and the start of its reflection (a hole exactly the stroke left a smudge of the
+/// boat's). `caf-grow-live.ps1`, `caf-shape-live.ps1`, `caf-grow-named-live.ps1`,
+/// `necklace-*-live.ps1`, 2026-10-21.
+const REMOVE_GROW_SHARE: f64 = 0.15;
+const REMOVE_GROW_MIN: u32 = 16;
+const REMOVE_GROW_MAX: u32 = 96;
 
 /// A stroke removes the object the detector finds under it whole only when the stroke covers
 /// at least this share of that object: a dab on a blemish must heal the blemish, not remove the
@@ -870,6 +874,29 @@ const REMOVE_GROW_MAX: u32 = 192;
 const WHOLE_OBJECT_MIN_COVERED: f64 = 0.25;
 /// …and never an object larger than this share of the canvas.
 const WHOLE_OBJECT_MAX_CANVAS: f64 = 0.4;
+
+/// A removal's request is at least this many pixels on a side (where the canvas allows), so
+/// the model sees real context around a small dab and the request is not upscaled many times
+/// over: a 40-px dab on the necklace's pendant made a 108-px request, sent at 512 (4.7×), and
+/// came back as a lighter, smoother patch of fabric (measured 2026-10-21).
+const REMOVE_MIN_REQUEST: i32 = 384;
+
+/// `rect` widened about its centre to at least `min_side` on each side, slid inside `canvas`
+/// (clipped only where the canvas is smaller), on the request grid.
+fn at_least(rect: Rect, min_side: i32, canvas: Rect) -> Rect {
+    let span = |lo: i32, hi: i32, clo: i32, chi: i32| -> (i32, i32) {
+        let len = hi - lo;
+        if len >= min_side {
+            return (lo, hi);
+        }
+        let want = min_side.min(chi - clo);
+        let lo2 = (lo - (want - len) / 2).max(clo).min(chi - want);
+        (lo2, lo2 + want)
+    };
+    let (x0, x1) = span(rect.x0, rect.x1, canvas.x0, canvas.x1);
+    let (y0, y1) = span(rect.y0, rect.y1, canvas.y0, canvas.y1);
+    align_to_grid(Rect::new(x0, y0, x1, y1).intersect(&canvas), canvas)
+}
 
 /// How far a removal's hole of bounds `b` grows.
 fn remove_grow(b: Rect) -> u32 {
@@ -883,10 +910,15 @@ fn remove_grow(b: Rect) -> u32 {
 /// `erase`, which 2511 paints back: measured), the result a masked layer named `label` above
 /// the active one. With `object`, the detector is asked first for the object under the stroke
 /// and the hole takes it in whole when the stroke covers enough of it (the fill model redraws
-/// an object part of which stays in view: measured on the boat's bow).
+/// an object part of which stays in view: measured on the boat's bow). With `enhance`, the
+/// vision-language rewriter names the object with the picture in view ("Remove the gold
+/// necklace…"): what removes a thin necklace over skin, which the generic wording left or
+/// redrew at half the seeds however far the hole was grown (measured; the rewriter failing
+/// leaves the generic wording).
 /// The classical Content-Aware Fill, Remove tool and Spot Healing run this when asked to be
 /// generative and a backend is configured ([`generative_configured`]). With `within_selection`
 /// a selection limits the hole, as it limits a brush.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn generative_remove(
     s: &mut Session,
     label: &str,
@@ -896,6 +928,7 @@ pub(crate) fn generative_remove(
     erase: bool,
     within_selection: bool,
     object: Option<crate::select_ml_cmds::ObjectUnderStroke>,
+    enhance: bool,
 ) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let canvas = d.doc.bounds();
@@ -942,7 +975,7 @@ pub(crate) fn generative_remove(
         models,
         variations: 1,
         edge: Edge::Soft,
-        enhance: false,
+        enhance,
         refs: Default::default(),
         grow,
         erase,
@@ -992,6 +1025,7 @@ pub(crate) fn generative_remove(
                 job.grow = remove_grow(hole);
             }
             let rect = fill_rect(hole.inflate(job.grow.min(MAX_GROW) as i32).intersect(&canvas), 0.25, canvas)?;
+            let rect = at_least(rect, REMOVE_MIN_REQUEST, canvas);
             let coverage = embed_coverage(area, &coverage, rect);
             fill_region(doc, active, ctx, job, rect, coverage, None)
         },

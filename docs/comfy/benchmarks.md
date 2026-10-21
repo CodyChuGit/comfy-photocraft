@@ -448,6 +448,35 @@ whole stroke is 20–22 s wall on the Lightning tier with the server switching b
 models. Content-Aware Fill's generative switch takes the same growth (the user's selection
 is usually tight) but never asks the detector.
 
+**A necklace** (the same night; `necklace.png`, a portrait the app's own text-to-image made in
+7.4 s: a 6-px gold chain over the neck, collarbones and the neckline of a dark top, with a
+small pendant; Select by Text finds it as 5296 px in a 409×297 box). The silhouette from
+Select by Text under `generate.fill`, Lightning, seeds 7 and 8 (`necklace-grow-live.ps1`,
+`necklace-name-live.ps1`):
+
+| Instruction | grown 32 | grown 64 | grown 96 | grown 123 (30 %) |
+|---|---|---|---|---|
+| "Remove the object in the selected area…" | stays, stays | **stays, clean** | trace, stays | **clean, stays** |
+| the same, rewritten by the vision-language model with the picture in view ("Remove the gold necklace and replace it with the surrounding skin, collarbone, and dark grey fabric…") | | clean, clean | | clean, clean |
+| named by hand ("Remove the gold chain necklace and its pendant completely, leaving bare skin…") | | clean, clean | | clean, clean |
+
+Unnamed, the necklace is a coin flip however far the hole is grown: the model's prior that this
+portrait wears a necklace beats "the object". Named, every run is clean, and on the boat the
+named instruction also removes it with the hole grown only 15 or 30 (`caf-grow-named-live.ps1`,
+both seeds), where the generic one needed 45. So a removal now runs through the rewriter by
+default (`enhance`, +3 s wall), and the growth went down to 15 % of the larger side (16–96 px).
+
+Through the tools (`necklace-strokes-live.ps1`; the rewriter's words in each case):
+
+| Stroke | Result |
+|---|---|
+| the Remove tool along the whole chain ("Remove the gold necklace and replace it with the woman's skin, collarbone, and dark grey shirt neckline…") | **clean**: chain and pendant gone, skin and neckline natural |
+| Spot Healing along the left half of the chain ("Remove the gold pendant and chain…") | the left half and the pendant gone, the right half stays with a loose end: the detector's point prompt returns only the brushed half of a thin chain, so "the object whole" was half a necklace |
+| Spot Healing, one 40-px dab on the pendant ("Remove the gold disc pendant… keeping the necklace chain intact") | the pendant gone, the chain joined across the gap. The first run left a lighter, smoother patch of fabric: a 108-px request sent at 512 (4.7×) gives the model no context; a removal's request is now at least 384 px a side |
+
+Each tool stroke is 23–25 s wall on Lightning: the detector, the rewriter and the fill, with
+the server loading each in turn.
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP

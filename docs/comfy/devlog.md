@@ -4,6 +4,29 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-21 (late): a necklace, and the rewriter names what a stroke removes
+
+- **The test**: "removing a necklace or something like that". A portrait with a 6-px gold chain
+  and a pendant, made by the app's own text-to-image (`necklace-make.ps1`). Unnamed ("the
+  object in the selected area"), the 2511 fill left or redrew the chain at half the seeds
+  however far the hole was grown, even 123 px: the portrait prior wins. Named by the existing
+  vision-language rewriter (`enhance`; "Remove the gold necklace and replace it with the
+  surrounding skin, collarbone, and dark grey fabric…") every run was clean, and the boat
+  then goes with the hole grown only 15 (`benchmarks.md` §5i, the necklace tables).
+- **What changed**: removals run through the rewriter by default (`enhance`, default true,
+  on `edit.contentAwareFill {generative}`, `paint.remove`, `paint.spotHealing`; the layer
+  remembers the rewritten instruction); the growth is 15 % of the hole's larger side, 16–96
+  px (was 30 %, 32–192); a removal's request is at least 384 px a side, since a 40-px dab's
+  108-px request sent at 512 came back as a lighter, smoother patch of fabric.
+- **Through the tools**: the Remove tool along the whole chain is clean; a dab on the pendant
+  removes it and joins the chain; Spot Healing along half the chain removes that half with a
+  loose end, because SAM's point prompt returns only the brushed half of a thin chain (the
+  "whole object" rule can only be as whole as the detector's answer). 23–25 s wall a stroke on
+  Lightning (detector, rewriter, fill, each loaded in turn).
+- Open: ask the detector again by text with the name the rewriter found ("gold necklace"), so
+  a thin object goes whole from half a stroke; the 20 s of model loading between the three
+  models (the native engine keeps them resident); more pictures.
+
 ## 2026-10-21 (night): a generative stroke removes the object whole
 
 - **The report**: the generative Spot Healing Brush "just recreates the selected item slightly
