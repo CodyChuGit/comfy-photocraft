@@ -654,6 +654,20 @@ the fp8 GEMM (§11) to keep both speed and precision, the style reference (6 cas
 NVFP4 file (dequantised on load would work through the same converter path; the NVFP4 GEMM is
 §11), the definition's ≤ 600-line gate is met but the blocks are not yet in `gn-blocks` (§7.1).
 
+**Krea 2 inpainting and outpainting natively (added 2026-10-21, from AusBoss's clothing
+workflow, `docs/comfy/research/notes/ausboss-krea2-clothing-workflow.md`).** Krea 2 has no mask
+input and no reference slot; the community's **AnyPaint** LoRA (`krea2_anypaint_rank32`,
+yijunwang2, Krea 2 Community License: BYOM, never a default) gives it both with a recipe the
+engine can serve once the LoRA loader exists: the masked canvas as **one reference of at most
+384 px** on its long edge (multiple of 16), the masked pixels of that reference replaced by the
+**median colour** of the known ones, the reference's tokens **registered over the whole canvas**
+in the DiT's attention with their keys and values computed **once per run** (the 2.1 pipeline's
+prefix cache is the same idea), the reference also shown to the vision tower so the text
+encoding is grounded, full-denoise sampling with the unmasked latents **restored after every
+step** and a **32-px band** at the mask's edge left for the model, 8 steps at CFG 0–1. The
+in-context pair (reference stitched beside the hole, the noise mask on the hole's half) needs
+no model change at all and is the cheap first step. Parity oracle: the AusBoss nodes on ComfyUI.
+
 ---
 
 ## 10. Phase 5: packaging without Python (weeks 9–12)

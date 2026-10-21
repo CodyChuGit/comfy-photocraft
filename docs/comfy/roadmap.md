@@ -258,6 +258,9 @@ health panel beyond Test connection.
 ## Phase 5: Quality and depth
 
 **Status (2026-10-12):** ✅ Generate Similar (and Recreate from the Generations library);
+✅ Generative Fill from a reference image (2026-10-21: `fill-ref` templates, `grow`, `erase`,
+the side-by-side rewriter; learnt from AusBoss's Krea 2 clothing workflow, see
+`research/notes/ausboss-krea2-clothing-workflow.md` for what is still to take);
 ⬜ everything else below.
 
 - Harmonize, Generative Upscale, Generate Similar.

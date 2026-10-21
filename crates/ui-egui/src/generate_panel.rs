@@ -231,7 +231,7 @@ pub fn picker_items(app: &PhotocraftApp, page: &str, eta: bool) -> Vec<crate::mo
     let research_ok = app.session.prefs().integrations.allow_research_models;
     let area = if eta { work_area(app, page) } else { None };
     let count = u32::from(app.ui.generate.count.max(1));
-    let refs = if matches!(page, "image" | "edit") { app.ui.generate.references.len() as u32 } else { 0 };
+    let refs = if matches!(page, "image" | "edit" | "fill") { app.ui.generate.references.len() as u32 } else { 0 };
     app.ui
         .generate
         .catalog
@@ -284,7 +284,11 @@ pub fn default_template(app: &PhotocraftApp, mode: &str) -> String {
         }
         "fill" => {
             let t = prefs.default_fill_template.trim();
-            if t.is_empty() || t == g::AUTO_TEMPLATE { g::likely_auto("generate.fill", g::quality(&app.session)).to_string() } else { t.to_string() }
+            let q = g::quality(&app.session);
+            let t = if t.is_empty() || t == g::AUTO_TEMPLATE { g::likely_auto("generate.fill", q).to_string() } else { t.to_string() };
+            // References and a default that takes none: the fill-from-reference template.
+            let takes_refs = info(app, &t).is_some_and(|m| m.refs_max > 0);
+            if !app.ui.generate.references.is_empty() && !takes_refs { g::fill_ref_template(q).to_string() } else { t }
         }
         m => g::likely_auto(command_of(m), g::quality(&app.session)).to_string(),
     }
@@ -343,7 +347,7 @@ fn work_area(app: &PhotocraftApp, mode: &str) -> Option<(u32, u32)> {
 pub fn estimate(app: &PhotocraftApp, mode: &str) -> Option<f32> {
     let (w, h) = work_area(app, mode)?;
     let count = if mode == "expand" { 1 } else { u32::from(app.ui.generate.count.max(1)) };
-    let refs = if matches!(mode, "image" | "edit") { app.ui.generate.references.len() as u32 } else { 0 };
+    let refs = if matches!(mode, "image" | "edit" | "fill") { app.ui.generate.references.len() as u32 } else { 0 };
     photocraft_engine::generate_cmds::estimate_seconds(&effective_template(app, mode), w, h, count, refs)
 }
 
@@ -408,7 +412,7 @@ pub fn request(app: &PhotocraftApp) -> Result<(&'static str, Value), String> {
             }
         }
     }
-    if matches!(mode, "image" | "edit") && !p.references.is_empty() {
+    if matches!(mode, "image" | "edit" | "fill") && !p.references.is_empty() {
         q["references"] = Value::Array(p.references.clone());
     }
     Ok((command_of(mode), q))
@@ -498,8 +502,8 @@ pub fn focus_mode(app: &mut PhotocraftApp, mode: &str) {
     app.ui.generate.focus = true;
 }
 
-/// How many references `mode` takes now: the chosen template's limit; with Auto in image mode,
-/// the reference template's (the engine switches to it when references come).
+/// How many references `mode` takes now: the chosen template's limit; with Auto in image or
+/// fill mode, the reference template's (the engine switches to it when references come).
 pub fn refs_limit(app: &PhotocraftApp, mode: &str) -> u32 {
     let max_of = |id: &str| info(app, id).map_or(0, |m| m.refs_max);
     match mode {
@@ -507,6 +511,13 @@ pub fn refs_limit(app: &PhotocraftApp, mode: &str) -> u32 {
         "image" => match chosen_template(app, "image") {
             Some(t) => max_of(&t),
             None => max_of(&effective_template(app, "image")).max(max_of(photocraft_engine::generate_cmds::DEFAULT_IMAGE_REF_TEMPLATE)),
+        },
+        "fill" => match chosen_template(app, "fill") {
+            Some(t) => max_of(&t),
+            None => {
+                let q = photocraft_engine::generate_cmds::quality(&app.session);
+                max_of(&effective_template(app, "fill")).max(max_of(photocraft_engine::generate_cmds::fill_ref_template(q)))
+            }
         },
         _ => 0,
     }
@@ -727,7 +738,7 @@ fn full(app: &mut PhotocraftApp, ui: &mut egui::Ui, t: &Tokens, action: &mut Opt
     // The reference deck: its own row above the prompt, when the template takes references.
     let template = effective_template(app, &mode);
     let refs_max = refs_limit(app, &mode);
-    let has_refs = matches!(mode.as_str(), "image" | "edit") && !app.ui.generate.references.is_empty();
+    let has_refs = matches!(mode.as_str(), "image" | "edit" | "fill") && !app.ui.generate.references.is_empty();
     if refs_max > 0 || has_refs {
         deck(app, ui, t, refs_max, action);
     }

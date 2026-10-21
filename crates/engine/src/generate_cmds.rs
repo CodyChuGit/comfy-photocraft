@@ -70,6 +70,12 @@ const MIN_FILL_REQUEST_SIDE: u32 = 512;
 /// Seeds stay below 2^53 so they survive a round trip through JSON numbers.
 const MAX_SEED: u64 = 1 << 53;
 pub const DEFAULT_FILL_TEMPLATE: &str = "qwen-edit-2511/fill";
+/// A fill given reference images with no template named runs these (the plain fill templates
+/// take none): the 8-step tier, or the 40-step base under Quality `best`.
+pub const DEFAULT_FILL_REF_TEMPLATE: &str = "qwen-edit-2511/fill-ref-lightning-8";
+pub const BEST_FILL_REF_TEMPLATE: &str = "qwen-edit-2511/fill-ref";
+/// Most pixels `generate.fill`'s `grow` may widen the selection by.
+pub const MAX_GROW: u32 = 512;
 pub const DEFAULT_IMAGE_TEMPLATE: &str = "krea2-turbo/image";
 /// Text-to-image sizes are rounded down to this grid (latent patches); the smallest side allowed.
 const SIZE_STEP: u32 = 16;
@@ -113,6 +119,14 @@ Reply with the sentence only: no explanation, no quotes, no markdown.";
 /// there.
 const ENHANCE_FILL_NOTE: &str = "The user selected the {place} of the image; the instruction says what should be generated inside that selection so that it blends with its surroundings. Describe what appears there.";
 
+/// The system turn for a fill from a reference image. The rewriter sees the picture (its
+/// selection flattened to grey) and the reference side by side, as AusBoss's Krea 2 clothing
+/// workflow shows its prompt writer the pair, and names what to take exactly as the reference
+/// shows it; the template's own wrapper then says where it goes and what stays.
+const ENHANCE_FILL_REF_SYSTEM: &str = "You can see two photos side by side. The left photo is being edited: its flat grey area will be repainted. The right photo is a reference. The user names what to take from the reference.\n\
+Reply with one noun phrase of at most 50 words naming that thing and describing it exactly as the right photo shows it: for clothing its garment type, colour, material, knit or weave, pattern, collar, buttons, length and fit; for anything else its shape, colour, material and details. Describe it as it will look on the left photo's subject, in that pose. Keep the user's words where they are specific.\n\
+Never mention grey, blank, masked, left, right, photo, image or reference. Reply with the phrase only: no sentence, no quotes, no markdown.";
+
 /// The system turn before a text-to-image idea (the shape of the official Krea 2 template's
 /// expander and of Qwen's rewriter, in a few lines).
 const ENHANCE_IMAGE_SYSTEM: &str = "You are an expert prompt writer for a text-to-image model. Expand the user's idea into one paragraph of 60 to 120 words the model can follow: the subject and what it does first, then its materials, surfaces or clothing, pose and framing, lighting, the setting, and finally the style, palette and mood.\n\
@@ -124,6 +138,9 @@ Reply with the paragraph only: no title, no bullets, no quotes around it, no mar
 pub(crate) enum EnhanceKind {
     /// A fill: the picture, the selection's place, and what to generate there.
     Fill,
+    /// A fill from a reference: the picture (its selection flattened to grey) and the reference
+    /// side by side, and what to take from the reference.
+    FillRef,
     /// An edit: the picture and an instruction about it.
     Edit,
     /// Text to image: no picture.
@@ -209,6 +226,7 @@ pub(crate) fn enhance_prompt(
         EnhanceKind::Image => ENHANCE_IMAGE_SYSTEM.to_string(),
         EnhanceKind::Edit => edit_system,
         EnhanceKind::Fill => format!("{edit_system}\n{}", ENHANCE_FILL_NOTE.replace("{place}", place.unwrap_or("selected part"))),
+        EnhanceKind::FillRef => ENHANCE_FILL_REF_SYSTEM.to_string(),
     };
     let mut params = BTreeMap::new();
     params.insert("system".to_string(), Value::String(system));
@@ -277,6 +295,10 @@ pub struct GenerativeInfo {
     /// The reference images the run had, as the `references` specs it was given
     /// (`{"layer"}`, `{"path"}`, `{"job", "index"}`); Generate Similar resolves them again.
     pub references: Vec<Value>,
+    /// Fills: how many pixels the selection was widened by before the request (`grow`).
+    pub grow: u32,
+    /// Fills: the selection was flattened to grey in the request image (`erase`).
+    pub erase: bool,
 }
 
 /// Remember `info` on `layer` (replacing an earlier one).
@@ -662,8 +684,14 @@ struct FillPlan {
     /// Rewrite the prompt with the vision-language model first (`enhance`, default from the
     /// `enhancePrompts` preference).
     enhance: bool,
-    /// Reference images (`references`, edits only).
+    /// Reference images (`references`: edits, and fills from a reference).
     refs: crate::generate_refs::Refs,
+    /// Widen the selection by this many pixels before the request (`grow`), so a bulkier
+    /// replacement has room and the old object's edge is inside the repainted area.
+    grow: u32,
+    /// Flatten the selection to mid-grey in the request image (`erase`), so the model paints a
+    /// hole instead of copying what was there.
+    erase: bool,
 }
 
 /// How a generated layer's mask ends: softly, across the band the model re-rendered around the
@@ -756,6 +784,12 @@ fn template_or(pref: &str, fallback: &str) -> String {
     if t.is_empty() { fallback.to_string() } else { t.to_string() }
 }
 
+/// The template a fill with reference images runs when none is named: the 40-step base under
+/// Quality `best`, the 8-step tier otherwise (both take the same model files as the plain fill).
+pub fn fill_ref_template(quality: &str) -> &'static str {
+    if quality == "best" { BEST_FILL_REF_TEMPLATE } else { DEFAULT_FILL_REF_TEMPLATE }
+}
+
 fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
     let (default_template, default_model) = {
         let integrations = &s.prefs().integrations;
@@ -764,13 +798,24 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
     // `auto` (the preference's default) is resolved inside the job from the server's model
     // list; the plan validates the base template it falls back to.
     let requested = opt_str(FILL, p, "template", 200)?.map(str::to_string).unwrap_or(default_template);
-    let auto = requested == AUTO_TEMPLATE;
+    let mut auto = requested == AUTO_TEMPLATE;
     let mut q = p.clone();
     if auto && let Some(o) = q.as_object_mut() {
         o.remove("template");
     }
-    let Common { template, prompt, negative, seed, steps, guidance, models, name } =
-        plan_common(s, FILL, &q, if auto { DEFAULT_FILL_TEMPLATE } else { &requested }, Task::Fill, &default_model)?;
+    // References with no template named (or `auto`): the reference template, whose grey hole
+    // and wrapper are made for a swap; a named template is held to its own limit below.
+    let ref_specs = crate::generate_refs::specs(FILL, p)?;
+    let named = p.get("template").is_some_and(|v| !v.is_null()) && !auto;
+    let mut base = if auto { DEFAULT_FILL_TEMPLATE.to_string() } else { requested.clone() };
+    if !named && !ref_specs.is_empty() && template::find(&base).is_ok_and(|t| t.meta.references.max == 0) {
+        base = fill_ref_template(quality(s)).to_string();
+        auto = false;
+        if let Some(o) = q.as_object_mut() {
+            o.remove("template");
+        }
+    }
+    let Common { template, prompt, negative, seed, steps, guidance, models, name } = plan_common(s, FILL, &q, &base, Task::Fill, &default_model)?;
     let margin = opt_num(FILL, p, "margin", 0.0, 1.0)?.unwrap_or(0.25);
     let edge = parse_edge(FILL, p)?;
     let variations = match opt_num(FILL, p, "variations", 1.0, f64::from(MAX_VARIATIONS))? {
@@ -805,9 +850,16 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
     }
     let name = name.unwrap_or_else(|| format!("Generative Fill: {}", short(&prompt)));
     let enhance = opt_bool(FILL, p, "enhance", s.prefs().integrations.enhance_prompts)?;
-    // A fill's model sees the picture around the selection; it takes no references.
+    // A plain fill's model sees the picture around the selection and takes no references; a
+    // fill-from-reference template takes one or two.
     let refs = crate::generate_refs::plan(s, FILL, p, &template)?;
-    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs })
+    let grow = match opt_num(FILL, p, "grow", 0.0, f64::from(MAX_GROW))? {
+        None => 0,
+        Some(x) if x.fract() == 0.0 => x as u32,
+        Some(_) => return Err(bad(FILL, format!("`grow` must be a whole number of pixels, 0 to {MAX_GROW}"))),
+    };
+    let erase = opt_bool(FILL, p, "erase", template.meta.erase_selection)?;
+    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase })
 }
 
 /// The first of `candidates` whose model files the server lists (one `/models/<folder>` call per
@@ -1462,8 +1514,12 @@ struct FillJob {
     edge: Edge,
     /// Rewrite the prompt with the vision-language model first (`enhance`).
     enhance: bool,
-    /// Reference images (edits).
+    /// Reference images (edits, fills from a reference).
     refs: crate::generate_refs::Refs,
+    /// Widen the selection by this many pixels first (fills).
+    grow: u32,
+    /// Flatten the selection to grey in the request image (fills).
+    erase: bool,
 }
 
 /// The layers a job made: (id, seed, run id, ms, timings), the primary one first.
@@ -1519,7 +1575,17 @@ fn fill_region(
         edge,
         enhance,
         refs,
+        grow,
+        erase,
     } = job;
+    // `grow`: the selection widened, so the repainted area (and the result's mask) takes in a
+    // band of the old object's surroundings; a bulkier replacement then has room.
+    let coverage = if grow > 0 && outpaint.is_none() { dilate(&coverage, w as usize, h as usize, grow as usize) } else { coverage };
+    // `erase`: the selection flattened to mid-grey in what the model sees, so it paints a hole
+    // rather than copying what was there (a swap from a reference wants this).
+    if erase && outpaint.is_none() {
+        erase_covered(&mut image, &coverage);
+    }
     let mask = Gray8::new(w, h, coverage.iter().map(|c| (c * 255.0 + 0.5) as u8).collect()).map_err(gen_err)?;
     // The model gets a softened mask so it re-renders a band around the area and blends it (much
     // wider for an expand, whose seam runs along a whole picture edge and whose sky or water tone
@@ -1549,10 +1615,21 @@ fn fill_region(
     let typed = prompt.clone();
     let prompt = if enhance && outpaint.is_none() {
         ctx.progress(0.02, "Improving the prompt");
-        let kind = if command == EDIT { EnhanceKind::Edit } else { EnhanceKind::Fill };
+        // A fill from a reference shows the rewriter the picture (its hole grey) and the first
+        // reference side by side, so it can name what to take as the reference shows it.
+        let fill_ref = command == FILL && !refs.images.is_empty();
+        let kind = if command == EDIT {
+            EnhanceKind::Edit
+        } else if fill_ref {
+            EnhanceKind::FillRef
+        } else {
+            EnhanceKind::Fill
+        };
+        let seen = if fill_ref { refs.images.first().and_then(|r| side_by_side(&image, r).ok()) } else { None };
+        let seen = seen.as_ref().unwrap_or(&image);
         // A rewriter that fails (no encoder on the server, nothing usable said) leaves the
         // prompt as typed; the run itself reports a server that is down.
-        match enhance_prompt(backend.as_ref(), kind, &prompt, Some(&image), place.as_deref(), seed, &JobProgress::span(ctx, 0.02, 0.05)) {
+        match enhance_prompt(backend.as_ref(), kind, &prompt, Some(seen), place.as_deref(), seed, &JobProgress::span(ctx, 0.02, 0.05)) {
             Ok(Some(p)) => p,
             Ok(None) | Err(_) => prompt,
         }
@@ -1636,6 +1713,8 @@ fn fill_region(
                 name: name.clone(),
                 enhanced: enhanced.clone(),
                 references: refs.specs.clone(),
+                grow,
+                erase,
                 ..GenerativeInfo::default()
             },
         );
@@ -1664,6 +1743,60 @@ fn made_json(made: &Made, w: u32, h: u32, (rw, rh): (u32, u32), template_id: &st
 
 /// What empty canvas is painted with when there is no picture to continue: mid-grey.
 const PREFILL: [u8; 4] = [128, 128, 128, 255];
+
+/// Widen a coverage mask (one value per pixel, row-major) by `r` pixels: the maximum over a
+/// square window, in two separable passes, so a selection's edge moves outward by `r`.
+pub(crate) fn dilate(coverage: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
+    if r == 0 || w == 0 || h == 0 || coverage.len() != w * h {
+        return coverage.to_vec();
+    }
+    let pass = |src: &[f32], horizontal: bool| -> Vec<f32> {
+        let mut out = vec![0.0f32; src.len()];
+        let (len, lines) = if horizontal { (w, h) } else { (h, w) };
+        let at = |line: usize, i: usize| if horizontal { line * w + i } else { i * w + line };
+        for line in 0..lines {
+            for i in 0..len {
+                let lo = i.saturating_sub(r);
+                let hi = (i + r).min(len - 1);
+                let mut m = 0.0f32;
+                for j in lo..=hi {
+                    m = m.max(src.get(at(line, j)).copied().unwrap_or(0.0));
+                }
+                if let Some(o) = out.get_mut(at(line, i)) {
+                    *o = m;
+                }
+            }
+        }
+        out
+    };
+    pass(&pass(coverage, true), false)
+}
+
+/// Paint the pixels `coverage` selects (half or more) mid-grey: the request image shows a hole
+/// where the model is to paint, not the object it is to replace.
+fn erase_covered(img: &mut Rgba8, coverage: &[f32]) {
+    for (px, c) in img.data.chunks_exact_mut(4).zip(coverage) {
+        if *c >= 0.5 {
+            px.copy_from_slice(&PREFILL);
+        }
+    }
+}
+
+/// `left` and `right` side by side, `right` scaled to `left`'s height (aspect kept, at most as
+/// wide as `left`): what the rewriter of a fill from a reference looks at.
+pub(crate) fn side_by_side(left: &Rgba8, right: &Rgba8) -> Result<Rgba8> {
+    let h = left.height.max(1);
+    let rw = ((f64::from(right.width) * f64::from(h) / f64::from(right.height.max(1))).round() as u32).clamp(1, left.width.max(1));
+    let right = if (right.width, right.height) == (rw, h) { right.clone() } else { resize_rgba8(right, rw, h)? };
+    let w = left.width + rw;
+    let mut data = Vec::with_capacity(w as usize * h as usize * 4);
+    let (ls, rs) = (left.width as usize * 4, rw as usize * 4);
+    for y in 0..h as usize {
+        data.extend_from_slice(left.data.get(y * ls..(y + 1) * ls).unwrap_or(&[]));
+        data.extend_from_slice(right.data.get(y * rs..(y + 1) * rs).unwrap_or(&[]));
+    }
+    Rgba8::new(w, h, data).map_err(gen_err)
+}
 
 /// Paint the pixels outside `inner` (in image coordinates) with the nearest pixel of `inner`, so
 /// the canvas the VAE encodes continues the picture's edge colours instead of meeting a grey
@@ -1706,7 +1839,7 @@ fn prefill_outside(img: &mut Rgba8, inner: Rect) {
 fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_fill(s, p)?;
     let (backend, server) = backend_for(s, &plan.template.meta.id)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase } = plan;
     let label = name.clone();
     let job = FillJob {
         backend,
@@ -1726,6 +1859,8 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
         edge,
         enhance,
         refs,
+        grow,
+        erase,
     };
     crate::jobs::edit_job(
         s,
@@ -1862,7 +1997,24 @@ fn plan_expand(s: &Session, p: &Value) -> Result<(FillPlan, Pads, (u32, u32))> {
     // An expand keeps its wording: its prompt continues the scene, the rewriter's rules
     // (name the subject, say what stays) are about a picture's content.
     Ok((
-        FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance: false, refs: Default::default() },
+        FillPlan {
+            template,
+            prompt,
+            negative,
+            seed,
+            steps,
+            guidance,
+            name,
+            models,
+            rect,
+            variations,
+            auto,
+            edge,
+            enhance: false,
+            refs: Default::default(),
+            grow: 0,
+            erase: false,
+        },
         pads,
         (nw, nh),
     ))
@@ -1877,7 +2029,7 @@ fn expand_enabled(s: &Session) -> std::result::Result<(), String> {
 fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
     let (plan, pads, (nw, nh)) = plan_expand(s, p)?;
     let (backend, server) = backend_for(s, &plan.template.meta.id)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase } = plan;
     let label = name.clone();
     let job = FillJob {
         backend,
@@ -1897,6 +2049,8 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
         edge,
         enhance,
         refs,
+        grow,
+        erase,
     };
     crate::jobs::edit_job(
         s,
@@ -2071,13 +2225,13 @@ fn plan_edit(s: &Session, p: &Value) -> Result<FillPlan> {
     // References (image 2, image 3 …): checked against the planned template; `auto` only
     // picks among templates with the same slots.
     let refs = crate::generate_refs::plan(s, EDIT, p, &template)?;
-    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs })
+    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow: 0, erase: false })
 }
 
 fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_edit(s, p)?;
     let (backend, server) = backend_for(s, &plan.template.meta.id)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase } = plan;
     let label = name.clone();
     // `wholePicture` (Generative Angles): the selection does not confine the result.
     let whole = opt_bool(EDIT, p, "wholePicture", false)?;
@@ -2099,6 +2253,8 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
         edge,
         enhance,
         refs,
+        grow,
+        erase,
     };
     crate::jobs::edit_job(
         s,
@@ -2749,6 +2905,8 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
         // A layer whose prompt was rewritten is made again from the typed one, rewritten anew.
         enhance: !info.enhanced.is_empty(),
         refs,
+        grow: info.grow,
+        erase: info.erase,
     };
     let label = format!("Generate Similar: {}", short(&info.prompt));
     crate::jobs::edit_job(
@@ -2839,7 +2997,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Fill…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; variations 1..4 = results with consecutive seeds, each a layer, only the first visible; areas over 0.75 megapixels are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"grow":0..512=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"erase":{bool?=the template's},"references":{[{"layer":id} | {"path":"…"} | {"job":id,"index":0}]?},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; grow = widen the selection by that many pixels first, so a bulkier replacement has room; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; references = up to two reference images: with no template named the run switches to the fill-from-reference template, which flattens the selection to grey in the request so the model paints what the references show there (erase; `erase: true` does the same on any fill, `false` keeps the pixels); variations 1..4 = results with consecutive seeds, each a layer, only the first visible; areas over 0.75 megapixels are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: fill_enabled,
             run: run_fill,
             journal: true,

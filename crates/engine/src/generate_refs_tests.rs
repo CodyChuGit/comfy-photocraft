@@ -74,7 +74,11 @@ fn reference_counts_and_specs_are_checked_before_anything_runs() {
     let three = json!([{"layer": hat.0}, {"layer": base.0}, {"layer": hat.0}]);
     let e = s.execute(EDIT, json!({"prompt": "x", "references": three})).unwrap_err();
     assert!(matches!(&e, EngineError::BadParams { msg, .. } if msg.contains("at most 2")), "{e}");
-    let e = s.execute(FILL, json!({"prompt": "x", "references": [{"layer": hat.0}]})).unwrap_err();
+    // A fill with references switches to the reference template, which takes two; a plain
+    // fill template named outright takes none.
+    let e = s.execute(FILL, json!({"prompt": "x", "references": three})).unwrap_err();
+    assert!(matches!(&e, EngineError::BadParams { msg, .. } if msg.contains("at most 2")), "{e}");
+    let e = s.execute(FILL, json!({"prompt": "x", "template": "qwen-edit-2511/fill", "references": [{"layer": hat.0}]})).unwrap_err();
     assert!(e.to_string().contains("takes no reference images"), "{e}");
     for bad in [json!("x"), json!([5]), json!([{}]), json!([{"layer": 1, "path": "a"}]), json!([{"job": "x"}]), json!([{"path": ""}])] {
         assert!(matches!(s.execute(EDIT, json!({"prompt": "x", "references": bad.clone()})), Err(EngineError::BadParams { .. })), "{bad}");
@@ -88,6 +92,74 @@ fn reference_counts_and_specs_are_checked_before_anything_runs() {
     let e = s.execute(IMAGE, json!({"prompt": "x", "template": "qwen-edit-2511/image-ref"})).unwrap_err();
     assert!(e.to_string().contains("at least 1"), "{e}");
     assert!(fake.state().prompts.is_empty(), "nothing queued");
+}
+
+/// A fill given a reference image (no template named) runs the fill-from-reference template:
+/// the selection goes out flattened to grey, the reference on image 2, the prompt names the hole;
+/// the layer remembers it all and Generate Similar sends the reference again.
+#[test]
+fn a_fill_with_a_reference_erases_the_selection_and_runs_the_reference_template() {
+    let fake = FakeComfy::start().unwrap();
+    let (mut s, _, hat) = session(&fake.url);
+    let want = crate::generate_cmds::fill_ref_template(crate::generate_cmds::quality(&s));
+    let r = s.execute(FILL, json!({"prompt": "the red hat", "seed": 3, "edge": "hard", "references": [{"layer": hat.0}]})).unwrap();
+    assert_eq!(r["template"], want);
+    let up = uploads(&fake);
+    assert_eq!(up.len(), 3, "the picture, its mask and the reference: {up:?}");
+    assert_eq!(up[2].1, (20, 12), "the hat layer over its content bounds");
+    {
+        let st = fake.state();
+        let g = &st.prompts[0].1;
+        assert_eq!(g["20"]["inputs"]["image"], st.uploads[2].0, "the reference on image 2");
+        assert_eq!(g["6"]["inputs"]["image2"], json!(["20", 0]));
+        assert!(g.get("21").is_none(), "the third slot pruned");
+        let prompt = g["6"]["inputs"]["prompt"].as_str().unwrap_or_default();
+        assert!(prompt.contains("flat grey area") && prompt.contains("the red hat"), "{prompt}");
+        // Selection 20×16 at (10, 8) with its margin: a 32×32 request from (5, 3), sent at
+        // 512²; document (x, y) is request ((x − 5) × 16, (y − 3) × 16).
+        let sent = photocraft_genai::png::decode_rgba8(&st.uploads[0].1).unwrap();
+        assert_eq!(sent.get(200, 200), Some([128, 128, 128, 255]), "inside the selection: flat grey");
+        assert_ne!(sent.get(8, 8).map(|p| [p[0], p[1], p[2]]), Some([128, 128, 128]), "the margin keeps its pixels");
+    }
+    let layer = LayerId(r["layer"].as_u64().unwrap());
+    let info = generative_info(s.active().unwrap().doc.layer(layer).unwrap()).unwrap();
+    assert_eq!((info.template.as_str(), info.erase, info.grow), (want, true, 0));
+    assert_eq!(info.references, vec![json!({"layer": hat.0})]);
+    s.execute(SIMILAR, json!({"layer": layer.0, "seed": 4})).unwrap();
+    let st = fake.state();
+    assert_eq!(st.prompts.len(), 2);
+    assert!(st.prompts[1].1.get("20").is_some(), "the reference again");
+    let sent = photocraft_genai::png::decode_rgba8(&st.uploads[3].1).unwrap();
+    assert_eq!(sent.get(200, 200), Some([128, 128, 128, 255]), "erased again");
+}
+
+/// `grow` widens the selection before the request (and the result's mask with it); `erase`
+/// flattens it on any fill template, and off keeps the pixels on the reference template.
+#[test]
+fn grow_widens_the_selection_and_erase_is_a_choice() {
+    let fake = FakeComfy::start().unwrap();
+    let (mut s, _, hat) = session(&fake.url);
+    let r = s.execute(FILL, json!({"prompt": "x", "seed": 1, "edge": "hard", "grow": 4, "erase": true})).unwrap();
+    assert_eq!(r["template"], crate::generate_cmds::likely_auto(FILL, crate::generate_cmds::quality(&s)), "a plain fill still");
+    let layer = LayerId(r["layer"].as_u64().unwrap());
+    let d = s.active().unwrap();
+    let mask = &d.doc.layer(layer).unwrap().mask.as_ref().unwrap().surface;
+    assert_eq!(mask.read_region(photocraft_geom::Rect::new(7, 8, 8, 9)), vec![1.0], "3 px left of the selection: grown into");
+    assert_eq!(mask.read_region(photocraft_geom::Rect::new(10, 2, 11, 3)), vec![0.0], "6 px above: not");
+    let info = generative_info(d.doc.layer(layer).unwrap()).unwrap();
+    assert_eq!((info.grow, info.erase), (4, true));
+    {
+        let st = fake.state();
+        let sent = photocraft_genai::png::decode_rgba8(&st.uploads[0].1).unwrap();
+        assert_eq!(sent.get(72, 120), Some([128, 128, 128, 255]), "document (9, 10), left of the selection: grown and erased");
+    }
+    // The reference template with `erase: false`: the pixels stay.
+    s.execute(FILL, json!({"prompt": "x", "seed": 1, "erase": false, "references": [{"layer": hat.0}]})).unwrap();
+    let st = fake.state();
+    let sent = photocraft_genai::png::decode_rgba8(&st.uploads[3].1).unwrap();
+    assert_ne!(sent.get(200, 200).map(|p| [p[0], p[1], p[2]]), Some([128, 128, 128]));
+    assert!(matches!(s.execute(FILL, json!({"prompt": "x", "grow": 1.5})), Err(EngineError::BadParams { .. })));
+    assert!(matches!(s.execute(FILL, json!({"prompt": "x", "grow": 9999})), Err(EngineError::BadParams { .. })));
 }
 
 #[test]

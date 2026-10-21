@@ -55,6 +55,23 @@ below, re-evaluated when Krea ships an official editor.
 
 Sources: [conradlocke/krea2-identity-edit](https://huggingface.co/conradlocke/krea2-identity-edit) · [community demo](https://krea2edit.github.io/) · [Civitai Krea 2 ecosystem](https://civitai.com/ecosystems/krea2).
 
+### Krea 2 AnyPaint and Registered Outpaint (community LoRAs, inpainting and outpainting)
+
+`yijunwang2/krea2-anypaint` (`krea2_anypaint_rank32.safetensors`, 229 MB, rank 32, trained
+against Krea 2 Raw, run on Turbo) gives Krea 2 arbitrary-mask inpainting, outpainting and
+combined edits in one pass; `krea2_outpaint_rank32.safetensors` ("Registered Outpaint") extends
+one axis per pass. Both need a **registered reference**: the masked canvas as one ≤ 384-px
+reference whose tokens are pinned onto the canvas grid in the attention layers (ComfyUI: the
+AusBoss `Krea 2 Encode` + `Krea 2 Outpaint Model Patch` nodes, MIT; the model card's own
+`pipeline.py`), which stock nodes do not do. Recommended: 8 steps, guidance 0, LoRA 1.0, VLM
+reference on, KV cache on, a 32-px redraw band. **Licence: Krea 2 Community License** for the
+weights (inherited), Apache-2.0 for the pipeline code. Status for us: **not installed, BYOM,
+never a default**; the recipe is in `plan-native-engine.md` §9 for the native engine, and the
+app's fill-from-reference on 2511 (Apache-2.0) covers the use case today
+(`docs/comfy/research/notes/ausboss-krea2-clothing-workflow.md`, 2026-10-21).
+
+Sources: [yijunwang2/krea2-anypaint](https://huggingface.co/yijunwang2/krea2-anypaint) · [ausboss/ComfyUI-AusBoss](https://github.com/ausboss/ComfyUI-AusBoss) (node help under `js/docs/`).
+
 ### Qwen-Image-2.1 (generation + editing, RGBA output)
 
 | | |
@@ -154,6 +171,7 @@ Sources: [FLUX.2 / Z-Image on AWS (hands-on)](https://builder.aws.com/content/36
 | Feature (command) | Default (permissive build) | Best quality (user opts in) | Workflow shape |
 |---|---|---|---|
 | Generative Fill (`generate.fill`) | Qwen-Image-Edit-2511, `auto` = the Lightning 8-step tier when its LoRA is installed, else 40 steps | Qwen-Image-2.1 | composite crop (selection bounds + context margin, sent at ≤ 1 MP) + mask → edit model with inpaint conditioning → resampled back (Lanczos) under the selection's full-resolution mask |
+| Generative Fill from a reference (`generate.fill` + `references[]`, 2026-10-21) | Qwen-Image-Edit-2511 `fill-ref-lightning-8` (`fill-ref` under Quality best): one or two references on image 2/3 | — | the same crop with the selection flattened to grey (`erase`), optionally widened (`grow`); the prompt names the hole and "exactly as the references show it"; the enhancer sees the picture and the reference side by side |
 | Generative Expand (`generate.expand`) | Qwen-Image-Edit-2511 | Qwen-Image-2.1 | pad composite to the new canvas, mask = padding (feathered inward) → same as Fill |
 | Generate Image (`generate.image`) | Z-Image Turbo | Krea 2 Turbo | prompt (+ optional reference / style LoRA) → new layer or new document |
 | Instruction edit (`generate.edit`) | **shipped 2026-10-09**: Qwen-Image-Edit-2511, `auto` = the Lightning 8-step edit tier when its LoRA is installed, else 40 steps (`qwen-edit-2511/edit-lightning-8`, `edit`) | Qwen-Image-2.1 (multi-ref), later | the composite + instruction → the official 2511 edit graph with no noise mask → a new layer, masked to the selection when there is one |

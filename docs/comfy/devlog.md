@@ -4,6 +4,49 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-21 (later): Generative Fill from a reference, learnt from AusBoss's Krea 2 clothing workflow
+
+- **The study** (`docs/comfy/research/notes/ausboss-krea2-clothing-workflow.md`): the owner's
+  `krea2ClothingFrom_v12.json` read node by node with the AusBoss help pages and the AnyPaint
+  model card. What makes it work: SAM 3.1 picks the clothes; the mask is grown, hole-filled
+  and softened with every pixel number scaled by picture size; the crop takes the mask's box
+  ×2 plus context to 1 MP; **the picked area is flattened to mid-grey** so the model paints a
+  hole instead of copying the old garment; the reference is **stitched beside the hole** and
+  the noise mask covers the hole's half only (an in-context pair for a text-to-image model);
+  **the Krea 2 encoder itself writes the prompt** from the pair ("describe the finished
+  picture… the clothing exactly as the right photo shows it… never call anything gray"); the
+  AnyPaint LoRA plus a model patch register a ≤ 384-px reference over the canvas with its KV
+  computed once per run; stitch back with a tone match. The LoRAs are Krea 2 Community
+  License and the nodes are not installed: nothing of it was run.
+- **Taken into PhotoshopEX the same day, on the Apache-2.0 2511 route:**
+  `qwen-edit-2511/fill-ref-lightning-8` and `fill-ref` (one or two references on `image2`/
+  `image3` of the fill graph; `eraseSelection: true`; a wrapper that names the grey hole and
+  says "exactly as the references show it"); `generate.fill` takes `references[]` (Auto
+  switches to the reference template; Quality `best` → the 40-step one), `grow` (px, `dilate`
+  of the coverage; the result's mask grows with it) and `erase` (the covered pixels of the
+  request flattened to grey, `erase_covered`; default from the template); the enhancer for a
+  fill with references sees the grey-holed picture and the first reference **side by side**
+  (`side_by_side`, `EnhanceKind::FillRef`) and names the thing as the reference shows it; the
+  Generate panel's fill page has the reference deck, its estimate counts references, and Auto
+  names the reference template once a reference is on the deck. `GenerativeInfo` remembers
+  `grow`/`erase`, so Generate Similar repeats them. Tests: `generate_refs_tests` (the switch,
+  the grey request, the mask grown, `erase: false`, Similar with the reference; the count
+  checks), `generate_panel_tests` (the fill deck and request), the template parse. No new UI
+  strings.
+- **Live** (`benchmarks.md` §5h, `fill-ref-live.ps1`): the cardigan became the reference's
+  red cable-knit pullover on both tiers (Lightning 28 s, 40 steps 150 s), while the plain fill
+  with the same words only recoloured the cardigan and kept its buttons. The silhouette is the
+  selection's: the V neck stayed because the white top inside it was not selected (select what
+  the new piece covers, `grow` for the rest). The rewriter's phrase for "the red sweater":
+  "red cable-knit sweater, crew neck, long sleeves, ribbed cuffs and hem, loose fit, textured
+  pattern running down front and arms, worn over white top." (The first pass of the script
+  printed `generate.info`'s `enhanced` from the wrong key; fixed.)
+- **Still to take** (the note's §4): Grow / Fill Holes / Soften on the Object Selection tool and
+  a "next meaning" cycle; a stitch tone match; a hard sampling mask separate from the feathered
+  layer mask; Krea 2 inpainting natively by the AnyPaint recipe (added to
+  `plan-native-engine.md` §9; the LoRA stays BYOM); size-scaled grow and blend with UI; more
+  seeds for the measurements.
+
 ## 2026-10-21: upstream merged (PhotoCraft 0.5.0 → 0.11.1, 2411 commits)
 
 - **The merge.** `git merge --no-commit --no-ff upstream/main` at `b097800e` (storytold/photocraft,

@@ -68,16 +68,26 @@ fn the_mode_decides_the_command_and_the_deck_follows_the_template() {
     app.ui.generate.prompt = "make it night".into();
     app.ui.generate.mode = "fill".into();
     assert!(request(&app).is_err(), "Fill needs a selection");
-    assert_eq!(refs_limit(&app, "fill"), 0, "a fill takes no references: no deck");
+    assert_eq!(refs_limit(&app, "fill"), 2, "Auto: the fill-from-reference template's deck");
     app.run("select.rect", json!({"x": 4, "y": 4, "width": 20, "height": 20})).unwrap();
     assert_eq!(request(&app).unwrap().0, "generate.fill");
+    // A reference in fill mode: sent along, and the panel expects the reference template.
+    add_reference(&mut app, json!({"layer": hat}));
+    let (cmd, q) = request(&app).unwrap();
+    assert_eq!((cmd, q["references"].as_array().map(Vec::len)), ("generate.fill", Some(1)));
+    let want = photocraft_engine::generate_cmds::fill_ref_template(photocraft_engine::generate_cmds::quality(&app.session));
+    assert_eq!(effective_template(&app, "fill"), want);
+    let r = generate(&mut app).unwrap();
+    assert_eq!(r["template"], want);
+    assert_eq!(fake.state().uploads.len(), 3, "the picture, its mask and the reference");
+    app.ui.generate.references.clear();
     app.ui.generate.mode = "edit".into();
     assert_eq!(refs_limit(&app, "edit"), 2);
     add_reference(&mut app, json!({"layer": hat}));
     let (cmd, q) = request(&app).unwrap();
     assert_eq!((cmd, q["references"].as_array().map(Vec::len)), ("generate.edit", Some(1)));
     generate(&mut app).unwrap();
-    assert_eq!(fake.state().uploads.len(), 2, "the picture and the reference");
+    assert_eq!(fake.state().uploads.len(), 5, "the picture and the reference, after the fill's three");
     // The limit: a third and fourth are refused with a status message.
     add_reference(&mut app, json!({"layer": 1}));
     add_reference(&mut app, json!({"layer": 2}));

@@ -359,6 +359,30 @@ reference-driven text to image (`qwen-edit-2511/image-ref`) counts its first ref
 picture: 12.1 s measured for a 3:2 1K image from one reference, 11.3 s estimated. The 40-step
 tier's per-reference cost is scaled by its steps and CFG passes (90 s, not measured).
 
+## 5h. Generative Fill from a reference (PhotoshopEX, 2026-10-21)
+
+`docs/comfy/bench/scripts/fill-ref-live.ps1`, ComfyUI on the 5090 (`--fast fp8_matrix_mult`),
+the release CLI, one process per run (so each 2511 run below includes the model switch from
+Krea 2 or the previous tier). Two Krea 2 pictures (a woman in a light grey cardigan; a red
+cable-knit sweater on a person, 1024², 12.8 s and 6.0 s), the cardigan selected by text (SAM
+3.1 on ComfyUI), then `generate.fill` with the sweater picture as a reference, `grow: 8`,
+seed 7. The request: 928×816 (0.76 MP).
+
+| Run | Template | Run time | What came back |
+|---|---|---|---|
+| typed "the red cable-knit sweater" | `fill-ref` (40 steps, CFG 4) | 150 s | the reference's cable knit, colour and ribbing on the woman, in the cardigan's silhouette (V neck: the selection decides the cut) |
+| `enhance: true`, "the red sweater" | `fill-ref` | 150 s | the rewriter, shown the pair, wrote "red cable-knit sweater, crew neck, long sleeves, ribbed cuffs and hem, loose fit, textured pattern running down front and arms, worn over white top."; the picture differs from the typed run in 166 k pixels but reads the same |
+| plain fill, "a red cable-knit wool sweater" | `fill` (40 steps) | 88 s | **the cardigan recoloured red**, its buttons and cut kept: the model copied what it saw under the mask, the failure the grey hole prevents |
+| typed | `fill-ref-lightning-8` | 27.9 s | the same garment as the 40-step run (258 k pixels differ, mostly knit detail) |
+| `enhance: true` | `fill-ref-lightning-8` | 29.2 s | the same |
+
+Lessons: the grey hole is what makes a swap a swap; the selection's shape is the garment's
+shape (select everything the new piece will cover, `grow` for the rest; the V stayed because
+the white top inside it was not selected); the Lightning tier is the sensible default for a
+swap (28 s against 150 s, the same garment); one reference on a fill costs about what it costs
+on an edit (benchmarks §5g). Not yet judged over more seeds, and `erase: false` on the
+reference template is untested live.
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP

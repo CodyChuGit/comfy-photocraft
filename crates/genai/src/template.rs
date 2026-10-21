@@ -196,6 +196,12 @@ pub struct Meta {
     /// of it, they paint a second subject into the new area. Absent: the engine's 0.25.
     #[serde(default)]
     pub expand_margin: Option<f32>,
+    /// Fill templates: the selection is flattened to mid-grey in the request image before it
+    /// is sent, so the model sees a hole to paint rather than the old object to copy (a swap
+    /// from a reference image wants this; a fill that continues what is there does not). The
+    /// caller's `erase` overrides it.
+    #[serde(default)]
+    pub erase_selection: bool,
     #[serde(default)]
     pub notes: String,
     /// Who made the model ("Alibaba Qwen", "Krea", "Meta"), for the picker.
@@ -253,6 +259,8 @@ const BUILTIN: &[&str] = &[
     include_str!("../workflows/qwen-edit-2511-fill-lightning-8.json"),
     include_str!("../workflows/qwen-edit-2511-fill-lightning-4.json"),
     include_str!("../workflows/qwen-edit-2511-fill-guided.json"),
+    include_str!("../workflows/qwen-edit-2511-fill-ref-lightning-8.json"),
+    include_str!("../workflows/qwen-edit-2511-fill-ref.json"),
     include_str!("../workflows/qwen-edit-2511-expand-lightning-8.json"),
     include_str!("../workflows/qwen-edit-2511-expand.json"),
     include_str!("../workflows/qwen-edit-2511-edit-lightning-8.json"),

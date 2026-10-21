@@ -206,7 +206,19 @@ visible; one new document holds them all with `target: document`).
   `filters.rs:222-223`) cropped to the same rect, as 8-bit coverage; Fill feathers it outward
   (4 % of the request's longer side, 6–48 px, a band of twice that; Expand's band runs into
   the picture) so the
-  model re-renders a band around the area and blends the seam.
+  model re-renders a band around the area and blends the seam. `grow` (pixels) widens the
+  coverage first (`dilate`), so a bulkier replacement has room and the old object's edge is
+  inside the repainted area; `erase` flattens the covered pixels of the request image to
+  mid-grey (`erase_covered`), so the model paints a hole instead of copying what was there.
+  Both come from AusBoss's Krea 2 clothing workflow (2026-10-21,
+  `research/notes/ausboss-krea2-clothing-workflow.md`); the fill-from-reference templates
+  (`qwen-edit-2511/fill-ref*`, `eraseSelection: true`) erase by default, the plain fills do not.
+- **References on a fill.** `generate.fill` takes `references[]` like an edit; with no template
+  named it runs the fill-from-reference template (the plain fill templates take none), whose
+  wrapper names the grey hole and says to take the thing "exactly as the references show it".
+  When `enhance` is on, the rewriter sees the grey-holed request and the first reference side
+  by side (`side_by_side`, `EnhanceKind::FillRef`) and names the thing as the reference shows
+  it; the template's wrapper then says where it goes and what stays.
 - **Result.** Decoded PNGs become a `Surface` positioned at `rect.x0, rect.y0` on a new raster layer
   named after the prompt ("Generative Fill: a red bicycle"), with a **layer mask**. With the
   default `edge: soft` the mask is that same feathered band, its ramp dithered with per-pixel
