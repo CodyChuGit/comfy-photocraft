@@ -416,6 +416,38 @@ reference says what goes there; AnyPaint's model card says the same of Krea 2 on
 saturated pictures). Naming the object, which would cost a VLM pass, buys nothing here. One
 picture, one seed: judge on more before trusting the margins.
 
+**The stroke itself** (later the same day, `spot-generative-live.ps1`: the strokes through
+`paint.spotHealing {type: generative}`, so what the app sends is what is measured; the boat is
+145×37 at 308,649):
+
+| Stroke | First version (hole = the stroke) | Now (object whole, grown 45, hole all-or-nothing) |
+|---|---|---|
+| S1: hard brush 56, along the whole boat | boat gone, a dark smudge of its reflection left under the hull | clean |
+| S2: soft brush (hardness 0.3), the same | the smudge | clean |
+| S3: hard brush 36, the middle of the boat only | **the boat redrawn, ribbed** (the user's report) | clean, the boat gone whole |
+
+What each step was worth, measured on the way (`caf-prefill-live.ps1`, since dropped;
+`caf-shape-live.ps1`; `caf-grow-live.ps1`; seeds 7 and 8, Lightning):
+
+| Variant | Result |
+|---|---|
+| the hole pre-filled classically (PatchMatch), REMOVE_PROMPT or a "make it seamless" wording | **worse**: the model keeps the patch fill's copied rocks as a smear; a small hole on the bow comes back as a rock-coloured bow. 2511 treats what is under the mask as truth, so a pre-fill must be right or absent |
+| the detector's silhouette of the boat (`select.byPoint` on the stroke's spots) grown 15 | the boat stays, both seeds |
+| its bounding box grown 15 | the boat stays, both seeds: not the shape |
+| the matrix's 200×120 rectangle (35–50 px past the boat) | gone, both seeds |
+| the silhouette grown 30 | gone at one seed of two |
+| the silhouette grown 45 or 60 | gone, both seeds |
+| a soft brush's partial coverage in the noise mask | the boat stays: partial mask values keep that much of the rim |
+
+So a removal (1) asks SAM 3.1 for the object under the stroke's spots (one point prompt, as
+the Quick Selection tool) and takes it whole when the stroke covers at least a quarter of it
+and it is under 40 % of the canvas, (2) makes the hole all-or-nothing wherever the brush
+touched, (3) grows it by 30 % of its larger side (32 to 192 px), (4) runs the fill with the
+pixels kept. The detector adds 0.7 s warm and about 4 s on the first ask (model load); a
+whole stroke is 20–22 s wall on the Lightning tier with the server switching between the two
+models. Content-Aware Fill's generative switch takes the same growth (the user's selection
+is usually tight) but never asks the detector.
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP
