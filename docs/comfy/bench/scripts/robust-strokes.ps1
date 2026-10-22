@@ -11,12 +11,19 @@
 # -Prefix st -Objects st-objects.json); the image is <Prefix>-<tag>.<any extension>.
 # -Quality best runs the 40-step tier; -Suffix names the outputs apart (<Prefix>-<tag>-half<Suffix>.png);
 # -Kinds half,whole picks the strokes.
-param([string]$Tags = "", [string]$Dir = "C:\Users\5090\ComfyUI\photocraft-tests\bench", [string]$Prefix = "rb", [string]$Objects = "rb-objects.json", [string]$Quality = "balanced", [string]$Suffix = "", [string]$Kinds = "half,whole")
+# -Extra adds fields to every stroke's params (e.g. ',\"prefill\":true'); -Template names the fill
+# template (research-only ones allowed for the measurement).
+param([string]$Tags = "", [string]$Dir = "C:\Users\5090\ComfyUI\photocraft-tests\bench", [string]$Prefix = "rb", [string]$Objects = "rb-objects.json", [string]$Quality = "balanced", [string]$Suffix = "", [string]$Kinds = "half,whole", [string]$Extra = "", [string]$Template = "")
 Set-Location "C:\Users\5090\Documents\PhotoshopEX"
 $cli = (Resolve-Path "target\release\photocraft-cli.exe").Path
 $out = $Dir
-$env:CM_PREFS = '{\"values\":{\"integrations.engine\":\"comfy\",\"integrations.enhancePrompts\":false,\"integrations.quality\":\"' + $Quality + '\"}}'
-$kinds = @($Kinds -split ',' | Where-Object { $_ -ne "" })
+$tpl = if ($Template -eq "") { "" } else { ',\"integrations.defaultFillTemplate\":\"' + $Template + '\",\"integrations.allowResearchModels\":true' }
+# -Extra is key=value pairs separated by semicolons ("prefill=true;grow=20"): quotes do not
+# survive the outer shell's argument passing, so they are added here.
+$Extra = (($Extra -split ';' | Where-Object { $_ -match '^\s*([A-Za-z]\w*)\s*=\s*(.+?)\s*$' } | ForEach-Object { $k = $Matches[1]; $v = $Matches[2]; if ($v -match '^(true|false|-?\d+(\.\d+)?)$') { ',\"' + $k + '\":' + $v } else { ',\"' + $k + '\":\"' + $v + '\"' } }) -join '')
+$env:CM_PREFS = '{\"values\":{\"integrations.engine\":\"comfy\",\"integrations.enhancePrompts\":false,\"integrations.quality\":\"' + $Quality + '\"' + $tpl + '}}'
+# (not `$kinds`: that is the [string] parameter, case ignored, and would turn the list into "half whole")
+$kindList = @($Kinds -split ',' | Where-Object { $_ -ne "" })
 # (not `$objects`: PowerShell variable names ignore case, and the [string] parameter would
 # turn the parsed set back into a string)
 $set = Get-Content (Join-Path $out $Objects) -Raw | ConvertFrom-Json
@@ -44,8 +51,8 @@ foreach ($p in $set.PSObject.Properties) {
     # (parenthesised sums: the comma binds tighter than + in PowerShell)
     if ($w -ge $h) { $half = @(@(($x + [int](0.05 * $w)), $cy), @(($x + [int](0.5 * $w)), $cy)) }
     else { $half = @(@($cx, ($y + [int](0.05 * $h))), @($cx, ($y + [int](0.5 * $h)))) }
-    if ($kinds -contains "half") { Tool $tag "half" "paint.spotHealing" ('{\"type\":\"generative\",\"size\":' + $s + ',\"hardness\":1,\"points\":' + (Pts $half) + '}') }
-    if ($kinds -notcontains "whole") { continue }
+    if ($kindList -contains "half") { Tool $tag "half" "paint.spotHealing" ('{\"type\":\"generative\",\"size\":' + $s + ',\"hardness\":1' + $Extra + ',\"points\":' + (Pts $half) + '}') }
+    if ($kindList -notcontains "whole") { continue }
     # whole: a serpentine over the box, rows a brush apart
     $sw2 = [Math]::Round([Math]::Min([Math]::Max([Math]::Min($w, $h) / 2, 16), 80))
     $rows = New-Object System.Collections.ArrayList; $yy = $y + [int]($sw2 / 2); $i = 0
@@ -56,5 +63,5 @@ foreach ($p in $set.PSObject.Properties) {
         $yy += [int](0.8 * $sw2); $i++
     }
     if ($rows.Count -lt 2) { [void]$rows.Add("[$x,$cy]"); [void]$rows.Add("[$($x + $w),$cy]") }
-    Tool $tag "whole" "paint.remove" ('{\"generative\":true,\"size\":' + $sw2 + ',\"points\":[' + ($rows -join ",") + ']}')
+    Tool $tag "whole" "paint.remove" ('{\"generative\":true,\"size\":' + $sw2 + $Extra + ',\"points\":[' + ($rows -join ",") + ']}')
 }

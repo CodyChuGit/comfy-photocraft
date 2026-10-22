@@ -245,9 +245,13 @@ visible; one new document holds them all with `target: document`).
   for the glasses). A removal's request is at least 384 px a side, so a small dab still shows
   the model real context; the result's tone is matched to the picture at the hole's edge; and
   a removal runs two seeds, the vision-language model judging the two side by side (the edge's
-  colour and texture match the fallback), the other kept as a hidden variation. A classical
-  pre-fill under the model made things worse (the model keeps the copied rocks) and was
-  dropped. The fourteen-scene robustness set and its rounds are in `benchmarks.md` §5i.
+  colour and texture match the fallback), the other kept as a hidden variation. The hole is
+  smoothed over in the picture the model sees (a Poisson membrane from its edge, `prefill`):
+  an edit model copies what its reference shows, so a hole with the object in it is redrawn, a
+  flat grey one painted back as a panel and a PatchMatch pre-fill's copied blobs kept (all
+  measured), while a smooth continuation is nothing to copy; on real photographs it took the
+  removals from 27 to 35 of 48. The fourteen-scene generated set, the twenty-six-scene stock
+  set and their rounds are in `benchmarks.md` §5i.
 - **References on a fill.** `generate.fill` takes `references[]` like an edit; with no template
   named it runs the fill-from-reference template (the plain fill templates take none), whose
   wrapper names the grey hole and says to take the thing "exactly as the references show it".

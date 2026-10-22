@@ -1075,6 +1075,7 @@ pub(crate) fn generative_remove(
     enhance: bool,
     variations: u32,
     seed: Option<u64>,
+    prefill: bool,
 ) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let canvas = d.doc.bounds();
@@ -1102,13 +1103,17 @@ pub(crate) fn generative_remove(
     };
     let auto = default_template == AUTO_TEMPLATE;
     let base = if auto { DEFAULT_FILL_TEMPLATE.to_string() } else { default_template };
+    // An edit template as the fill template: the removal runs as a whole-crop instruction
+    // ("Remove the glasses") with no noise mask, which is what an edit model was trained for,
+    // and the layer mask confines the visible change to the hole.
+    let as_edit = template::find(&base).map(|t| t.meta.task == Task::Edit).unwrap_or(false);
     let Common { template, prompt, negative, seed, steps, guidance, models, .. } =
-        plan_common(s, FILL, &json!({"prompt": REMOVE_PROMPT, "seed": seed}), &base, Task::Fill, &default_model)?;
+        plan_common(s, FILL, &json!({"prompt": REMOVE_PROMPT, "seed": seed}), &base, if as_edit { Task::Edit } else { Task::Fill }, &default_model)?;
     let (backend, server) = backend_for(s, &template.meta.id)?;
     let job = FillJob {
         backend,
         server,
-        command: FILL,
+        command: if as_edit { EDIT } else { FILL },
         template_id: template.meta.id.clone(),
         auto,
         auto_order: auto_order(FILL, quality(s)),
@@ -1127,6 +1132,7 @@ pub(crate) fn generative_remove(
         erase,
         rewritten: None,
         removal: true,
+        prefill,
     };
     crate::jobs::edit_job(
         s,
@@ -1935,6 +1941,12 @@ struct FillJob {
     /// ([`edge_mismatch`]; wood over a wrist, a wall over eyes, blue on a grey sky all lose
     /// to a seed that continued the edge). Measured 2026-10-21.
     removal: bool,
+    /// Smooth the hole over in the picture the model sees ([`smooth_covered`]: a membrane
+    /// from its edge, no structure), so an edit model that copies what it sees has nothing to
+    /// copy; `prefill` on the removal commands, on by default: on the stock photographs it
+    /// took the removals from 27 to 35 of 48 and cost nothing on the generated set
+    /// (`benchmarks.md` §5i, 2026-10-21).
+    prefill: bool,
 }
 
 /// The layers a job made: (id, seed, run id, ms, timings), the primary one first.
@@ -1994,6 +2006,7 @@ fn fill_region(
         erase,
         rewritten,
         removal,
+        prefill,
     } = job;
     // `grow`: the selection widened, so the repainted area (and the result's mask) takes in a
     // band of the old object's surroundings; a bulkier replacement then has room.
@@ -2026,6 +2039,7 @@ fn fill_region(
     // below keeps the selection's full-resolution edge either way.
     let (rw, rh) = request_size(w, h);
     let (image, mask) = if (rw, rh) == (w, h) { (image, mask) } else { (resize_rgba8(&image, rw, rh)?, resize_gray8(&mask, rw, rh)?) };
+    let image = if prefill && outpaint.is_none() { smooth_covered(&image, &mask) } else { image };
     let template_id = if auto { resolve_auto(backend.as_ref(), auto_order, &template_id) } else { template_id };
     // The prompt the model gets: as typed, or rewritten by the vision-language model with the
     // picture in view (an expand keeps its own wording).
@@ -2313,6 +2327,37 @@ fn tone_matched(result: &Rgba8, original: &Rgba8, mask: &Gray8) -> Rgba8 {
 /// 255 inside the selection and feathered outward).
 const TONE_MATCH_INSIDE: u8 = 200;
 
+/// `img` with the hole (`mask` at [`SMOOTH_INSIDE`] or more) smoothed over by a membrane from
+/// its edge: the colours continue in, with no structure. An edit model copies what its
+/// reference shows, so a hole with the object in it is redrawn and a flat grey one painted
+/// back as a panel (both measured); a smooth continuation is neither. Unchanged when the
+/// sizes differ or the hole is empty.
+fn smooth_covered(img: &Rgba8, mask: &Gray8) -> Rgba8 {
+    let (w, h) = (img.width as usize, img.height as usize);
+    if (mask.width, mask.height) != (img.width, img.height) || w < 3 || h < 3 {
+        return img.clone();
+    }
+    let hole: Vec<bool> = mask.data.iter().enumerate().map(|(i, m)| *m >= SMOOTH_INSIDE && i % w > 0 && i % w < w - 1 && i / w > 0 && i / w < h - 1).collect();
+    if !hole.iter().any(|h| *h) {
+        return img.clone();
+    }
+    let rgb: Vec<f32> = img.data.chunks_exact(4).flat_map(|p| [f32::from(p[0]) / 255.0, f32::from(p[1]) / 255.0, f32::from(p[2]) / 255.0]).collect();
+    let filled = photocraft_algo::poisson::membrane_fill(w, h, 3, &rgb, &hole);
+    let mut data = img.data.clone();
+    for (i, in_hole) in hole.iter().enumerate() {
+        if *in_hole && let (Some(d), Some(s)) = (data.get_mut(i * 4..i * 4 + 3), filled.get(i * 3..i * 3 + 3)) {
+            for (dv, sv) in d.iter_mut().zip(s) {
+                *dv = (sv.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+            }
+        }
+    }
+    Rgba8::new(img.width, img.height, data).unwrap_or_else(|_| img.clone())
+}
+
+/// Mask values from here up are the hole [`smooth_covered`] fills: the selection itself
+/// (255), not the feathered band outside it.
+const SMOOTH_INSIDE: u8 = 250;
+
 /// Paint the pixels `coverage` selects (half or more) mid-grey: the request image shows a hole
 /// where the model is to paint, not the object it is to replace.
 fn erase_covered(img: &mut Rgba8, coverage: &[f32]) {
@@ -2457,6 +2502,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
         erase,
         rewritten: None,
         removal: false,
+        prefill: false,
     };
     crate::jobs::edit_job(
         s,
@@ -2649,6 +2695,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
         erase,
         rewritten: None,
         removal: false,
+        prefill: false,
     };
     crate::jobs::edit_job(
         s,
@@ -2855,6 +2902,7 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
         erase,
         rewritten: None,
         removal: false,
+        prefill: false,
     };
     crate::jobs::edit_job(
         s,
@@ -3509,6 +3557,7 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
         erase: info.erase,
         rewritten: None,
         removal: false,
+        prefill: false,
     };
     let label = format!("Generate Similar: {}", short(&info.prompt));
     crate::jobs::edit_job(

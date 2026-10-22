@@ -4,6 +4,28 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-21 (night): the hole smoothed over, and what a stronger fill model would be
+
+- **"50 % unusable is unacceptable"**: three model-side changes measured on the nine failing
+  stock scenes gave the same nine outcomes (the 40-step tier; Qwen-Image-2.1's fill, which won
+  only the motorcycle; the whole-crop edit instruction with no noise mask, the user's
+  suggestion). An edit model copies what its reference shows, however it is asked. **Smoothing
+  the hole over in the picture the model sees** (`smooth_covered`: a Poisson membrane from the
+  hole's edge, at request size, `prefill` on the three removal commands) takes the object out
+  of the reference, and the glasses, the tiara, the beach walker, the kite and the motorcycle
+  went. Both sets again: stock half 13 → 16 of 24, whole 14 → 19 of 24, the generated set
+  26 of 28 either way (`benchmarks.md` §5i). `prefill` is on by default now.
+- **Stronger fill models** (searched 2026-10-21, `models.md` to follow): removal-trained
+  Apache-2.0 LoRAs on 2511 itself (`prithivMLmods/QIE-2511-Object-Remover-v2`, 225 MB; the
+  object painted red, "Remove the red highlighted object from the scene"), FLUX.2 [klein] 4B
+  (Apache-2.0, ~13 GB, 2 s at 4 steps) with fal's Apache-2.0 object-removal LoRA on the same
+  convention, FLUX.1 Fill dev (non-commercial), LaMa (Apache-2.0, fails on large objects). The
+  2511 LoRA is the smallest change and awaits the user's go on the download.
+- Bench scripts: `-Extra key=value;…` (quotes do not survive the outer shell), `-Template`,
+  `-Compare`, `smooth-run.ps1`; two PowerShell traps found and documented in the scripts
+  (a [string] parameter shares its name, case ignored, with the variable the parsed set or
+  list is put in, and turns it back into a string).
+
 ## 2026-10-21 (the stock set): real photographs, and the generated set's bias
 
 - **Why**: the generated set is made by a model of the same family as the fill model, so its

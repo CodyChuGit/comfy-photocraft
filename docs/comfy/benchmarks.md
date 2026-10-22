@@ -561,6 +561,38 @@ a different fill model: the native Krea 2 port with AnyPaint's inpainting recipe
 The stock photographs' sources, authors and licences are kept in
 [`bench/stock-sources.txt`](bench/stock-sources.txt).
 
+**What moved the stock set** (the same night, the nine failing scenes' half strokes under each
+change, `-Suffix` runs of `robust-strokes.ps1`):
+
+| Change | Result on the nine |
+|---|---|
+| the 40-step tier | the same nine outcomes at five times the time |
+| Qwen-Image-2.1's fill (research licence) | the same, but the motorcycle removed cleanly |
+| the whole-crop **edit** instruction, no noise mask (the user's suggestion: let an edit model edit) | the same nine outcomes |
+| **the hole smoothed over** in the picture the model sees (`prefill`: a membrane from the hole's edge, `smooth_covered`) | the glasses gone, the tiara gone, the left walker gone, the motorcycle gone with the floor continued, the kite gone; the sign still a blur, the heart (a mislocated test) still there |
+
+The three model-side changes did nothing because an edit model copies what its reference
+shows, however it is asked; the smoothing takes the object out of the reference. (A flat grey
+hole was painted back as a panel and a PatchMatch pre-fill's copied blobs were kept, both
+measured earlier the same day: the model also copies what the hole is filled with, and a
+smooth continuation is the one thing it has no reason to keep.) Both sets again with the
+smoothing (`smooth-run.ps1`, the sheets `st-smooth-*.png`, `rb-smooth-*.png`):
+
+| | Baseline | Smoothed |
+|---|---|---|
+| stock, half strokes (24 judged) | 13 | **16** |
+| stock, whole strokes (24 judged) | 14 | **19** |
+| generated, both strokes (28) | 26 | 26 |
+
+New on the stock set: the transparent-framed glasses at both strokes, the tiara at both, the
+mask with a consistent face, the Wall St sign on the whole stroke (the facade continued
+instead of a blur), the left beach walker, the kite and the motorcycle on the whole stroke,
+the bench itself. Still failing: a faint spider web left on the whole-stroke tattoo, a pale
+blob under the bicycle, the fresco earring (repainted wider), the heart sign (the test's
+66-px "poster"), and the half strokes that leave a boat's second figure, a headless figure
+under the umbrella and the Liddell print untouched. So `prefill` is on by default for the
+three removal commands.
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP
