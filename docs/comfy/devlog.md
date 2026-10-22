@@ -4,6 +4,33 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-21 (the stock set): real photographs, and the generated set's bias
+
+- **Why**: the generated set is made by a model of the same family as the fill model, so its
+  scenes look the way the fill model expects. Twenty-six public-domain and CC0 photographs
+  from Wikimedia Commons (`stock-fetch.ps1`, licences read from each file's metadata, sources
+  in `bench\stock\st-sources.txt`; the user approved the downloads), objects located by Select
+  by Text (`stock-objects.ps1`), the same two strokes (`robust-strokes.ps1 -Dir … -Prefix st`).
+- **Result on the Lightning tier**: 27 of 45 judged strokes clean, against 26 of 28 on the
+  generated set (`benchmarks.md` §5i, "The stock set"). Clean: a mask, a ring, a tattoo, a
+  latte cup, a dog, a lamp post, a bicycle on cobbles, a cone, a top hat, a trash can, a cow,
+  a tiny bird in a flock. Failed: transparent-framed glasses on an old man, a tiara in a
+  stereograph, a heart sign at night, two people on a beach, the Liddell sisters' print, the
+  Wall St sign, a museum motorcycle; one of two for a boat silhouette, an umbrella, a kite.
+- **Two failure kinds**: (1) the rewriter or detector losing the object on old framed prints
+  (the frame named instead of the tiara, "the selected object", no name for the fresco's
+  earring): names that are a frame, border, "object" or "selected" are rejected now, so the
+  generic path runs; (2) the eight-step fill model leaving, redrawing or blurring on grainy and
+  busy real scenes, which no amount of masking fixes. The 40-step tier on the nine failing
+  scenes gave the same result on every one at five times the time: the step count is not the
+  lever, the model is. Lightning stays the default.
+- The bench scripts take `-Quality`, `-Suffix` and `-Kinds` now, so a tier can be compared on
+  the same strokes. The photographs' sources are tracked in `bench/stock-sources.txt`.
+- Open: the real-photo ceiling is the fill model (2511 at its working size); the native Krea 2
+  port with AnyPaint's inpainting recipe (plan §9) is the next thing to measure on this set;
+  Select by Text's object choice for the bench (a 66-px "poster" beside a heart sign) is the
+  test's weakness, not the tool's, which a user's stroke does not have.
+
 ## 2026-10-21 (the robustness set): fourteen scenes, six rounds, what held up
 
 - **The set** (`robust-make.ps1`, the app's own text-to-image, 1024², seed 31): a watch on a

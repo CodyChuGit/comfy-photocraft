@@ -522,6 +522,45 @@ smeared blob over one eye; the edge score chose the blob (its colour and smoothn
 cheeks), the judge chose seed 3. A stroke is 20–27 s wall on the Lightning tier (the name, the
 detector, two fills, the judge; three outliers of 40–143 s were the server reloading).
 
+**The stock set** (the same day; the generated set is made by a model of the same family the
+fill model was trained alongside, so it looks the way that model expects). `stock-fetch.ps1`
+takes one photograph per subject from Wikimedia Commons by its search API, only files whose
+own metadata gives the licence as CC0 or Public domain, at 1600 px on the longer side, and
+lists each file's Commons page, author and licence in `bench\stock\st-sources.txt`;
+`stock-objects.ps1` locates the object by Select by Text (the search hits were not all on
+subject: the "watch" is a man in a mask on a 1950s ship, the "necklace" a tiara in a
+stereograph, the "cat" the Liddell sisters on a sofa, the "hydrant" a church with a small car,
+the "bottle" a glass filling its frame); the same `robust-strokes.ps1` and `robust-sheets.ps1`
+with `-Dir`, `-Prefix st`, `-Objects st-objects.json`. Twenty-six scenes: a Roman fresco, a
+stereograph, a daguerreotype in its case, a sepia print, a night street, a kite festival, a
+flock on a wire, a sunset silhouette, a museum hall, a subway hand.
+
+Lightning tier, two seeds, as shipped for the generated set:
+
+| | Scenes |
+|---|---|
+| clean at both strokes | the mask (a face invented in its place), the ring, the spider-web tattoo, the latte cup on wood, the dog on the lawn, the lamp post, the bicycle on cobbles, the traffic cone, the top hat (hair invented), the trash can beside the bench, the cow in the grass, the tiny bird in the flock |
+| one of two | the boat silhouette (half a boat from the half stroke, the whole stroke clean but for a dot), the umbrella (the head missing under the half stroke, whole clean), the bear kite (gone from the half stroke, back on the whole) |
+| neither | the transparent-framed glasses on the old man (redrawn both times), the tiara (named "the black frame"), the heart sign at night (Select by Text found a 66-px "poster" elsewhere), the two people on the beach (ghosts), the Liddell print ("the selected object"), the Wall St sign (gone, under a grey blur), the motorcycle (a grey placard in its place) |
+| not a test | the glass that fills its frame; the church's small car (not judged) |
+
+So 27 of 45 judged strokes, against 26 of 28 on the generated set. Two kinds of failure:
+the rewriter and detector losing the object on old framed prints (the frame named instead of
+the tiara; "selected object"; no name for the fresco's earring), and the eight-step fill model
+itself leaving or redrawing an object, or blurring its place, on grainy and busy real scenes.
+Names that are a frame, a border or "the object" are rejected now, as "the selected area"
+was.
+
+The nine failing scenes' half strokes again on the **40-step tier** (`-Quality best`,
+`-Suffix -best`, 110–164 s a stroke against 20–28): the same result on every one, the
+glasses, the tiara, the heart sign, the beach ghosts, the Liddell print, the Wall St blur and
+the motorcycle's placard all as before, the kite gone as before. The step count is not the
+lever on real photographs; the fill model's capacity at its working size is. The next lever is
+a different fill model: the native Krea 2 port with AnyPaint's inpainting recipe (plan §9).
+
+The stock photographs' sources, authors and licences are kept in
+[`bench/stock-sources.txt`](bench/stock-sources.txt).
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP

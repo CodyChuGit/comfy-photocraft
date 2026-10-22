@@ -7,17 +7,25 @@
 # -Tags a,b,c runs those scenes (default: all). Output: bench\rb-<tag>-half.png,
 # rb-<tag>-whole.png, and a line per run with the rewriter's words, the growth and the time
 # (appended to bench\rb-log.txt).
-param([string]$Tags = "")
+# -Dir, -Prefix and -Objects point it at another set (the stock photographs: -Dir bench\stock
+# -Prefix st -Objects st-objects.json); the image is <Prefix>-<tag>.<any extension>.
+# -Quality best runs the 40-step tier; -Suffix names the outputs apart (<Prefix>-<tag>-half<Suffix>.png);
+# -Kinds half,whole picks the strokes.
+param([string]$Tags = "", [string]$Dir = "C:\Users\5090\ComfyUI\photocraft-tests\bench", [string]$Prefix = "rb", [string]$Objects = "rb-objects.json", [string]$Quality = "balanced", [string]$Suffix = "", [string]$Kinds = "half,whole")
 Set-Location "C:\Users\5090\Documents\PhotoshopEX"
 $cli = (Resolve-Path "target\release\photocraft-cli.exe").Path
-$out = "C:\Users\5090\ComfyUI\photocraft-tests\bench"
-$env:CM_PREFS = '{\"values\":{\"integrations.engine\":\"comfy\",\"integrations.enhancePrompts\":false,\"integrations.quality\":\"balanced\"}}'
-$objects = Get-Content (Join-Path $out "rb-objects.json") -Raw | ConvertFrom-Json
+$out = $Dir
+$env:CM_PREFS = '{\"values\":{\"integrations.engine\":\"comfy\",\"integrations.enhancePrompts\":false,\"integrations.quality\":\"' + $Quality + '\"}}'
+$kinds = @($Kinds -split ',' | Where-Object { $_ -ne "" })
+# (not `$objects`: PowerShell variable names ignore case, and the [string] parameter would
+# turn the parsed set back into a string)
+$set = Get-Content (Join-Path $out $Objects) -Raw | ConvertFrom-Json
 $want = @($Tags -split ',' | Where-Object { $_ -ne "" })
-$log = Join-Path $out "rb-log.txt"
+$log = Join-Path $out "$Prefix-log.txt"
 function Pts($list) { "[" + (($list | ForEach-Object { "[$($_[0]),$($_[1])]" }) -join ",") + "]" }
 function Tool($tag, $kind, $cmd, $params) {
-    $env:CM_IMAGE = Join-Path $out "rb-$tag.png"; $env:CM_CMD = $cmd; $env:CM_PARAMS = $params; $env:CM_OUT = Join-Path $out "rb-$tag-$kind.png"
+    $image = Get-ChildItem (Join-Path $out "$Prefix-$tag.*") | Where-Object { $_.Extension -match '^\.(png|jpg|jpeg)$' } | Select-Object -First 1
+    $env:CM_IMAGE = $image.FullName; $env:CM_CMD = $cmd; $env:CM_PARAMS = $params; $env:CM_OUT = Join-Path $out "$Prefix-$tag-$kind$Suffix.png"
     $sw = [Diagnostics.Stopwatch]::StartNew()
     $lines = & $cli --% run %CM_IMAGE% --cmd prefs.set --params "%CM_PREFS%" --cmd %CM_CMD% --params "%CM_PARAMS%" --cmd generate.info --params "{}" --out %CM_OUT%
     $said = $null
@@ -25,7 +33,7 @@ function Tool($tag, $kind, $cmd, $params) {
     if ($null -eq $said) { $said = "{0,-9} {1,-5} FAILED: {2}" -f $tag, $kind, (($lines | Where-Object { $_ -notmatch "flattened" } | Select-Object -Last 1) -join " ") }
     $said; $said | Out-File $log -Append -Encoding utf8
 }
-foreach ($p in $objects.PSObject.Properties) {
+foreach ($p in $set.PSObject.Properties) {
     $tag = $p.Name; $o = $p.Value
     if ($null -eq $o) { continue }
     if ($want.Count -gt 0 -and $want -notcontains $tag) { continue }
@@ -36,7 +44,8 @@ foreach ($p in $objects.PSObject.Properties) {
     # (parenthesised sums: the comma binds tighter than + in PowerShell)
     if ($w -ge $h) { $half = @(@(($x + [int](0.05 * $w)), $cy), @(($x + [int](0.5 * $w)), $cy)) }
     else { $half = @(@($cx, ($y + [int](0.05 * $h))), @($cx, ($y + [int](0.5 * $h)))) }
-    Tool $tag "half" "paint.spotHealing" ('{\"type\":\"generative\",\"size\":' + $s + ',\"hardness\":1,\"points\":' + (Pts $half) + '}')
+    if ($kinds -contains "half") { Tool $tag "half" "paint.spotHealing" ('{\"type\":\"generative\",\"size\":' + $s + ',\"hardness\":1,\"points\":' + (Pts $half) + '}') }
+    if ($kinds -notcontains "whole") { continue }
     # whole: a serpentine over the box, rows a brush apart
     $sw2 = [Math]::Round([Math]::Min([Math]::Max([Math]::Min($w, $h) / 2, 16), 80))
     $rows = New-Object System.Collections.ArrayList; $yy = $y + [int]($sw2 / 2); $i = 0

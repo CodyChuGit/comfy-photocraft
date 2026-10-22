@@ -1027,7 +1027,9 @@ pub(crate) fn named_object(rewritten: &str) -> Option<String> {
     // "the painted-over area", "the selected region": the rewriter naming the selection
     // instead of what is in it (measured); the generic wording does better than that.
     let lower = name.to_lowercase();
-    let not_a_thing = ["area", "region", "part", "selection", "painted", "marked", "outlined", "view", "section", "spot", "portion"].iter().any(|w| lower.split(|c: char| !c.is_alphanumeric()).any(|t| t == *w));
+    let not_a_thing = ["area", "region", "part", "selection", "selected", "painted", "marked", "outlined", "view", "section", "spot", "portion", "object", "item", "thing", "element", "border", "frame", "edge"]
+        .iter()
+        .any(|w| lower.split(|c: char| !c.is_alphanumeric()).any(|t| t == *w));
     (!name.is_empty() && !not_a_thing && name.split_whitespace().count() <= 6).then(|| name.to_string())
 }
 

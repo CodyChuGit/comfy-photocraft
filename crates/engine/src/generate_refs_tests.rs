@@ -313,6 +313,8 @@ fn a_rewritten_removal_names_its_object() {
     assert_eq!(named_object("Remove the black crow perched on the wire and fill its place with the sky."), Some("black crow".into()));
     assert_eq!(named_object("Remove the painted-over area."), None, "the selection, not a thing");
     assert_eq!(named_object("Remove the selected region of the cup."), None);
+    assert_eq!(named_object("Remove the selected object."), None);
+    assert_eq!(named_object("Remove the black frame."), None, "a photograph's frame or border is never what a stroke on the picture means");
     use crate::generate_cmds::{name_candidates, removal_prompt};
     assert_eq!(name_candidates("white ceramic coffee cup"), vec!["white ceramic coffee cup", "coffee cup", "cup"]);
     assert_eq!(name_candidates("red boat"), vec!["red boat", "boat"]);
