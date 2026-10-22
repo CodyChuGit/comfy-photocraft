@@ -72,6 +72,21 @@ app's fill-from-reference on 2511 (Apache-2.0) covers the use case today
 
 Sources: [yijunwang2/krea2-anypaint](https://huggingface.co/yijunwang2/krea2-anypaint) · [ausboss/ComfyUI-AusBoss](https://github.com/ausboss/ComfyUI-AusBoss) (node help under `js/docs/`).
 
+### Removal-trained adapters and other fill models (searched 2026-10-21)
+
+What a "stronger fill model" for the removal tools could be, after the stock set showed
+Qwen-Image-Edit-2511, Qwen-Image-2.1 and the whole-crop edit instruction all leaving the same
+objects (`benchmarks.md` §5i). None installed yet; the first is the candidate.
+
+| Model | What it is | Licence | Notes |
+|---|---|---|---|
+| [prithivMLmods/QIE-2511-Object-Remover-v2](https://huggingface.co/prithivMLmods/QIE-2511-Object-Remover-v2) | a LoRA on Qwen-Image-Edit-2511 trained for object removal (January 2026; 225 MB; also the [v1](https://huggingface.co/prithivMLmods/Qwen-Image-Edit-2511-Object-Remover)) | Apache-2.0 (adapter) | the object is painted red in the input and the prompt is "Remove the red highlighted object from the scene"; a model trained to delete what is highlighted, against an edit model asked not to copy what it sees. One LoRA loader more in the 2511 graph, the hole painted red instead of smoothed; stacking with the Lightning LoRA unverified. **The smallest change; awaits the download.** |
+| [lrzjason/QwenEdit2509-ObjectRemovalAlpha](https://huggingface.co/lrzjason/QwenEdit2509-ObjectRemovalAlpha) | the same idea on 2509 (585 MB) | Apache-2.0 | the card admits less strength on some removals |
+| [FLUX.2 \[klein\] 4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B) + [fal's object-remove LoRA](https://huggingface.co/fal/flux-2-klein-4B-object-remove-lora) | a 4 B generation and editing model (January 2026), ~13 GB VRAM, about 2 s at 4 steps; the LoRA on the same red-highlight convention ("Remove the highlighted object from the scene", scale 1.1, the `_comfy_converted` file for ComfyUI) | Apache-2.0 (both); the 9B klein is FLUX non-commercial | a new family for the templates and later the native engine; the strongest at text and logo removal in a [2026 local comparison](https://note.com/ai_0049/n/n8051776106dc?hl=en) |
+| FLUX.1 Fill dev | the dedicated inpainting model | FLUX non-commercial | never a default |
+| LaMa | a small fast inpainter | Apache-2.0 | fails semantically on large objects (a forum's "defurnishing"); a pre-fill candidate for the native engine |
+| OmniEraser, OmniPaint, RORem | academic removal models | unclear / SDXL-based | not candidates |
+
 ### Qwen-Image-2.1 (generation + editing, RGBA output)
 
 | | |
