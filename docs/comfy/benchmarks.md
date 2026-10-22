@@ -593,6 +593,29 @@ blob under the bicycle, the fresco earring (repainted wider), the heart sign (th
 under the umbrella and the Liddell print untouched. So `prefill` is on by default for the
 three removal commands.
 
+**The fill's own settings** (the same night, `tune-run.ps1`; `generate.fill` and the removal
+commands take `sampler`, `scheduler` and `maxPixels` now, the 2511 fill templates bind the
+KSampler's sampler and scheduler). Eight whole-object strokes (the mask, the dog, the bicycle,
+the top hat, the cow and the kite from the stock set; the watch and the mug from the generated
+set) under each variant against the shipped default (Lightning 8, euler/simple, 0.75 MP, the
+hole smoothed), the sheets `tune-<variant>-{st,rb}.png`:
+
+| Variant | Time a stroke | What changed against the default |
+|---|---|---|
+| the request at 1 MP | 20–31 s (+15 %) | the bicycle's puddle smaller and the kite's line finer; the mask's face a different plausible face; nothing worse. The server stayed resident (no offloading spike: the 0.75 MP cap's reason no longer holds on the Lightning tier) |
+| the request at 1.5 MP | 20–37 s (+35 %) | the bicycle clean, the hat's man sharper than his daguerreotype; **a seam rectangle in the dog's lawn** |
+| `res_multistep` sampler | the same time | worse: a patch in the lawn, a patch of other grass for the cow, a mane of hair for the hat, **a blue kite invented** |
+| `beta` scheduler | the same time | the bicycle clean, the dog and cow clean; a bow-tied gentleman invented for the hat, a beard for the mask: more "generated" |
+| 40 steps at CFG 4, 1 MP | 96–188 s (×5) | worse: the mask's face blurred, the hat's face **erased to a blur**, a seam in the lawn; the bicycle clean |
+
+Nothing in the sampler, scheduler or step count gives a consistent realism gain over
+ComfyUI's official pair on this tier; the 40-step base tier is worse under the smoothed hole,
+not better. The request size is the one lever with a small consistent gain at a small cost,
+so the default cap is **1 MP** now (`MAX_FILL_REQUEST_PIXELS`), `maxPixels` for anything
+else. The "realistic Qwen outputs" seen elsewhere are whole-picture generations and edits at
+1 MP and up with long prompts; a removal is a crop with the object taken out, and its realism
+is bounded by what the model can continue from the edge.
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP

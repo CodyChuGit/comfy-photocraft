@@ -187,7 +187,8 @@ visible; one new document holds them all with `target: document`).
   converted to RGBA8 sRGB through `photocraft-cms` when the document is 16/32-bit or not sRGB
   (rule 2 in `AGENTS.md`: never assume 8-bit sRGB inside the engine; the conversion happens at the
   backend boundary and is reversed on the way back). Since 2026-10-09 the request rectangle is
-  grown to the 16-px grid, a request over 0.75 megapixels is sent downscaled (Lanczos-3 for
+  grown to the 16-px grid, a request over 1 megapixel (0.75 until 2026-10-21; `maxPixels`
+  overrides, with `sampler` and `scheduler`) is sent downscaled (Lanczos-3 for
   pixels, a tent filter for the mask; the editing models work at about that size and the 32 GB
   card keeps the model resident at it) and one under 512 px on its longer side is sent upscaled;
   the result is resampled back under the selection's full-resolution layer mask. Segmentation

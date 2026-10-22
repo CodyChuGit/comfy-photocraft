@@ -60,13 +60,51 @@ pub const AUTO_EXPAND_ORDER: &[&str] = &["qwen-edit-2511/expand-lightning-8", DE
 /// A fill request is downscaled to this many pixels before it is sent (the editing models work
 /// at about one megapixel, Photoshop's Generative Fill renders at most 1024 px on a side) and
 /// the result is resampled back; the layer mask keeps the selection's full-resolution edge.
-/// 0.75 MP rather than 1 MP: on a 32 GB card with Qwen-Image-Edit-2511 fp8 and its 7.9 GB text
-/// encoder resident, a 1 MP latent plus the 1 MP reference pushed the server into offloading
-/// part of the model (a 45 s run instead of 18 s); at 0.75 MP it stays resident.
-const MAX_FILL_REQUEST_PIXELS: u64 = 768 * 1024;
+/// 1 MP (2026-10-21, `tune-run.ps1`): a small consistent gain in fine texture over 0.75 MP
+/// for 15 % more time, the server still resident on the Lightning tier (the 0.75 MP cap came
+/// from a 1 MP run that pushed the 40-step tier into offloading, 45 s instead of 18 s, in
+/// 2026-10); 1.5 MP put a seam in a lawn. `maxPixels` on the fill commands overrides it.
+const MAX_FILL_REQUEST_PIXELS: u64 = 1024 * 1024;
 /// A small request is upscaled until its longer side is this long: the 2511 templates sample at
 /// the request's own size, and a handful of latent tokens cannot carry structure.
 const MIN_FILL_REQUEST_SIDE: u32 = 512;
+/// The sampler and scheduler the 2511 fill templates run unless a request says otherwise:
+/// ComfyUI's official template's pair.
+const DEFAULT_SAMPLER: &str = "euler";
+const DEFAULT_SCHEDULER: &str = "simple";
+
+/// What a fill request may tune beyond its template (`sampler`, `scheduler` and `maxPixels`
+/// on `generate.fill` and the removal commands): the sampler and scheduler the 2511 fill
+/// templates run, and the pixels a request is downscaled to ([`MAX_FILL_REQUEST_PIXELS`]
+/// unless given). For measuring what the server's own settings are worth.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Tuning {
+    pub sampler: Option<String>,
+    pub scheduler: Option<String>,
+    pub max_pixels: u64,
+}
+
+impl Default for Tuning {
+    fn default() -> Self {
+        Self { sampler: None, scheduler: None, max_pixels: MAX_FILL_REQUEST_PIXELS }
+    }
+}
+
+impl Tuning {
+    /// From a command's params; a sampler or scheduler is a plain ComfyUI name (letters,
+    /// digits, underscores), `maxPixels` 65 536 to 16 M.
+    pub(crate) fn from_params(cmd: &str, p: &Value) -> Result<Tuning> {
+        let name = |key: &str| -> Result<Option<String>> {
+            match opt_str(cmd, p, key, 40)?.map(str::trim).filter(|s| !s.is_empty()) {
+                None => Ok(None),
+                Some(s) if s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') => Ok(Some(s.to_string())),
+                Some(_) => Err(bad(cmd, format!("`{key}` must be a ComfyUI sampler or scheduler name (letters, digits and underscores)"))),
+            }
+        };
+        let max_pixels = opt_num(cmd, p, "maxPixels", 65_536.0, MAX_REQUEST_PIXELS as f64)?.map_or(MAX_FILL_REQUEST_PIXELS, |v| v as u64);
+        Ok(Tuning { sampler: name("sampler")?, scheduler: name("scheduler")?, max_pixels })
+    }
+}
 /// Seeds stay below 2^53 so they survive a round trip through JSON numbers.
 const MAX_SEED: u64 = 1 << 53;
 pub const DEFAULT_FILL_TEMPLATE: &str = "qwen-edit-2511/fill";
@@ -718,6 +756,8 @@ struct FillPlan {
     /// Flatten the selection to mid-grey in the request image (`erase`), so the model paints a
     /// hole instead of copying what was there.
     erase: bool,
+    /// The sampler, scheduler and request size asked for ([`Tuning`]).
+    tuning: Tuning,
 }
 
 /// How a generated layer's mask ends: softly, across the band the model re-rendered around the
@@ -1076,6 +1116,7 @@ pub(crate) fn generative_remove(
     variations: u32,
     seed: Option<u64>,
     prefill: bool,
+    tuning: Tuning,
 ) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let canvas = d.doc.bounds();
@@ -1133,6 +1174,7 @@ pub(crate) fn generative_remove(
         rewritten: None,
         removal: true,
         prefill,
+        tuning,
     };
     crate::jobs::edit_job(
         s,
@@ -1270,7 +1312,8 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
         Some(_) => return Err(bad(FILL, format!("`grow` must be a whole number of pixels, 0 to {MAX_GROW}"))),
     };
     let erase = opt_bool(FILL, p, "erase", template.meta.erase_selection)?;
-    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase })
+    let tuning = Tuning::from_params(FILL, p)?;
+    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase, tuning })
 }
 
 /// The first of `candidates` whose model files the server lists (one `/models/<folder>` call per
@@ -1318,7 +1361,12 @@ pub(crate) fn align_to_grid(rect: Rect, canvas: Rect) -> Rect {
 /// [`MAX_FILL_REQUEST_PIXELS`], scaled up when the longer side is under
 /// [`MIN_FILL_REQUEST_SIDE`], otherwise unchanged.
 pub(crate) fn request_size(w: u32, h: u32) -> (u32, u32) {
-    let (w, h) = fit_pixels(w, h, MAX_FILL_REQUEST_PIXELS);
+    request_size_within(w, h, MAX_FILL_REQUEST_PIXELS)
+}
+
+/// [`request_size`] with its own pixel cap (`maxPixels`).
+pub(crate) fn request_size_within(w: u32, h: u32, max_pixels: u64) -> (u32, u32) {
+    let (w, h) = fit_pixels(w, h, max_pixels);
     let longer = w.max(h);
     if longer == 0 || longer >= MIN_FILL_REQUEST_SIDE {
         return (w, h);
@@ -1947,6 +1995,8 @@ struct FillJob {
     /// took the removals from 27 to 35 of 48 and cost nothing on the generated set
     /// (`benchmarks.md` §5i, 2026-10-21).
     prefill: bool,
+    /// The sampler, scheduler and request size asked for ([`Tuning`]).
+    tuning: Tuning,
 }
 
 /// The layers a job made: (id, seed, run id, ms, timings), the primary one first.
@@ -2007,6 +2057,7 @@ fn fill_region(
         rewritten,
         removal,
         prefill,
+        tuning,
     } = job;
     // `grow`: the selection widened, so the repainted area (and the result's mask) takes in a
     // band of the old object's surroundings; a bulkier replacement then has room.
@@ -2037,7 +2088,7 @@ fn fill_region(
     ctx.check()?;
     // Large areas go out at the models' working size and come back resampled; the layer mask
     // below keeps the selection's full-resolution edge either way.
-    let (rw, rh) = request_size(w, h);
+    let (rw, rh) = request_size_within(w, h, tuning.max_pixels);
     let (image, mask) = if (rw, rh) == (w, h) { (image, mask) } else { (resize_rgba8(&image, rw, rh)?, resize_gray8(&mask, rw, rh)?) };
     let image = if prefill && outpaint.is_none() { smooth_covered(&image, &mask) } else { image };
     let template_id = if auto { resolve_auto(backend.as_ref(), auto_order, &template_id) } else { template_id };
@@ -2074,6 +2125,8 @@ fn fill_region(
     // An expand template crops the model's reference to the picture: its rectangle inside the
     // request, in the request's (possibly resampled) pixels.
     let mut params = BTreeMap::new();
+    params.insert("sampler".to_string(), Value::String(tuning.sampler.clone().unwrap_or_else(|| DEFAULT_SAMPLER.to_string())));
+    params.insert("scheduler".to_string(), Value::String(tuning.scheduler.clone().unwrap_or_else(|| DEFAULT_SCHEDULER.to_string())));
     if let Some(o) = &outpaint {
         let (sx, sy) = (f64::from(rw) / f64::from(w.max(1)), f64::from(rh) / f64::from(h.max(1)));
         let p = o.picture;
@@ -2478,7 +2531,7 @@ fn prefill_outside(img: &mut Rgba8, inner: Rect) {
 fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_fill(s, p)?;
     let (backend, server) = backend_for(s, &plan.template.meta.id)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase, tuning } = plan;
     let label = name.clone();
     let job = FillJob {
         backend,
@@ -2503,6 +2556,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
         rewritten: None,
         removal: false,
         prefill: false,
+        tuning,
     };
     crate::jobs::edit_job(
         s,
@@ -2656,6 +2710,7 @@ fn plan_expand(s: &Session, p: &Value) -> Result<(FillPlan, Pads, (u32, u32))> {
             refs: Default::default(),
             grow: 0,
             erase: false,
+            tuning: Tuning::default(),
         },
         pads,
         (nw, nh),
@@ -2671,7 +2726,7 @@ fn expand_enabled(s: &Session) -> std::result::Result<(), String> {
 fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
     let (plan, pads, (nw, nh)) = plan_expand(s, p)?;
     let (backend, server) = backend_for(s, &plan.template.meta.id)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase, tuning } = plan;
     let label = name.clone();
     let job = FillJob {
         backend,
@@ -2696,6 +2751,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
         rewritten: None,
         removal: false,
         prefill: false,
+        tuning,
     };
     crate::jobs::edit_job(
         s,
@@ -2870,13 +2926,13 @@ fn plan_edit(s: &Session, p: &Value) -> Result<FillPlan> {
     // References (image 2, image 3 …): checked against the planned template; `auto` only
     // picks among templates with the same slots.
     let refs = crate::generate_refs::plan(s, EDIT, p, &template)?;
-    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow: 0, erase: false })
+    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow: 0, erase: false, tuning: Tuning::default() })
 }
 
 fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_edit(s, p)?;
     let (backend, server) = backend_for(s, &plan.template.meta.id)?;
-    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase } = plan;
+    let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase, tuning } = plan;
     let label = name.clone();
     // `wholePicture` (Generative Angles): the selection does not confine the result.
     let whole = opt_bool(EDIT, p, "wholePicture", false)?;
@@ -2903,6 +2959,7 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
         rewritten: None,
         removal: false,
         prefill: false,
+        tuning,
     };
     crate::jobs::edit_job(
         s,
@@ -3558,6 +3615,7 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
         rewritten: None,
         removal: false,
         prefill: false,
+        tuning: Tuning::default(),
     };
     let label = format!("Generate Similar: {}", short(&info.prompt));
     crate::jobs::edit_job(
@@ -3648,7 +3706,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Fill…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"grow":0..512=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"erase":{bool?=the template's},"references":{[{"layer":id} | {"path":"…"} | {"job":id,"index":0}]?},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; grow = widen the selection by that many pixels first, so a bulkier replacement has room; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; references = up to two reference images: with no template named the run switches to the fill-from-reference template, which flattens the selection to grey in the request so the model paints what the references show there (erase; `erase: true` does the same on any fill, `false` keeps the pixels); variations 1..4 = results with consecutive seeds, each a layer, only the first visible; areas over 0.75 megapixels are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"grow":0..512=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"erase":{bool?=the template's},"sampler":{str?=euler},"scheduler":{str?=simple},"maxPixels":{int?=1048576},"references":{[{"layer":id} | {"path":"…"} | {"job":id,"index":0}]?},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; grow = widen the selection by that many pixels first, so a bulkier replacement has room; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; references = up to two reference images: with no template named the run switches to the fill-from-reference template, which flattens the selection to grey in the request so the model paints what the references show there (erase; `erase: true` does the same on any fill, `false` keeps the pixels); variations 1..4 = results with consecutive seeds, each a layer, only the first visible; sampler and scheduler = the KSampler's, ComfyUI names; maxPixels = the request is downscaled to at most this many pixels (the model's working size); areas over 1 megapixel are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: fill_enabled,
             run: run_fill,
             journal: true,

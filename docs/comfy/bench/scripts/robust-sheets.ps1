@@ -3,8 +3,9 @@
 # Output: bench\rb-sheet-<n>.png. -Tags a,b,c limits the scenes.
 # -Dir, -Prefix and -Objects point it at another set, as robust-strokes.ps1's do.
 # -Suffix compares a second run's outputs (<Prefix>-<tag>-half<Suffix>.png) in place of the whole stroke.
-# -Compare half|whole picks which stroke the suffixed run is compared on.
-param([string]$Tags = "", [int]$PerSheet = 7, [string]$Dir = "C:\Users\5090\ComfyUI\photocraft-tests\bench", [string]$Prefix = "rb", [string]$Objects = "rb-objects.json", [string]$Suffix = "", [string]$Compare = "half")
+# -Compare half|whole picks which stroke the suffixed run is compared on; -Base is the suffix of
+# the run it is compared against (default: the unsuffixed one).
+param([string]$Tags = "", [int]$PerSheet = 7, [string]$Dir = "C:\Users\5090\ComfyUI\photocraft-tests\bench", [string]$Prefix = "rb", [string]$Objects = "rb-objects.json", [string]$Suffix = "", [string]$Compare = "half", [string]$Base = "")
 Set-Location "C:\Users\5090\Documents\PhotoshopEX"
 $out = $Dir
 $bench = "C:\Users\5090\ComfyUI\photocraft-tests\bench"
@@ -26,7 +27,7 @@ foreach ($p in $set.PSObject.Properties) {
     $cx = $x + $w / 2; $cy = $y + $h / 2
     $x0 = [int][Math]::Max(0, [Math]::Min($iw - $side, $cx - $side / 2)); $y0 = [int][Math]::Max(0, [Math]::Min($ih - $side, $cy - $side / 2))
     $strip = Join-Path $out "$Prefix-$tag-strip.png"
-    $second = if ($Suffix -eq "") { "$rel$Prefix-$tag-half.png" } else { "$rel$Prefix-$tag-$Compare.png" }
+    $second = if ($Suffix -eq "") { "$rel$Prefix-$tag-half.png" } else { "$rel$Prefix-$tag-$Compare$Base.png" }
     $third = if ($Suffix -eq "") { "$rel$Prefix-$tag-whole.png" } else { "$rel$Prefix-$tag-$Compare$Suffix.png" }
     & powershell -NoProfile -File $sheet -Names "$rel$($image.Name),$second,$third" -Cols 3 -Crop "$x0,$y0,$side,$side" -Tile "400,400" -Out $strip | Out-Null
     $strips += $strip

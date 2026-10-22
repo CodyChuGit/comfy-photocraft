@@ -601,12 +601,16 @@ mod tests {
             ("cfg", json!(1)),
             ("image", json!("in.png")),
             ("mask", json!("m.png")),
+            ("sampler", json!("euler")),
+            ("scheduler", json!("simple")),
         ] {
             b.insert(k.into(), v);
         }
         assert!(matches!(t.fill(&b), Err(Error::Template(m)) if m.contains("prefix")));
         b.insert("prefix".into(), json!("photocraft/x"));
         let g = t.fill(&b).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(g["14"]["inputs"]["sampler_name"], json!("euler"), "the sampler and scheduler are bound (PhotoshopEX)");
+        assert_eq!(g["14"]["inputs"]["scheduler"], json!("simple"));
         assert_eq!(g["14"]["inputs"]["seed"], json!(7));
         assert_eq!(g["14"]["inputs"]["steps"], json!(4));
         assert_eq!(g["14"]["inputs"]["cfg"], json!(1.0));

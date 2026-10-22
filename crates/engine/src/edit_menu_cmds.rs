@@ -722,7 +722,8 @@ fn content_aware_fill_as(s: &mut Session, p: &Value, cmd: &'static str, label: &
         let variations = crate::generate_cmds::removal_variations(p);
         let seed = p.get("seed").and_then(Value::as_u64);
         let prefill = bool_or(p, "prefill", true);
-        return crate::generate_cmds::generative_remove(s, label, sb, coverage, grow.clamp(0, 512) as u32, erase, false, None, enhance, variations, seed, prefill);
+        let tuning = crate::generate_cmds::Tuning::from_params(cmd, p)?;
+        return crate::generate_cmds::generative_remove(s, label, sb, coverage, grow.clamp(0, 512) as u32, erase, false, None, enhance, variations, seed, prefill, tuning);
     }
     let doc = st.doc.clone();
     // Check the params before the job starts.

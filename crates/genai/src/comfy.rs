@@ -632,6 +632,13 @@ impl GenerativeBackend for ComfyBackend {
         let cfg = if req.guidance > 0.0 { req.guidance } else { tpl.meta.defaults.guidance };
         bindings.insert("cfg".into(), serde_json::Number::from_f64(f64::from(cfg)).map(Value::Number).unwrap_or(Value::from(1)));
         bindings.insert("prefix".into(), Value::String(format!("photocraft/{client_id}")));
+        // PhotoshopEX: a template that binds its KSampler's sampler and scheduler runs
+        // ComfyUI's official pair unless the request names others.
+        for (key, default) in [("sampler", "euler"), ("scheduler", "simple")] {
+            if tpl.meta.placeholders.contains_key(key) && !bindings.contains_key(key) {
+                bindings.insert(key.into(), Value::String(default.into()));
+            }
+        }
 
         let mut timings = Timings::default();
         if let Some(img) = &req.image {

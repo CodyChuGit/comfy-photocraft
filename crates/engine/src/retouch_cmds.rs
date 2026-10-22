@@ -856,7 +856,8 @@ fn spot_healing(s: &mut Session, p: &Value) -> Result<Value> {
             let object = flag(p, "wholeObject", true).then(|| object_under_strokes(s, std::slice::from_ref(&stroke))).flatten();
             let variations = crate::generate_cmds::removal_variations(p);
             let seed = p.get("seed").and_then(Value::as_u64);
-            return crate::generate_cmds::generative_remove(s, "Spot Healing Brush", bounds, cov, 0, false, true, object, flag(p, "enhance", true), variations, seed, flag(p, "prefill", true));
+            let tuning = crate::generate_cmds::Tuning::from_params(CMD, p)?;
+            return crate::generate_cmds::generative_remove(s, "Spot Healing Brush", bounds, cov, 0, false, true, object, flag(p, "enhance", true), variations, seed, flag(p, "prefill", true), tuning);
         }
         "generative" => SpotType::ContentAware,
         o => return Err(bad(CMD, format!("unknown type `{o}` (contentAware|createTexture|proximityMatch|generative)"))),

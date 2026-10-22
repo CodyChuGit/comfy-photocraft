@@ -640,15 +640,16 @@ fn request_rects_grow_to_the_sixteen_pixel_grid_inside_the_canvas() {
 
 #[test]
 fn large_areas_are_sent_at_one_megapixel_and_come_back_full_size() {
-    assert_eq!(request_size(1024, 768), (1024, 768), "exactly the 0.75 MP cap: untouched");
-    assert_eq!(request_size(1024, 1024), (880, 880));
+    assert_eq!(request_size(1024, 1024), (1024, 1024), "exactly the 1 MP cap: untouched");
+    assert_eq!(request_size(1024, 768), (1024, 768), "under the cap: untouched");
+    assert_eq!(request_size(1280, 1280), (1024, 1024));
     assert_eq!(request_size(4000, 100), (4000, 100), "under the cap, long enough: untouched");
-    assert_eq!(request_size(2048, 1536), (1024, 768));
+    assert_eq!(request_size(2048, 1536), (1168, 880));
     assert_eq!(request_size(200, 150), (512, 384), "small requests go out at 512 px on the longer side");
     assert_eq!(request_size(100, 100), (512, 512));
     assert_eq!(request_size(512, 300), (512, 300), "exactly the floor: untouched");
     let (w, h) = request_size(8000, 8000);
-    assert!(w % 16 == 0 && h % 16 == 0 && u64::from(w) * u64::from(h) <= 768 * 1024, "{w}×{h}");
+    assert!(w % 16 == 0 && h % 16 == 0 && u64::from(w) * u64::from(h) <= 1024 * 1024, "{w}×{h}");
     let (w, h) = request_size(20_000, 64);
     assert!(h == 64 && w < 20_000 && w % 16 == 0, "the short side never drops below 64: {w}×{h}");
 
@@ -665,7 +666,7 @@ fn large_areas_are_sent_at_one_megapixel_and_come_back_full_size() {
     // 1400×1000 grown to the grid: 1408×1008 from (100, 100).
     assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(1408), Some(1008)));
     let (rw, rh) = (r["requestWidth"].as_u64().unwrap(), r["requestHeight"].as_u64().unwrap());
-    assert!(rw * rh <= 768 * 1024 && rw % 16 == 0 && rh % 16 == 0, "{rw}×{rh}");
+    assert!(rw * rh <= 1024 * 1024 && rw % 16 == 0 && rh % 16 == 0, "{rw}×{rh}");
     let st = fake.state();
     let sent = photocraft_genai::png::decode_rgba8(&st.uploads[0].1).unwrap();
     assert_eq!((u64::from(sent.width), u64::from(sent.height)), (rw, rh), "the upload is the downscaled request");

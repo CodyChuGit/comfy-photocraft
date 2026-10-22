@@ -217,7 +217,8 @@ pub(super) fn remove(s: &mut Session, p: &Value) -> Result<Value> {
         let object = flag(p, "wholeObject", true).then(|| super::object_under_strokes(s, &plan.strokes)).flatten();
         let variations = crate::generate_cmds::removal_variations(p);
         let seed = p.get("seed").and_then(Value::as_u64);
-        return crate::generate_cmds::generative_remove(s, label, plan.window, coverage, 0, false, false, object, flag(p, "enhance", true), variations, seed, flag(p, "prefill", true));
+        let tuning = crate::generate_cmds::Tuning::from_params(CMD, p)?;
+        return crate::generate_cmds::generative_remove(s, label, plan.window, coverage, 0, false, false, object, flag(p, "enhance", true), variations, seed, flag(p, "prefill", true), tuning);
     }
     let doc = d.doc.clone();
     let p = p.clone();

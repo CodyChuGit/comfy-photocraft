@@ -4,6 +4,20 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-21 (late night): the fill's own settings, measured
+
+- **"The Qwen settings can be refined"**: the fill templates run ComfyUI's official 2511
+  pair (euler/simple, shift 3.1, CFGNorm, Lightning 8 at CFG 1 or 40 at CFG 4) at 0.75 MP.
+  `generate.fill` and the removal commands take `sampler`, `scheduler` and `maxPixels` now
+  (`Tuning`, bound into the three plain fill templates), and `tune-run.ps1` measured eight
+  whole-object strokes under 1 MP, 1.5 MP, `res_multistep`, `beta`, and the 40-step tier at
+  1 MP (`benchmarks.md` §5i, "The fill's own settings"). No sampler, scheduler or step count
+  gave a consistent gain; `res_multistep` and the 40-step tier were worse (a kite invented, a
+  face erased). 1 MP gave a small consistent gain for 15 % more time with the server still
+  resident, so the request cap is 1 MP now; 1.5 MP put a seam in a lawn.
+- Open: the realism ceiling on a removal is the model continuing from the edge; the
+  removal-trained 2511 LoRA (`models.md`) is the untried lever.
+
 ## 2026-10-21 (night): the hole smoothed over, and what a stronger fill model would be
 
 - **"50 % unusable is unacceptable"**: three model-side changes measured on the nine failing
