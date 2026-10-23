@@ -32,9 +32,37 @@ can pick up.
   tattoo, the fresco's earring, the Liddell print, the umbrella's head, no red anywhere);
   the judge still kept transparent-framed glasses it was told to remove. Ships as the
   default. `benchmarks.md` §5i, "The judged pair".
-- Open: the judge on thin transparent things (a bigger judged crop, or a third variation);
-  the blurred-face seed on the daguerreotype; the detector asked by the adapter's own name
-  convention; FLUX.2 klein 4B with fal's adapter as a second family (`models.md`).
+- Open: the blurred-face seed on the daguerreotype; the detector asked by the adapter's own
+  name convention; FLUX.2 klein 4B with fal's adapter as a second family (`models.md`).
+
+## 2026-10-23: the judge's view enlarged; the driver reset under model churn
+
+- **The judge on thin things**: the judged crop is now enlarged to at least 384 px on its
+  shorter side (`judge_view`) before the side-by-side ask, and the user's "turn off the other
+  stuff" is honoured: ComfyUI runs only for a measurement (`judged-run.ps1` starts it with its
+  output logged and stops it after).
+- **Tried and gated off**: asking each result on its own whether the named object is still
+  there (`still_there`, `PRESENCE_CHECK = false`). It got the old man's glasses off in the 18
+  strokes that ran, but its two extra loads of the 5 GB vision-language encoder per stroke,
+  on top of the rewriter's and the judge's, had the **GPU driver reset** twice in two runs
+  (System log `nvlddmkm` 153, the server killed mid-answer, 2026-10-22 23:14 and 2026-10-23
+  00:05, no such event during the earlier hours-long runs). The bench driver now restarts
+  the server and retries a stroke that found it gone, and counts the restarts.
+- Bench scripts: `-Base` on `robust-sheets.ps1`; `judged-run.ps1`; `one-stroke.ps1`;
+  stroke errors reach the log (the native call in its own function, stderr merged at the
+  call: after `--%` a redirection is an argument to the CLI).
+- **The driver reset again** with the presence check off (00:30, 00:34): the remaining
+  change was the judge's enlarged pair, up to a megapixel for the vision-language model with
+  the 20 GB fill model resident. The judge view is 320 px on the shorter side now, 512 at
+  most on the longer, the pair under half a megapixel (`JUDGE_PAIR_MAX_PIXELS`); the GPU
+  itself was fine (49 °C, no ECC errors). The rerun: 78 of 78, no restart, no driver event.
+- **Third round** (`benchmarks.md` §5i): 64 of 76 against the smoothed-only 61 and round
+  two's 63; stock whole strokes 21 of 24 (the best yet: the tattoo, the fresco earring, the
+  bicycle, the umbrella's head won; the glasses' eye band smeared, the museum hall blurred),
+  half 17, generated 26 (a speck on the wire, marks on the gingham). Ships.
+- Open: the judge choosing a smeared band over clean eyes on the old man; a half stroke that
+  covers under a tenth of a big object (bench, motorcycle) stays a dab by design; the
+  mislocated heart sign is the test's, not the tool's.
 
 ## 2026-10-21 (late night): the fill's own settings, measured
 

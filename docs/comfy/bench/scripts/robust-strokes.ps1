@@ -29,12 +29,31 @@ $kindList = @($Kinds -split ',' | Where-Object { $_ -ne "" })
 $set = Get-Content (Join-Path $out $Objects) -Raw | ConvertFrom-Json
 $want = @($Tags -split ',' | Where-Object { $_ -ne "" })
 $log = Join-Path $out "$Prefix-log.txt"
+$script:restarts = 0
 function Pts($list) { "[" + (($list | ForEach-Object { "[$($_[0]),$($_[1])]" }) -join ",") + "]" }
+function Invoke-Cli {
+    & $cli --% run %CM_IMAGE% --cmd prefs.set --params "%CM_PREFS%" --cmd %CM_CMD% --params "%CM_PARAMS%" --cmd generate.info --params "{}" --out %CM_OUT%
+}
 function Tool($tag, $kind, $cmd, $params) {
     $image = Get-ChildItem (Join-Path $out "$Prefix-$tag.*") | Where-Object { $_.Extension -match '^\.(png|jpg|jpeg)$' } | Select-Object -First 1
     $env:CM_IMAGE = $image.FullName; $env:CM_CMD = $cmd; $env:CM_PARAMS = $params; $env:CM_OUT = Join-Path $out "$Prefix-$tag-$kind$Suffix.png"
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $lines = & $cli --% run %CM_IMAGE% --cmd prefs.set --params "%CM_PREFS%" --cmd %CM_CMD% --params "%CM_PARAMS%" --cmd generate.info --params "{}" --out %CM_OUT%
+    # (stderr merged and stringified at the call of Invoke-Cli, so a failed stroke's error
+    # reaches the log; after `--%` the rest of the line goes to the CLI verbatim, so the native
+    # call sits on its own line in its own function)
+    $lines = Invoke-Cli 2>&1 | ForEach-Object { "$_" }
+    # A server that died mid-run (the GPU driver resetting under model churn, 2026-10-23) is
+    # started again, its output kept, and the stroke run once more.
+    if (($lines -join " ") -match "cannot reach the ComfyUI server|No connection could be made|forcibly closed by the remote host|answered unexpectedly") {
+        $script:restarts++
+        $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        Start-Process powershell -ArgumentList "-NoProfile", "-File", "C:\Users\5090\ComfyUI\start-comfyui-fast.ps1" -WindowStyle Hidden -RedirectStandardOutput "C:\Users\5090\ComfyUI\photocraft-tests\bench\comfyui-restart-$stamp.log" -RedirectStandardError "C:\Users\5090\ComfyUI\photocraft-tests\bench\comfyui-restart-$stamp.err.log"
+        $deadline = (Get-Date).AddMinutes(4)
+        while ((Get-Date) -lt $deadline) { try { $null = Invoke-RestMethod http://127.0.0.1:8188/system_stats -TimeoutSec 3; break } catch { Start-Sleep -Seconds 5 } }
+        "(server restarted at $stamp, stroke retried)" | Out-File $log -Append -Encoding utf8
+        $sw.Restart()
+        $lines = Invoke-Cli 2>&1 | ForEach-Object { "$_" }
+    }
     $said = $null
     foreach ($l in $lines) { if ("$l" -match '"enhanced":"([^"]*)".*"grow":(\d+)') { $said = "{0,-9} {1,-5} {2,6} ms grow {3,3}: {4}" -f $tag, $kind, $sw.ElapsedMilliseconds, $Matches[2], $Matches[1] } }
     if ($null -eq $said) { $said = "{0,-9} {1,-5} FAILED: {2}" -f $tag, $kind, (($lines | Where-Object { $_ -notmatch "flattened" } | Select-Object -Last 1) -join " ") }
@@ -65,3 +84,4 @@ foreach ($p in $set.PSObject.Properties) {
     if ($rows.Count -lt 2) { [void]$rows.Add("[$x,$cy]"); [void]$rows.Add("[$($x + $w),$cy]") }
     Tool $tag "whole" "paint.remove" ('{\"generative\":true,\"size\":' + $sw2 + $Extra + ',\"points\":[' + ($rows -join ",") + ']}')
 }
+if ($script:restarts -gt 0) { "server restarts: $($script:restarts)" }

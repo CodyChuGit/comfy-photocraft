@@ -184,6 +184,13 @@ fn judge_question(object: Option<&str>) -> String {
     }
 }
 
+/// The system turn for asking whether the removed thing is still in one result
+/// ([`still_there`]): a yes or no on one picture, asked of each result before the two are
+/// judged side by side. The side-by-side judge kept transparent-framed glasses it was told
+/// to remove, where the direct question on the one picture answers plainly (2026-10-22).
+const ENHANCE_PRESENCE_SYSTEM: &str = "You can see one photo. The question names a thing. Say whether that thing, or any part of it, is visible in the photo: look carefully for thin, faint, transparent or partly hidden ones.\n\
+Reply with exactly one word: Yes or No.";
+
 /// The system turn for a fill from a reference image. The rewriter sees the picture (its
 /// selection flattened to grey) and the reference side by side, as AusBoss's Krea 2 clothing
 /// workflow shows its prompt writer the pair, and names what to take exactly as the reference
@@ -211,6 +218,8 @@ pub(crate) enum EnhanceKind {
     Remove,
     /// Two results of a removal side by side: which looks like an untouched photograph.
     Judge,
+    /// One result of a removal: is the named thing still in it.
+    Presence,
     /// An edit: the picture and an instruction about it.
     Edit,
     /// Text to image: no picture.
@@ -298,6 +307,7 @@ pub(crate) fn enhance_prompt(
         EnhanceKind::Fill => format!("{edit_system}\n{}", ENHANCE_FILL_NOTE.replace("{place}", place.unwrap_or("selected part"))),
         EnhanceKind::Remove => format!("{edit_system}\n{ENHANCE_REMOVE_NOTE}"),
         EnhanceKind::Judge => ENHANCE_JUDGE_SYSTEM.to_string(),
+        EnhanceKind::Presence => ENHANCE_PRESENCE_SYSTEM.to_string(),
         EnhanceKind::FillRef => ENHANCE_FILL_REF_SYSTEM.to_string(),
     };
     let mut params = BTreeMap::new();
@@ -2291,13 +2301,27 @@ fn fill_region(
         for i in 1..made.len() {
             ctx.progress(0.96, "Judging");
             let (m_best, m_i) = (mismatches.get(best).copied().unwrap_or(0.0), mismatches.get(i).copied().unwrap_or(0.0));
+            // A result the adapter painted is out; then, with [`PRESENCE_CHECK`], each result
+            // is asked on its own whether the named object is still there, and one that says
+            // no against one that says yes wins outright; then the two side by side.
             let verdict = if m_best.is_infinite() || m_i.is_infinite() {
                 Some(m_best <= m_i)
             } else {
-                match (judged.get(best), judged.get(i)) {
+                let presence = match (object.as_deref().filter(|_| PRESENCE_CHECK), judged.get(best), judged.get(i)) {
+                    (Some(name), Some(a), Some(b)) => {
+                        let span = JobProgress::span(ctx, 0.96, 0.97);
+                        match (still_there(backend.as_ref(), a, name, seed.wrapping_add(200 + i as u64), &span), still_there(backend.as_ref(), b, name, seed.wrapping_add(300 + i as u64), &span)) {
+                            (Some(false), Some(true)) => Some(true),
+                            (Some(true), Some(false)) => Some(false),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+                presence.or_else(|| match (judged.get(best), judged.get(i)) {
                     (Some(a), Some(b)) => judge_pair(backend.as_ref(), a, b, object.as_deref(), seed.wrapping_add(100 + i as u64), &JobProgress::span(ctx, 0.96, 0.97)),
                     _ => None,
-                }
+                })
             };
             let left_wins = verdict.unwrap_or(m_best <= m_i);
             if !left_wins {
@@ -2551,8 +2575,8 @@ fn erase_covered(img: &mut Rgba8, coverage: &[f32]) {
 /// ([`ENHANCE_JUDGE_SYSTEM`]): `Some(true)` left, `Some(false)` right, `None` when it could
 /// not be asked or did not answer (the caller falls back to [`edge_mismatch`]).
 fn judge_pair(backend: &dyn GenerativeBackend, left: &Rgba8, right: &Rgba8, object: Option<&str>, seed: u64, progress: &JobProgress) -> Option<bool> {
-    let seen = side_by_side(left, right).ok()?;
-    let (rw, rh) = request_size(seen.width, seen.height);
+    let seen = side_by_side(&judge_view(left), &judge_view(right)).ok()?;
+    let (rw, rh) = request_size_within(seen.width, seen.height, JUDGE_PAIR_MAX_PIXELS);
     let seen = if (rw, rh) == (seen.width, seen.height) { seen } else { resize_rgba8(&seen, rw, rh).ok()? };
     let answer = enhance_prompt(backend, EnhanceKind::Judge, &judge_question(object), Some(&seen), None, seed, progress).ok()??.to_lowercase();
     match (answer.find("left"), answer.find("right")) {
@@ -2578,6 +2602,57 @@ fn crop_rgba8(img: &Rgba8, rect: Rect) -> Rgba8 {
     }
     Rgba8::new(r.width(), r.height(), data).unwrap_or_else(|_| img.clone())
 }
+
+/// Whether each of a removal's results is asked on its own if the object is still there
+/// ([`still_there`]) before the two are judged side by side. Off: the two extra loads of the
+/// vision-language model per stroke, on top of the rewriter's and the judge's, had the GPU
+/// driver reset twice in two runs (nvlddmkm event 153, the server killed mid-answer,
+/// 2026-10-23), where the runs without it ran for hours; the enlarged judge view
+/// ([`judge_view`]) is what let the judge see thin transparent frames, and stays.
+const PRESENCE_CHECK: bool = false;
+
+/// Whether the vision-language model still sees `object` in `result`'s judged crop
+/// ([`ENHANCE_PRESENCE_SYSTEM`]): `Some(true)` yes, `Some(false)` no, `None` when it could
+/// not be asked or did not answer.
+fn still_there(backend: &dyn GenerativeBackend, result: &Rgba8, object: &str, seed: u64, progress: &JobProgress) -> Option<bool> {
+    let seen = judge_view(result);
+    let question = format!("Is there a {object}, or any part of one, in this photo?");
+    let answer = enhance_prompt(backend, EnhanceKind::Presence, &question, Some(&seen), None, seed, progress).ok()??.to_lowercase();
+    let first = answer.trim().split(|c: char| !c.is_alphanumeric()).next().unwrap_or("");
+    match first {
+        "yes" => Some(true),
+        "no" => Some(false),
+        _ => match (answer.find("yes"), answer.find("no")) {
+            (Some(y), Some(n)) => Some(y < n),
+            (Some(_), None) => Some(true),
+            (None, Some(_)) => Some(false),
+            (None, None) => None,
+        },
+    }
+}
+
+/// A judged crop enlarged until its shorter side is at least [`JUDGE_VIEW_MIN_SIDE`], its
+/// longer side at most [`JUDGE_VIEW_MAX_SIDE`] either way: thin things in a small crop were
+/// lost on the judge, and a pair of crops at 1024 px each (a 1 MP picture for the
+/// vision-language model with the 20 GB fill model resident) is what ran when the GPU driver
+/// reset four times in a night (2026-10-23); the pair stays under half a megapixel now.
+fn judge_view(crop: &Rgba8) -> Rgba8 {
+    let (w, h) = (crop.width, crop.height);
+    let (shorter, longer) = (w.min(h).max(1), w.max(h).max(1));
+    let up = f64::from(JUDGE_VIEW_MIN_SIDE) / f64::from(shorter);
+    let cap = f64::from(JUDGE_VIEW_MAX_SIDE) / f64::from(longer);
+    let scale = if longer > JUDGE_VIEW_MAX_SIDE { cap } else { up.min(cap).max(1.0) };
+    if (scale - 1.0).abs() < 1e-6 {
+        return crop.clone();
+    }
+    let (nw, nh) = (((f64::from(w) * scale).round() as u32).max(1), ((f64::from(h) * scale).round() as u32).max(1));
+    resize_rgba8(crop, nw, nh).unwrap_or_else(|_| crop.clone())
+}
+
+const JUDGE_VIEW_MIN_SIDE: u32 = 320;
+const JUDGE_VIEW_MAX_SIDE: u32 = 512;
+/// The judge's side-by-side picture is sent at most this large (see [`judge_view`]).
+const JUDGE_PAIR_MAX_PIXELS: u64 = 512 * 1024;
 
 /// The box of the pixels of `mask` at or above `level`, widened by a quarter of its larger
 /// side: what the judge of a removal looks at.

@@ -671,6 +671,28 @@ is a draw on real photographs in count and a win in kind: it removes thin and ov
 things the plain fill cannot, and the red is gone. It ships as the default; the plain fill
 alone is `variations: 1`.
 
+**Third round, the judge's view enlarged** (2026-10-23, `judged-run.ps1 -Suffix -auto4`;
+the judged crops enlarged to 320 px on the shorter side, the pair at most half a megapixel:
+a pair at a megapixel had the GPU driver reset, see `dev-environment-windows.md`; 78 of 78
+strokes, no restart, no driver event; the judge chose the adapter in 20):
+
+| | Smoothed only | Round 2 | Round 3 |
+|---|---|---|---|
+| stock, whole strokes (24 judged) | 19 | 17 | **21** |
+| stock, half strokes (24 judged) | 16 | 18 | 17 |
+| generated, both strokes (28) | 26 | 28 | 26 |
+| all | 61 | 63 | **64** |
+
+Whole strokes won over the smoothed fill: the tattoo, the fresco's earring, the bicycle, the
+umbrella's figure with its head, a sharper daguerreotype head. Lost: the old man's glasses
+(gone, but the band across the eyes smeared), the heart sign (the test's mislocated
+"poster"), the museum hall (blurred). Half strokes won: the glasses off the old man at last,
+the umbrella; lost: the bench, the motorcycle and the boat's figure untouched (the stroke
+covered under a tenth of them), the tiara and the fresco patch. The generated set gave back
+two: a speck on the crow's wire, small marks on the gingham. Three rounds inside each
+other's noise on the stock set in count; in kind the pair removes what the plain fill cannot.
+It ships.
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP
