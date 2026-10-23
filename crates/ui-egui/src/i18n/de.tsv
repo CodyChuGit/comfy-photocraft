@@ -3474,3 +3474,12 @@ curves	Smooth	Glätten
 	Generative	Generativ
 	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Mit dem generativen Modell füllen: langsamer, bei Texturen und Mustern weit besser (braucht einen ComfyUI-Server oder die native Engine)
 	The preview shows the classical fill; OK and Apply run the model onto a new layer.	Die Vorschau zeigt die klassische Füllung; OK und Anwenden lassen das Modell auf eine neue Ebene arbeiten.
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Best of two	Besser von zwei
+	Run two candidates and show the one that looks untouched; off, one candidate, about half the time	Zwei Kandidaten berechnen und den zeigen, der unberührt wirkt; aus: ein Kandidat, etwa die halbe Zeit
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Unload models between tasks	Modelle zwischen Aufgaben entladen
+	When any model file changes	Wenn sich eine Modelldatei ändert
+	When the diffusion model changes	Wenn sich das Diffusionsmodell ändert

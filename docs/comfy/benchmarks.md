@@ -693,6 +693,26 @@ two: a speck on the crow's wire, small marks on the gingham. Three rounds inside
 other's noise on the stock set in count; in kind the pair removes what the plain fill cannot.
 It ships.
 
+**The purge between the stroke's runs** (2026-10-23, `purge-run.ps1`; `integrations.purgeModels`
+= `switch` | `heavy` | `never`, each policy on a freshly started server, six whole-object
+strokes, the first warming the server):
+
+| Policy | First stroke | Next five, mean | min | max |
+|---|---|---|---|---|
+| `switch` (purge whenever any model file differs; the rule since 2026-10-09) | 77 s | 60.1 s | 54.0 | 66.9 |
+| `heavy` (purge only when the diffusion model or checkpoint differs) | 70 s | 55.0 s | 48.4 | 61.6 |
+| `never` | 72 s | 53.9 s | 48.3 | 58.2 |
+
+Measured under **contention**: two foreign GPU tenants from SSH sessions on the machine
+(an `sd-server` since 22:26 the night before, 4.5 GB; a python tree since 00:35, 2.5 GB)
+held 8.4 GB of the 32 GB, which is why a stroke is 48–77 s here against 20–28 s the day
+before, and almost certainly why the driver reset four times that night (the first reset 48
+minutes after `sd-server` appeared): 20 GB of 2511 plus its encoder no longer fit beside
+them. The removal's own calls were a correlate, not the cause. `heavy` is the default: a
+removal's adapter and plain fill share the 20 GB model and no longer purge between them,
+8 % off a stroke here and more without contention (the purge is the reload of that model);
+`never` buys 2 % more at the risk the purge was made for. Re-measure on a clean card.
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP

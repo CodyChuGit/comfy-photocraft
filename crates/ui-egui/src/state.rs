@@ -538,6 +538,10 @@ pub struct ToolOptions {
     /// backend is set up (`paint.remove` `generative`), the classical fill otherwise.
     #[serde(default = "yes")]
     pub remove_generative: bool,
+    /// Remove tool and Spot Healing (PhotoshopEX), generative: run two candidates and show
+    /// the one that looks untouched (`variations` 2), or one candidate (1), faster.
+    #[serde(default = "yes")]
+    pub remove_pick_best: bool,
     pub feather: f32,
     /// linear | radial | angle | reflected | diamond
     pub gradient_style: String,
@@ -860,6 +864,7 @@ impl Default for ToolOptions {
             remove_new_layer: false,
             remove_after_each_stroke: true,
             remove_generative: true,
+            remove_pick_best: true,
             feather: 0.0,
             gradient_style: "linear".into(),
             gradient_reverse: false,

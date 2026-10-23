@@ -1148,6 +1148,9 @@ fn humanize(key: &str) -> String {
     if key == "generativeTimeoutSecs" {
         return "Generative timeout (seconds)".into();
     }
+    if key == "purgeModels" {
+        return "Unload models between tasks".into();
+    }
     // The app-managed engine (plan-native-engine §5.4).
     if key == "comfyPath" {
         return "ComfyUI folder".into();
@@ -1215,6 +1218,8 @@ fn choice_label(v: &str) -> String {
         "cpu" => "CPU (no GPU acceleration)".into(),
         "nvfp4" => "NVFP4 (Blackwell GPUs)".into(),
         "comfy" => "ComfyUI".into(),
+        "switch" => "When any model file changes".into(),
+        "heavy" => "When the diffusion model changes".into(),
         v => humanize(v),
     }
 }

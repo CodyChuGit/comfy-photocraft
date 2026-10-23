@@ -84,7 +84,7 @@ pub fn finish_stroke(app: &mut PhotocraftApp, tool: Tool, points: &[[f64; 3]], m
     let o = app.ui.tool_options.clone();
     let pts = json!(points);
     let (cmd, mut p): (&str, Value) = match tool {
-        Tool::SpotHealing => ("paint.spotHealing", json!({"type": o.spot_type, "sampleAllLayers": o.sample_all.spot_healing})),
+        Tool::SpotHealing => ("paint.spotHealing", json!({"type": o.spot_type, "sampleAllLayers": o.sample_all.spot_healing, "variations": if o.remove_pick_best { 2 } else { 1 }})),
         Tool::Remove => {
             if !o.remove_after_each_stroke {
                 remove_pending_add(app, points);
@@ -220,7 +220,7 @@ fn quick_select_detector(app: &mut PhotocraftApp, points: &[[f64; 3]], mode: &st
 
 /// `paint.remove` params from the options bar (without the strokes).
 fn remove_params(o: &crate::state::ToolOptions) -> Value {
-    json!({"sampleAllLayers": o.sample_all.remove, "newLayer": o.remove_new_layer, "generative": o.remove_generative})
+    json!({"sampleAllLayers": o.sample_all.remove, "newLayer": o.remove_new_layer, "generative": o.remove_generative, "variations": if o.remove_pick_best { 2 } else { 1 }})
 }
 
 /// The selection a queued Remove stroke was drawn against. A later selection must not
@@ -567,6 +567,10 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
             if crate::widgets::checkbox(ui, &mut on, tl!("Generative")).on_hover_text(tl!("Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)")).clicked() {
                 o.spot_type = "generative".into();
             }
+            if o.spot_type == "generative" {
+                crate::widgets::checkbox(ui, &mut o.remove_pick_best, tl!("Best of two"))
+                    .on_hover_text(tl!("Run two candidates and show the one that looks untouched; off, one candidate, about half the time"));
+            }
             crate::widgets::vline(ui, 22.0);
             crate::widgets::checkbox(ui, &mut o.sample_all.spot_healing, tl!("Sample All Layers"));
         }
@@ -579,6 +583,10 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
             // PhotoshopEX: the hole filled through the fill model (a masked layer either way).
             crate::widgets::checkbox(ui, &mut o.remove_generative, tl!("Generative"))
                 .on_hover_text(tl!("Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)"));
+            if o.remove_generative {
+                crate::widgets::checkbox(ui, &mut o.remove_pick_best, tl!("Best of two"))
+                    .on_hover_text(tl!("Run two candidates and show the one that looks untouched; off, one candidate, about half the time"));
+            }
             if !app.remove_pending.is_empty() {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if crate::widgets::primary_button(ui, "✓", 32.0)

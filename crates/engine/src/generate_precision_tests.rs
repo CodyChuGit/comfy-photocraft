@@ -37,6 +37,9 @@ fn frees(fake: &FakeComfy) -> usize {
 fn a_blackwell_server_gets_the_nvfp4_encoder_and_the_purge_sees_the_switch() {
     let fake = FakeComfy::start_with(Options { device: BLACKWELL.into(), ..Options::default() }).unwrap();
     let mut s = session(&fake.url);
+    // The `switch` purge rule: an encoder swap is a different set (under the default `heavy`
+    // only the diffusion model counts, see `the_server_is_purged_before_a_run_whose_model_files_differ_from_the_last`).
+    s.edit_prefs(|p| p.integrations.purge_models = "switch".into());
     s.execute(FILL, json!({"prompt": "a kite", "seed": 1})).unwrap();
     assert_eq!(clip_of(&fake, 0), NVFP4_TE, "auto on a Blackwell card takes the NVFP4 encoder");
     // The picker learns about the alternative and whether it is installed.

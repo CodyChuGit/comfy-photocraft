@@ -3480,3 +3480,12 @@ curves	Smooth	Lisser
 	Generative	Génératif
 	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Remplir avec le modèle génératif : plus lent, bien meilleur sur les textures et les motifs (nécessite un serveur ComfyUI ou le moteur natif)
 	The preview shows the classical fill; OK and Apply run the model onto a new layer.	L'aperçu montre le remplissage classique ; OK et Appliquer exécutent le modèle sur un nouveau calque.
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Best of two	Le meilleur de deux
+	Run two candidates and show the one that looks untouched; off, one candidate, about half the time	Calcule deux candidats et affiche celui qui semble intact ; désactivé : un seul candidat, environ moitié moins de temps
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Unload models between tasks	Décharger les modèles entre les tâches
+	When any model file changes	Quand un fichier de modèle change
+	When the diffusion model changes	Quand le modèle de diffusion change

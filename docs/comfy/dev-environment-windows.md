@@ -9,7 +9,7 @@ the Windows-specific layer on top of it.
 | | |
 |---|---|
 | OS | Windows 10 Home 10.0.19045 |
-| GPU | NVIDIA GeForce RTX 5090, 32 607 MiB, driver 617.42. The driver reset twice in two bench runs (2026-10-23, System log `nvlddmkm` event 153 "Error occurred on GPUID: 100", the ComfyUI python killed mid-answer with no traceback) when a removal loaded the 5 GB vision-language encoder four times a stroke between two fills and a detector; runs with two loads a stroke went for hours. The bench driver (`robust-strokes.ps1`) restarts the server and retries when it sees the server gone; check that event when a run stalls |
+| GPU | NVIDIA GeForce RTX 5090, 32 607 MiB, driver 617.42. The driver reset twice in two bench runs (2026-10-23, System log `nvlddmkm` event 153 "Error occurred on GPUID: 100", the ComfyUI python killed mid-answer with no traceback) while two session-0 tenants from SSH logins held 8.4 GB of the card (an `sd-server.exe`, a python tree under `sshd-session.exe`), so 2511 and its encoder no longer fit; a stroke took 48–77 s instead of 20–28. Before a benchmark: `nvidia-smi` with the server stopped should show under 4 GB used (the compositor and the desktop apps); per-process holders are in `Get-Counter "\GPU Process Memory(*)\Dedicated Usage"`. The bench driver (`robust-strokes.ps1`) restarts the server and retries when it sees the server gone |
 | Disk | C: 1.7 TB free; D: and E: are data drives |
 | Checkout | `C:\Users\5090\Projects\comfy-photocraft` (clone of `https://github.com/storytold/photocraft.git`, branch `comfy-photocraft`) |
 

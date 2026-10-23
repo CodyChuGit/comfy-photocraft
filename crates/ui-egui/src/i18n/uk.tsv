@@ -4176,3 +4176,12 @@ curves	Smooth	Згладити
 	Generative	Генеративно
 	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Заповнити генеративною моделлю: повільніше, але набагато краще на текстурах і візерунках (потрібен сервер ComfyUI або вбудований рушій)
 	The preview shows the classical fill; OK and Apply run the model onto a new layer.	Попередній перегляд показує класичне заповнення; OK і Застосувати запускають модель на новому шарі.
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Best of two	Кращий із двох
+	Run two candidates and show the one that looks untouched; off, one candidate, about half the time	Створює два варіанти й показує той, що виглядає неторканим; вимкнено: один варіант, приблизно вдвічі швидше
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Unload models between tasks	Вивантажувати моделі між завданнями
+	When any model file changes	Коли змінюється будь-який файл моделі
+	When the diffusion model changes	Коли змінюється дифузійна модель

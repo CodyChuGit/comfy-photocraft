@@ -928,6 +928,14 @@ pub struct Integrations {
     /// (the default), `balanced` = the 8-step Lightning tier, `fast` = the 4-step tier where one
     /// exists. A chosen template is never changed by this; see `generate_cmds::auto_order`.
     pub quality: String,
+    /// When a generative run asks the server to unload its models first: `switch` = whenever
+    /// the run's model files differ from the last run's (the rule of 2026-10-09: a partially
+    /// loaded set streams weights every step), `heavy` = only when the diffusion model or
+    /// checkpoint differs (a LoRA, an encoder or a VAE swapped under the same model loads
+    /// beside it: a removal's adapter and plain fill share the 20 GB model; the default since
+    /// 2026-10-23, 8 % off a removal stroke), `never` (10 % off, at the risk the purge was made
+    /// for). See `generate_cmds::purge_mode`.
+    pub purge_models: String,
     /// The folder the Generations panel's Save writes results into (`generate.export` without
     /// `dir`); empty = ask each time.
     pub save_results_dir: String,
@@ -986,6 +994,7 @@ impl Default for Integrations {
             group_models_by_family: true,
             variations_strip: "right".into(),
             quality: "best".into(),
+            purge_models: "heavy".into(),
             save_results_dir: String::new(),
             save_results_naming: "{model}_{date}_{seed}".into(),
             alerts: "off".into(),
@@ -1197,6 +1206,8 @@ pub const HIDDEN_UNTIL_IMPLEMENTED: &[&str] = &[
 
 /// `integrations.modelPrecision`: see [`Integrations::model_precision`].
 pub const MODEL_PRECISIONS: &[&str] = &["auto", "default", "nvfp4"];
+/// `integrations.purgeModels`: see [`Integrations::purge_models`].
+pub const PURGE_MODES: &[&str] = &["switch", "heavy", "never"];
 
 /// Is the preference at `path` (`"section.key"`) hidden from the Preferences dialog?
 pub fn is_hidden(path: &str) -> bool {
@@ -1253,6 +1264,7 @@ pub fn choices(path: &str) -> Option<&'static [&'static str]> {
         "performance.linuxDisplayServer" => LinuxDisplayServer::NAMES,
         "performance.renderingMode" => RenderingMode::NAMES,
         "integrations.modelPrecision" => MODEL_PRECISIONS,
+        "integrations.purgeModels" => PURGE_MODES,
         "integrations.showGenerativeBar" => GENERATIVE_BAR_MODES,
         "integrations.variationsStrip" => VARIATIONS_STRIP_PLACES,
         "integrations.quality" => QUALITY_MODES,

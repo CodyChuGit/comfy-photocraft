@@ -172,9 +172,34 @@ fn auto_falls_back_to_the_base_edit_template_and_params_are_validated() {
 }
 
 #[test]
+fn under_heavy_only_a_change_of_the_diffusion_model_purges_and_never_never_does() {
+    // `heavy` (the default): the 40-step base after the Lightning tier drops a LoRA under the
+    // same 20 GB model, no purge; Krea 2 after 2511 is another diffusion model, a purge.
+    let fake = FakeComfy::start().unwrap();
+    let mut s = session(&fake.url);
+    let frees = |fake: &FakeComfy| fake.state().requests.iter().filter(|r| r.as_str() == "POST /free").count();
+    assert_eq!(s.prefs().integrations.purge_models, "heavy");
+    s.execute(FILL, json!({"prompt": "x", "seed": 1})).unwrap();
+    s.execute(EDIT, json!({"prompt": "x", "seed": 1, "template": "qwen-edit-2511/edit"})).unwrap();
+    assert_eq!(frees(&fake), 0, "a LoRA dropped under the same model: no purge");
+    s.execute("select.deselect", json!({})).unwrap();
+    s.execute(IMAGE, json!({"prompt": "a fox", "seed": 1, "target": "layer"})).unwrap();
+    assert_eq!(frees(&fake), 1, "another diffusion model: purged once");
+    s.execute(IMAGE, json!({"prompt": "a fox", "seed": 2, "target": "layer"})).unwrap();
+    assert_eq!(frees(&fake), 1);
+    // `never`: back to 2511, no purge at all.
+    s.edit_prefs(|p| p.integrations.purge_models = "never".into());
+    s.execute("select.rect", json!({"x": 10, "y": 8, "width": 20, "height": 16})).unwrap();
+    s.execute(FILL, json!({"prompt": "y", "seed": 3})).unwrap();
+    assert_eq!(frees(&fake), 1, "never: the model changed and nothing was purged");
+}
+
+#[test]
 fn the_server_is_purged_before_a_run_whose_model_files_differ_from_the_last() {
     let fake = FakeComfy::start().unwrap();
     let mut s = session(&fake.url);
+    // The `switch` rule of 2026-10-09, kept as a preference; the default is `heavy` (below).
+    s.edit_prefs(|p| p.integrations.purge_models = "switch".into());
     let frees = |fake: &FakeComfy| fake.state().requests.iter().filter(|r| r.as_str() == "POST /free").count();
     // The first run on a server never purges; a second with the same files does not either.
     s.execute(FILL, json!({"prompt": "x", "seed": 1})).unwrap();

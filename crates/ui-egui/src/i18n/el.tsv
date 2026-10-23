@@ -4169,3 +4169,12 @@ curves	Smooth	Εξομάλυνση
 	Generative	Παραγωγικό
 	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Γέμισμα από το παραγωγικό μοντέλο: πιο αργό, πολύ καλύτερο σε υφές και μοτίβα (χρειάζεται διακομιστή ComfyUI ή την ενσωματωμένη μηχανή)
 	The preview shows the classical fill; OK and Apply run the model onto a new layer.	Η προεπισκόπηση δείχνει το κλασικό γέμισμα· τα OK και Εφαρμογή τρέχουν το μοντέλο σε νέο επίπεδο.
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Best of two	Το καλύτερο από δύο
+	Run two candidates and show the one that looks untouched; off, one candidate, about half the time	Εκτελεί δύο υποψήφια και δείχνει αυτό που μοιάζει ανέγγιχτο· ανενεργό: ένα υποψήφιο, περίπου ο μισός χρόνος
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Unload models between tasks	Εκφόρτωση μοντέλων μεταξύ εργασιών
+	When any model file changes	Όταν αλλάζει οποιοδήποτε αρχείο μοντέλου
+	When the diffusion model changes	Όταν αλλάζει το μοντέλο διάχυσης

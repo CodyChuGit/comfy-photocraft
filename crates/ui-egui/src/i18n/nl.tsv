@@ -4226,3 +4226,12 @@ curves	Smooth	Vloeiend maken
 	Generative	Generatief
 	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Vullen met het generatieve model: trager, veel beter bij texturen en patronen (vereist een ComfyUI-server of de ingebouwde engine)
 	The preview shows the classical fill; OK and Apply run the model onto a new layer.	De voorvertoning toont de klassieke vulling; OK en Toepassen laten het model op een nieuwe laag werken.
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Best of two	Beste van twee
+	Run two candidates and show the one that looks untouched; off, one candidate, about half the time	Berekent twee kandidaten en toont de kandidaat die onaangeroerd lijkt; uit: één kandidaat, ongeveer de helft van de tijd
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Unload models between tasks	Modellen ontladen tussen taken
+	When any model file changes	Als een modelbestand verandert
+	When the diffusion model changes	Als het diffusiemodel verandert

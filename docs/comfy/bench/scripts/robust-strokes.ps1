@@ -12,8 +12,9 @@
 # -Quality best runs the 40-step tier; -Suffix names the outputs apart (<Prefix>-<tag>-half<Suffix>.png);
 # -Kinds half,whole picks the strokes.
 # -Extra adds fields to every stroke's params (e.g. ',\"prefill\":true'); -Template names the fill
-# template (research-only ones allowed for the measurement).
-param([string]$Tags = "", [string]$Dir = "C:\Users\5090\ComfyUI\photocraft-tests\bench", [string]$Prefix = "rb", [string]$Objects = "rb-objects.json", [string]$Quality = "balanced", [string]$Suffix = "", [string]$Kinds = "half,whole", [string]$Extra = "", [string]$Template = "")
+# template (research-only ones allowed for the measurement). -Purge switch|heavy|never sets
+# integrations.purgeModels for the run.
+param([string]$Tags = "", [string]$Dir = "C:\Users\5090\ComfyUI\photocraft-tests\bench", [string]$Prefix = "rb", [string]$Objects = "rb-objects.json", [string]$Quality = "balanced", [string]$Suffix = "", [string]$Kinds = "half,whole", [string]$Extra = "", [string]$Template = "", [string]$Purge = "switch")
 Set-Location "C:\Users\5090\Documents\PhotoshopEX"
 $cli = (Resolve-Path "target\release\photocraft-cli.exe").Path
 $out = $Dir
@@ -21,7 +22,7 @@ $tpl = if ($Template -eq "") { "" } else { ',\"integrations.defaultFillTemplate\
 # -Extra is key=value pairs separated by semicolons ("prefill=true;grow=20"): quotes do not
 # survive the outer shell's argument passing, so they are added here.
 $Extra = (($Extra -split ';' | Where-Object { $_ -match '^\s*([A-Za-z]\w*)\s*=\s*(.+?)\s*$' } | ForEach-Object { $k = $Matches[1]; $v = $Matches[2]; if ($v -match '^(true|false|-?\d+(\.\d+)?)$') { ',\"' + $k + '\":' + $v } else { ',\"' + $k + '\":\"' + $v + '\"' } }) -join '')
-$env:CM_PREFS = '{\"values\":{\"integrations.engine\":\"comfy\",\"integrations.enhancePrompts\":false,\"integrations.quality\":\"' + $Quality + '\"' + $tpl + '}}'
+$env:CM_PREFS = '{\"values\":{\"integrations.engine\":\"comfy\",\"integrations.enhancePrompts\":false,\"integrations.quality\":\"' + $Quality + '\",\"integrations.purgeModels\":\"' + $Purge + '\"' + $tpl + '}}'
 # (not `$kinds`: that is the [string] parameter, case ignored, and would turn the list into "half whole")
 $kindList = @($Kinds -split ',' | Where-Object { $_ -ne "" })
 # (not `$objects`: PowerShell variable names ignore case, and the [string] parameter would

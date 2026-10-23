@@ -4385,3 +4385,12 @@ cameraRaw	Yellow	Sárga
 	Generative	Generatív
 	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Kitöltés a generatív modellel: lassabb, textúrákon és mintákon sokkal jobb (ComfyUI-kiszolgáló vagy a beépített motor kell hozzá)
 	The preview shows the classical fill; OK and Apply run the model onto a new layer.	Az előnézet a klasszikus kitöltést mutatja; az OK és az Alkalmaz a modellt futtatja egy új rétegre.
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Best of two	Kettőből a jobb
+	Run two candidates and show the one that looks untouched; off, one candidate, about half the time	Két jelöltet készít, és az érintetlennek tűnőt mutatja; kikapcsolva: egy jelölt, körülbelül fele idő
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Unload models between tasks	Modellek kirakása feladatok között
+	When any model file changes	Ha bármelyik modellfájl változik
+	When the diffusion model changes	Ha a diffúziós modell változik

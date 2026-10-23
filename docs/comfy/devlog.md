@@ -35,6 +35,29 @@ can pick up.
 - Open: the blurred-face seed on the daguerreotype; the detector asked by the adapter's own
   name convention; FLUX.2 klein 4B with fal's adapter as a second family (`models.md`).
 
+## 2026-10-23 (next steps): the purge policy, Best of two, and the driver resets explained
+
+- **Faster removal on ComfyUI** (the user's pick of the four directions): a stroke's time
+  went on the server purging and reloading between the detector, the fill and the fill
+  again. `integrations.purgeModels` (`switch` | `heavy` | `never`, Preferences › AI
+  Integrations › Unload models between tasks; `generate_cmds::purge_mode`, threaded through
+  every `run_switching` call: fills, image, matte, split, the detector): `heavy` purges only
+  when the diffusion model or checkpoint differs, so the adapter and the plain fill, sharing
+  the 20 GB 2511, no longer purge between them. Default `heavy`. `purge-run.ps1` timed the
+  three (`benchmarks.md` §5i): 8 % off a stroke for `heavy`, 10 % for `never`.
+- **Best of two** on the Remove tool's and Spot Healing's options bars (`remove_pick_best`,
+  on; off = one candidate, `variations: 1`, about half the time). Two strings ×20; the
+  preference's label and choices ×20.
+- **The driver resets, corrected**: `nvidia-smi` with ComfyUI stopped showed 8.4 GB of the
+  card held by two session-0 tenants from SSH logins to this PC: an `sd-server.exe` (4.5 GB,
+  since 22:26 on the 22nd, 48 minutes before the first reset) and a python tree under
+  `sshd-session.exe` (2.5 GB, since 00:35). With them, 2511 and its encoder no longer fit,
+  every run loaded partially, a stroke took 48–77 s instead of 20–28, and the driver gave
+  out. The presence check and the judge's picture size were correlates, not the cause; the
+  smaller judge pair stays (it costs nothing). Not killable from the user session; reported
+  to the user.
+- Open: re-measure the purge policies and the third round on a clean card.
+
 ## 2026-10-23: the judge's view enlarged; the driver reset under model churn
 
 - **The judge on thin things**: the judged crop is now enlarged to at least 384 px on its

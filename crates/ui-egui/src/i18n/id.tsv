@@ -3467,3 +3467,12 @@ curves	Smooth	Haluskan
 	Generative	Generatif
 	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Isi dengan model generatif: lebih lambat, jauh lebih baik untuk tekstur dan pola (perlu server ComfyUI atau mesin native)
 	The preview shows the classical fill; OK and Apply run the model onto a new layer.	Pratinjau menampilkan isian klasik; OK dan Terapkan menjalankan model ke layer baru.
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Best of two	Terbaik dari dua
+	Run two candidates and show the one that looks untouched; off, one candidate, about half the time	Menjalankan dua kandidat dan menampilkan yang tampak tak tersentuh; nonaktif: satu kandidat, sekitar separuh waktu
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Unload models between tasks	Bongkar model di antara tugas
+	When any model file changes	Saat berkas model mana pun berubah
+	When the diffusion model changes	Saat model difusi berubah

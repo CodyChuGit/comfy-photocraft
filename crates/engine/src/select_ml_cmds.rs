@@ -118,6 +118,8 @@ struct Plan {
     fill_holes: bool,
     /// …and soften its edge with a feather of this radius.
     soften: f32,
+    /// When the run purges the server first (`generate_cmds::purge_mode`).
+    purge: &'static str,
 }
 
 /// Most pixels a detector mask may be widened or shrunk by.
@@ -271,7 +273,7 @@ fn plan(s: &Session, cmd: &str, p: &Value) -> Result<Plan> {
     let grow = opt_num(cmd, p, "grow", -MAX_GROW, MAX_GROW)?.unwrap_or(0.0) as f32;
     let fill_holes = opt_bool(cmd, p, "fillHoles", false)?;
     let soften = opt_num(cmd, p, "soften", 0.0, MAX_SOFTEN)?.unwrap_or(0.0) as f32;
-    Ok(Plan { common, mode, instance, threshold, all_layers, points, negatives, bbox, refine, probe, grow, fill_holes, soften })
+    Ok(Plan { common, mode, instance, threshold, all_layers, points, negatives, bbox, refine, probe, grow, fill_holes, soften, purge: generate_cmds::purge_mode(s) })
 }
 
 /// Bounding box of the pixels with coverage ≥ 0.5, in document coordinates, and their count.
@@ -325,6 +327,8 @@ struct Prompting {
     points: Vec<[f64; 2]>,
     negatives: Vec<[f64; 2]>,
     bbox: Option<Rect>,
+    /// When the run purges the server first (`generate_cmds::purge_mode`).
+    purge: &'static str,
 }
 
 /// Ask the detector: the masks it returned, at the request size.
@@ -382,7 +386,7 @@ fn detect(
         references: Vec::new(),
     };
     let shown = pr.prompt.clone();
-    let resp = match generate_cmds::run_switching(backend, server, &req, &JobProgress::new(ctx)) {
+    let resp = match generate_cmds::run_switching(backend, server, &req, pr.purge, &JobProgress::new(ctx)) {
         Ok(r) => r,
         Err(photocraft_genai::Error::NoOutput(_)) => return Err(EngineError::Other(format!("nothing matching \"{shown}\" was found"))),
         // No instance at all: the official graph's SaveImage then gets an empty mask batch and
@@ -518,6 +522,7 @@ fn prompting(plan: &Plan) -> Prompting {
         points: plan.points.clone(),
         negatives: plan.negatives.clone(),
         bbox: plan.bbox,
+        purge: plan.purge,
     }
 }
 
@@ -764,6 +769,7 @@ fn prompting_for(s: &Session, cmd: &str, template: &str, prompt: &str) -> Option
         points: Vec::new(),
         negatives: Vec::new(),
         bbox: None,
+        purge: generate_cmds::purge_mode(s),
     };
     Some((backend, server, prompting))
 }

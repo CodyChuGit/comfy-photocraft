@@ -520,8 +520,30 @@ fn model_set(req: &Request) -> BTreeSet<String> {
     t.meta.models.iter().map(|slot| format!("{}/{}", slot.folder, bound.get(&slot.placeholder).and_then(Value::as_str).unwrap_or(&slot.default))).collect()
 }
 
+/// `integrations.purgeModels`: when a run asks the server to unload what it holds first.
+pub const PURGE_SWITCH: &str = "switch";
+pub const PURGE_HEAVY: &str = "heavy";
+pub const PURGE_NEVER: &str = "never";
+
+/// Preferences › AI Integrations › Purge models, normalised (`switch` unless it says `heavy`
+/// or `never`).
+pub fn purge_mode(s: &Session) -> &'static str {
+    match s.prefs().integrations.purge_models.trim() {
+        "heavy" => PURGE_HEAVY,
+        "never" => PURGE_NEVER,
+        _ => PURGE_SWITCH,
+    }
+}
+
+/// The diffusion models and checkpoints of a model set (`folder/file` entries): what a purge
+/// under `heavy` is decided on.
+fn heavy_files(set: &BTreeSet<String>) -> BTreeSet<String> {
+    set.iter().filter(|f| f.starts_with("diffusion_models/") || f.starts_with("unet/") || f.starts_with("checkpoints/")).cloned().collect()
+}
+
 /// Run `req` on `backend`, first asking the server to unload its models when the request's
-/// model files differ from what the previous run on `server` loaded. ComfyUI keeps the earlier
+/// model files differ from what the previous run on `server` loaded (`purge`, see
+/// [`purge_mode`]). ComfyUI keeps the earlier
 /// models resident and, short of memory for the new set, loads it partially and streams the
 /// rest on every step: the first run after a switch between the 2511 base and its Lightning
 /// tier, or from 2511 to Qwen-Image-2.1, took 31–131 s on the 32 GB card against 13–20 s for
@@ -530,6 +552,7 @@ pub(crate) fn run_switching(
     backend: &dyn GenerativeBackend,
     server: &str,
     req: &Request,
+    purge: &str,
     progress: &JobProgress,
 ) -> photocraft_genai::Result<photocraft_genai::Response> {
     // The files the backend will load (its precision policy may swap in NVFP4 ones).
@@ -537,7 +560,11 @@ pub(crate) fn run_switching(
     let req = &prepared;
     let set = model_set(req);
     let switch = !set.is_empty()
+        && purge != PURGE_NEVER
         && match last_models(server) {
+            // `heavy`: only a change of the diffusion model or checkpoint purges; a LoRA, an
+            // encoder or a VAE swapped under the same model loads beside it.
+            Some(prev) if purge == PURGE_HEAVY => heavy_files(&prev) != heavy_files(&set),
             Some(prev) => prev != set,
             // Nothing known about this server (no PhotoCraft process has run on it): something
             // else may have left it full of other models, and a card with less than a quarter
@@ -1169,6 +1196,7 @@ pub(crate) fn generative_remove(
     let Common { template, prompt, negative, seed, steps, guidance, models, .. } =
         plan_common(s, FILL, &json!({"prompt": REMOVE_PROMPT, "seed": seed}), &base, if as_edit { Task::Edit } else { Task::Fill }, &default_model)?;
     let (backend, server) = backend_for(s, &template.meta.id)?;
+    let purge = purge_mode(s);
     let job = FillJob {
         backend,
         server,
@@ -1194,6 +1222,7 @@ pub(crate) fn generative_remove(
         prefill,
         tuning,
         object: None,
+        purge,
     };
     crate::jobs::edit_job(
         s,
@@ -1810,6 +1839,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
     // Per template: under `auto` the native worker takes the families it serves at parity.
     let (backend, server) = backend_for(s, &plan.template.meta.id)?;
     let server_doc = server.clone();
+    let purge = purge_mode(s);
     let ImagePlan {
         template,
         prompt,
@@ -1874,7 +1904,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
                 let (prompt, enhanced) = image_prompt(backend.as_ref(), ctx, enhance, &typed, req.prompt, &wrap, seed);
                 req.prompt = prompt;
                 ctx.check()?;
-                let resps = run_variations(backend.as_ref(), &server_doc, &mut req, n, seed, ctx)?;
+                let resps = run_variations(backend.as_ref(), &server_doc, &mut req, n, seed, purge, ctx)?;
                 Ok((resps, enhanced))
             },
             move |s, (resps, enhanced): (Vec<photocraft_genai::Response>, String)| {
@@ -1914,7 +1944,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
             let (prompt, enhanced) = image_prompt(backend.as_ref(), ctx, enhance, &typed, req.prompt, &wrap, seed);
             req.prompt = prompt;
             ctx.check()?;
-            let resps = run_variations(backend.as_ref(), &server, &mut req, n, seed, ctx)?;
+            let resps = run_variations(backend.as_ref(), &server, &mut req, n, seed, purge, ctx)?;
             let canvas = doc.bounds();
             let (w, h) = (canvas.width(), canvas.height());
             ctx.progress(0.96, "Placing");
@@ -1956,6 +1986,7 @@ fn run_variations(
     req: &mut Request,
     n: u32,
     seed: u64,
+    purge: &str,
     ctx: &JobCtx,
 ) -> Result<Vec<photocraft_genai::Response>> {
     let mut out = Vec::with_capacity(n as usize);
@@ -1965,7 +1996,7 @@ fn run_variations(
         if n > 1 {
             ctx.progress(lo, &format!("Variation {}/{n}", i + 1));
         }
-        out.push(run_switching(backend, server, req, &JobProgress::span(ctx, lo, hi)).map_err(gen_err)?);
+        out.push(run_switching(backend, server, req, purge, &JobProgress::span(ctx, lo, hi)).map_err(gen_err)?);
         ctx.check()?;
     }
     Ok(out)
@@ -2019,6 +2050,8 @@ struct FillJob {
     tuning: Tuning,
     /// A removal: what the rewriter named ("gold necklace"), for the judge.
     object: Option<String>,
+    /// When a run purges the server first ([`purge_mode`]).
+    purge: &'static str,
 }
 
 /// The layers a job made: (id, seed, run id, ms, timings), the primary one first.
@@ -2081,6 +2114,7 @@ fn fill_region(
         prefill,
         tuning,
         object,
+        purge,
     } = job;
     // `grow`: the selection widened, so the repainted area (and the result's mask) takes in a
     // band of the old object's surroundings; a bulkier replacement then has room. A removal
@@ -2241,7 +2275,7 @@ fn fill_region(
         req.prompt = run_prompt.clone();
         req.mask = wants_mask(&run_template).then(|| run_mask.clone());
         let run_enhanced = if run_prompt == typed { String::new() } else { run_prompt.clone() };
-        let resp = run_switching(backend.as_ref(), &server, &req, &JobProgress::span(ctx, lo, hi)).map_err(gen_err)?;
+        let resp = run_switching(backend.as_ref(), &server, &req, purge, &JobProgress::span(ctx, lo, hi)).map_err(gen_err)?;
         ctx.check()?;
         let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
         // A removal's result is tone-matched to the picture at the hole's edge and judged.
@@ -2734,6 +2768,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let (backend, server) = backend_for(s, &plan.template.meta.id)?;
     let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase, tuning } = plan;
     let label = name.clone();
+    let purge = purge_mode(s);
     let job = FillJob {
         backend,
         server,
@@ -2759,6 +2794,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
         prefill: false,
         tuning,
         object: None,
+        purge,
     };
     crate::jobs::edit_job(
         s,
@@ -2930,6 +2966,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
     let (backend, server) = backend_for(s, &plan.template.meta.id)?;
     let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase, tuning } = plan;
     let label = name.clone();
+    let purge = purge_mode(s);
     let job = FillJob {
         backend,
         server,
@@ -2955,6 +2992,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
         prefill: false,
         tuning,
         object: None,
+        purge,
     };
     crate::jobs::edit_job(
         s,
@@ -3139,6 +3177,7 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
     let label = name.clone();
     // `wholePicture` (Generative Angles): the selection does not confine the result.
     let whole = opt_bool(EDIT, p, "wholePicture", false)?;
+    let purge = purge_mode(s);
     let job = FillJob {
         backend,
         server,
@@ -3164,6 +3203,7 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
         prefill: false,
         tuning,
         object: None,
+        purge,
     };
     crate::jobs::edit_job(
         s,
@@ -3296,6 +3336,7 @@ fn run_remove_bg(s: &mut Session, p: &Value) -> Result<Value> {
     let (backend, server) = backend_for(s, &plan.common.template.meta.id)?;
     let MattePlan { common, layer: id, as_selection, mode, all_layers, subject, auto, segment, refine } = plan;
     let Common { template, negative, seed, steps, guidance, models, .. } = common;
+    let purge = purge_mode(s);
     let template_id = template.meta.id.clone();
     let label = if as_selection { "Select Subject (Generative)" } else { "Remove Background (Generative)" };
     crate::jobs::edit_job(
@@ -3361,7 +3402,7 @@ fn run_remove_bg(s: &mut Session, p: &Value) -> Result<Value> {
                 params,
                 references: Vec::new(),
             };
-            let resp = match run_switching(backend.as_ref(), &server, &req, &JobProgress::new(ctx)) {
+            let resp = match run_switching(backend.as_ref(), &server, &req, purge, &JobProgress::new(ctx)) {
                 Ok(r) => r,
                 Err(photocraft_genai::Error::NoOutput(_)) if segment => {
                     return Err(EngineError::Other("the detector found no subject: name it in the prompt".into()));
@@ -3495,6 +3536,7 @@ fn run_split(s: &mut Session, p: &Value) -> Result<Value> {
     let server = server_key(s);
     let SplitPlan { common, layers, all_layers } = plan;
     let Common { template, prompt, negative, seed, steps, guidance, models, name } = common;
+    let purge = purge_mode(s);
     let tid = template.meta.id.clone();
     let tid_out = tid.clone();
     let base = name.unwrap_or_else(|| "Split Layer".to_string());
@@ -3541,7 +3583,7 @@ fn run_split(s: &mut Session, p: &Value) -> Result<Value> {
                 params,
                 references: Vec::new(),
             };
-            let resp = run_switching(backend.as_ref(), &server, &req, &JobProgress::new(ctx)).map_err(gen_err)?;
+            let resp = run_switching(backend.as_ref(), &server, &req, purge, &JobProgress::new(ctx)).map_err(gen_err)?;
             ctx.check()?;
             ctx.progress(0.95, "Placing");
             if resp.images.is_empty() {
@@ -3795,6 +3837,7 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
     };
     let refs = crate::generate_refs::Refs { images: crate::generate_refs::resolve(s, &info.references)?, specs: info.references.clone() };
     let backend = backend(s)?;
+    let purge = purge_mode(s);
     let job = FillJob {
         backend,
         server: server_key(s),
@@ -3821,6 +3864,7 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
         prefill: false,
         tuning: Tuning::default(),
         object: None,
+        purge,
     };
     let label = format!("Generate Similar: {}", short(&info.prompt));
     crate::jobs::edit_job(

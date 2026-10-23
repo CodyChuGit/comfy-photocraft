@@ -3957,3 +3957,12 @@ curves	Smooth	Làm mượt
 	Generative	Sinh tạo
 	Fill from the generative model: slower, far better on textures and patterns (needs a ComfyUI server or the native engine)	Tô bằng mô hình sinh tạo: chậm hơn nhưng tốt hơn nhiều với kết cấu và hoa văn (cần máy chủ ComfyUI hoặc bộ máy tích hợp)
 	The preview shows the classical fill; OK and Apply run the model onto a new layer.	Bản xem trước hiển thị cách tô cổ điển; OK và Áp dụng chạy mô hình lên một lớp mới.
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Best of two	Chọn tốt nhất trong hai
+	Run two candidates and show the one that looks untouched; off, one candidate, about half the time	Tạo hai ứng viên và hiển thị ứng viên trông như chưa chỉnh sửa; tắt: một ứng viên, khoảng một nửa thời gian
+
+# PhotoshopEX, upstream merge 2026-10-21: the fork's strings this catalog lacked.
+	Unload models between tasks	Gỡ mô hình giữa các tác vụ
+	When any model file changes	Khi bất kỳ tệp mô hình nào thay đổi
+	When the diffusion model changes	Khi mô hình khuếch tán thay đổi
