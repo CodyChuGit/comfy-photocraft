@@ -30,7 +30,8 @@ USAGE:
       Open a file, run engine commands in order, save the result. Each --params
       applies to the preceding --cmd. Prints each command's JSON result.
   photocraft-cli batch --actions <actions.json|set.atn> [--action <name>] --in <dir> --out <dir> [--format <ext>] [--quality <1-100>] [--in-place] [--tiff-layers] [--tga-bits <24|32>] [--dpx-bits <8|10|12|16>] [--dds-compression <none|bc1|bc2|bc3>] [--dds-mipmaps]
-      Apply an action list to every image in a directory. A Photoshop Actions file (.atn) is a
+      Apply an action list to every image in a directory (a generative step runs to completion on
+      each file; name the server in a prefs.set step). A Photoshop Actions file (.atn) is a
       set: its action --action names plays, as below. JSON steps are [id, params] pairs,
       {\"command\": id, \"params\": {…}} objects or bare ids, as a recorded action or droplet stores them
       (a list, or wrapped in {\"actions\": …}, {\"steps\": …} or a droplet). An Actions set (the Actions
@@ -333,9 +334,7 @@ fn run_cmds(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
     }
     // Generative runs land in the desktop app's Generations library (and `generate.jobs` lists
     // it); other runs never touch it.
-    if cmds.iter().any(|(id, _)| id.starts_with("generate.") || id.starts_with("select.by") || id == "select.subjectML")
-        && let Some(dir) = photocraft_engine::generate_jobs::default_dir()
-    {
+    if let Some(dir) = generations_dir_for(cmds.iter().map(|(id, _)| id.as_str())) {
         h.session.set_generations_dir(dir);
     }
     for (id, params) in cmds {
@@ -463,6 +462,12 @@ fn is_input(p: &Path) -> bool {
     p.is_file() && p.extension().is_some_and(|e| known(&e.to_string_lossy().to_ascii_lowercase()))
 }
 
+/// The desktop app's Generations library, when `ids` has a generative or detector step (those
+/// runs land in it; other runs never touch it).
+fn generations_dir_for<'a>(mut ids: impl Iterator<Item = &'a str>) -> Option<PathBuf> {
+    ids.any(|id| id.starts_with("generate.") || id.starts_with("select.by") || id == "select.subjectML").then(photocraft_engine::generate_jobs::default_dir).flatten()
+}
+
 fn batch(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
     let actions_path = a.get("--actions").ok_or("batch needs --actions <file>")?;
     let in_dir = PathBuf::from(a.get("--in").ok_or("batch needs --in <dir>")?);
@@ -488,6 +493,9 @@ fn batch(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
     let mut written = photocraft_engine::file_cmds::OutputClaims::default();
     // `--format .jpg` names outputs `<stem>.jpg`, as `--format jpg` does (#490).
     let format = a.get("--format").map(|f| f.strip_prefix('.').unwrap_or(f));
+    // Generative steps (a `generate.*` or detector command in the action, or in one it plays)
+    // record their runs in the Generations library, as `run` does.
+    let generations_dir = generations_dir_for(actions.iter().map(|(id, _)| id.as_str()).chain(set.iter().flat_map(|a| a.steps.iter().map(|(id, _)| id.as_str()))));
     for input in &inputs {
         let ext = format.map(str::to_owned).or_else(|| input.extension().map(|e| e.to_string_lossy().into_owned())).unwrap_or_else(|| "png".into());
         let stem = input.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
@@ -499,6 +507,9 @@ fn batch(a: &Args, out: &mut dyn Write, err: &mut dyn Write) -> R {
             // Steps that play another action find it in the set; the session's playback stack
             // stops an action that calls itself.
             h.session.actions.list = set.clone();
+            if let Some(dir) = &generations_dir {
+                h.session.set_generations_dir(dir.clone());
+            }
             h.open(input).map_err(|e| e.to_string())?;
             for (id, p) in &actions {
                 if photocraft_engine::actions_cmds::shell_view_command(id) || photocraft_engine::actions_cmds::shell_save_command(id) {
@@ -768,6 +779,42 @@ mod batch_action_set_tests {
             assert_eq!(stderr.matches("FAIL").count(), 2, "{stderr}");
             assert!(!dir.join(action).join("a.png").exists(), "a file whose called action failed is not saved");
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// PhotoshopEX: a generative step in a batched action runs to completion on every file (the
+    /// job is waited for, as `run` waits), here Remove Background against the fake server, whose
+    /// matte is opaque in the middle half of the picture: the saved PNGs are transparent outside it.
+    #[test]
+    fn batch_runs_a_generative_step_on_every_file() {
+        use photocraft_genai::fake::{FakeComfy, Options};
+        let fake = FakeComfy::start_with(Options { matte: Some([0.25, 0.25, 0.75, 0.75]), ..Options::default() }).unwrap();
+        let dir = std::env::temp_dir().join(format!("photocraft-cli-batch-generative-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = |name: &str| dir.join(name).to_string_lossy().to_string();
+        std::fs::create_dir_all(dir.join("in")).unwrap();
+        for name in ["a", "b"] {
+            let (code, _, stderr) = invoke(&["run", "--new", r#"{"width":64,"height":48}"#, "--out", &path(&format!("in/{name}.png"))]);
+            assert_eq!(code, 0, "{stderr}");
+        }
+        // The server is a preference, set by a step of the action (the CLI loads no preferences
+        // of its own); the matte model is research-licensed, so the step allows it.
+        let set = json!({"version": 1, "actions": [{"name": "Cut out", "steps": [
+            ["prefs.set", {"values": {"integrations.comfyServer": fake.url, "integrations.engine": "comfy", "integrations.allowResearchModels": true}}],
+            ["generate.removeBackground", {}],
+        ]}]});
+        std::fs::write(dir.join("actions.json"), set.to_string()).unwrap();
+        let (code, stdout, stderr) = invoke(&["batch", "--actions", &path("actions.json"), "--in", &path("in"), "--out", &path("out"), "--format", "png"]);
+        assert_eq!(code, 0, "{stdout}{stderr}");
+        assert!(stdout.contains("2 succeeded, 0 failed"), "{stdout}");
+        for name in ["a", "b"] {
+            let bytes = std::fs::read(dir.join("out").join(format!("{name}.png"))).unwrap();
+            let img = photocraft_genai::png::decode_rgba8(&bytes).unwrap();
+            assert_eq!((img.width, img.height), (64, 48));
+            assert_eq!(img.get(32, 24).map(|p| p[3]), Some(255), "{name}: the subject stays");
+            assert_eq!(img.get(2, 2).map(|p| p[3]), Some(0), "{name}: the background is cut out");
+        }
+        assert_eq!(fake.state().prompts.len(), 2, "one run per file");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -270,7 +270,10 @@ the side-by-side rewriter; learnt from AusBoss's Krea 2 clothing workflow, see
   request; "regenerate" re-runs it non-destructively; smart filters apply on top.
 - PSD interop: generative layers export as ordinary raster layers with masks; metadata survives as
   a private tagged block so re-import keeps it.
-- Batch: `generate.*` in actions and `photocraft-cli batch` (e.g. remove backgrounds for a folder).
+- ✅ 2026-10-23 Batch: `generate.*` in actions and `photocraft-cli batch` (e.g. remove backgrounds
+  for a folder): a generative step in a batched action runs to completion on every file and the
+  runs land in the Generations library as `run`'s do; the server is a `prefs.set` step of the
+  action (the CLI loads no preferences of its own). Tested against the fake server.
 - Measured quality: a small public-domain test set with prompts and expected properties (mask
   respected, seams within tolerance, no change outside the mask), run nightly like
   `perf-nightly.yml`.

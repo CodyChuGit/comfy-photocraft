@@ -35,6 +35,21 @@ can pick up.
 - Open: the blurred-face seed on the daguerreotype; the detector asked by the adapter's own
   name convention; FLUX.2 klein 4B with fal's adapter as a second family (`models.md`).
 
+## 2026-10-23 (next steps, continued): generative steps in `photocraft-cli batch`
+
+- The GPU is still held by the two SSH tenants (8.7 GB with ComfyUI stopped), so the clean
+  re-measure of the purge policies waits; the roadmap's offline-testable item instead:
+  **Batch** (Phase 5). `photocraft-cli batch` already waited for a generative step's job
+  (`Headless::command_run` runs `Session::execute`); what was missing was the Generations
+  library hookup `run` has (`generations_dir_for`, now shared, looking through the played
+  set's steps too) and a test: an action `[prefs.set {comfyServer, engine, allowResearchModels},
+  generate.removeBackground]` over a folder of two PNGs against the fake server, both outputs
+  transparent outside the matte, one run per file. The CLI gained the fake-server
+  dev-dependency for it. Roadmap Phase 5: Batch ✅.
+- Recipe, for the record: an actions file with a `prefs.set` step naming the server, then any
+  `generate.*` / `paint.spotHealing {type: generative}` / `paint.remove {generative}` step,
+  then `photocraft-cli batch --actions it.json --in photos --out done --format png`.
+
 ## 2026-10-23 (next steps): the purge policy, Best of two, and the driver resets explained
 
 - **Faster removal on ComfyUI** (the user's pick of the four directions): a stroke's time

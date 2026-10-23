@@ -34,6 +34,10 @@ photocraft-codecs = { workspace = true }
 serde_json = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
+[dev-dependencies]
+# The in-process fake ComfyUI server, for the batch tests that run generative steps.
+photocraft-genai = { workspace = true, features = ["fake-server"] }
+
 [build-dependencies]
 # Icon + VERSIONINFO for photocraft-cli.exe; build.rs only uses it when targeting Windows.
 winresource = "0.1"
