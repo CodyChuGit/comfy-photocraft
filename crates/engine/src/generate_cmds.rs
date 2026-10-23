@@ -170,11 +170,19 @@ const ENHANCE_REMOVE_NOTE: &str = "You can see two views of the same photo side 
 /// edge-match score preferred a smeared skin-coloured blob over a man's eyes to the eyes
 /// themselves (its colour and smoothness matched the cheeks), where a look at the two tells
 /// them apart at once (measured 2026-10-21).
-const ENHANCE_JUDGE_SYSTEM: &str = "You can see two versions of the same part of a photo side by side, left and right, after something was removed from it. One of them may show a flaw where the thing was: a smear, a blur, a blocky or pixelated patch, a flat panel, a wrong texture, a duplicated line or object, or something that does not belong. Pick the version that looks like a natural, untouched photograph.\n\
-Reply with exactly one sentence: \"The left one looks natural.\" or \"The right one looks natural.\" Nothing else.";
+const ENHANCE_JUDGE_SYSTEM: &str = "You can see two versions of the same part of a photo side by side, left and right, after an attempt to remove something from it; the question names what was to be removed. A version where that thing is still there, whole or in part, loses. A version with a flaw where it was also loses: a smear, a blur, a blocky or pixelated patch, a flat panel, an area of flat red or other paint, a wrong texture, a duplicated line or object, or something that does not belong. Pick the version where the thing is gone and the scene looks like a natural, untouched photograph.\n\
+Reply with exactly one sentence: \"The left one.\" or \"The right one.\" Nothing else.";
 
-/// What the judge is asked ("left" before "right", so a parroted question picks the left).
-const JUDGE_QUESTION: &str = "Which one looks natural, left or right?";
+/// What the judge is asked, with the object's name when the rewriter found one ("left"
+/// before "right", so a parroted question picks the left). Asked only which looked natural,
+/// the judge kept a crow on its wire and a boat on its lake: both look natural (measured
+/// 2026-10-22).
+fn judge_question(object: Option<&str>) -> String {
+    match object {
+        Some(name) => format!("The {name} was to be removed. In which one is the {name} gone and the scene untouched, left or right?"),
+        None => "Something was to be removed. In which one is it gone and the scene untouched, left or right?".to_string(),
+    }
+}
 
 /// The system turn for a fill from a reference image. The rewriter sees the picture (its
 /// selection flattened to grey) and the reference side by side, as AusBoss's Krea 2 clothing
@@ -1175,6 +1183,7 @@ pub(crate) fn generative_remove(
         removal: true,
         prefill,
         tuning,
+        object: None,
     };
     crate::jobs::edit_job(
         s,
@@ -1214,6 +1223,7 @@ pub(crate) fn generative_remove(
                     && let Some(name) = named_object(&p)
                 {
                     job.rewritten = Some(removal_prompt(&name));
+                    job.object = Some(name.clone());
                     if let Some(finder) = &object {
                         // The name as given, then its last two words, then its last word: the
                         // detector found nothing called "white ceramic coffee cup" (measured).
@@ -1997,6 +2007,8 @@ struct FillJob {
     prefill: bool,
     /// The sampler, scheduler and request size asked for ([`Tuning`]).
     tuning: Tuning,
+    /// A removal: what the rewriter named ("gold necklace"), for the judge.
+    object: Option<String>,
 }
 
 /// The layers a job made: (id, seed, run id, ms, timings), the primary one first.
@@ -2058,9 +2070,13 @@ fn fill_region(
         removal,
         prefill,
         tuning,
+        object,
     } = job;
     // `grow`: the selection widened, so the repainted area (and the result's mask) takes in a
-    // band of the old object's surroundings; a bulkier replacement then has room.
+    // band of the old object's surroundings; a bulkier replacement then has room. A removal
+    // adapter trained on a painted highlight gets the selection nearly as it is instead
+    // ([`HIGHLIGHT_GROW`]): a fat red hole came back red (measured 2026-10-22).
+    let coverage_tight = (removal && outpaint.is_none()).then(|| dilate(&coverage, w as usize, h as usize, HIGHLIGHT_GROW));
     let coverage = if grow > 0 && outpaint.is_none() { dilate(&coverage, w as usize, h as usize, grow as usize) } else { coverage };
     // `erase`: the selection flattened to mid-grey in what the model sees, so it paints a hole
     // rather than copying what was there (a swap from a reference wants this).
@@ -2090,8 +2106,35 @@ fn fill_region(
     // below keeps the selection's full-resolution edge either way.
     let (rw, rh) = request_size_within(w, h, tuning.max_pixels);
     let (image, mask) = if (rw, rh) == (w, h) { (image, mask) } else { (resize_rgba8(&image, rw, rh)?, resize_gray8(&mask, rw, rh)?) };
-    let image = if prefill && outpaint.is_none() { smooth_covered(&image, &mask) } else { image };
     let template_id = if auto { resolve_auto(backend.as_ref(), auto_order, &template_id) } else { template_id };
+    // A removal's adapter variant: a template whose meta names a `highlight` (an adapter
+    // trained to delete what is painted that colour) gets the selection nearly as it is,
+    // painted in that colour, and the adapter's trigger sentence. The template named, when it
+    // is one; else, under `auto` with two or more variations, the first installed one of
+    // [`REMOVE_HIGHLIGHT_ORDER`] takes the first variation and the plain fill (the hole
+    // smoothed over) the rest, so the judge picks between an adapter that removes cleanly on
+    // most scenes and leaves its colour on some, and a fill that never does that.
+    let n = variations.max(1);
+    let adapter: Option<(String, Rgba8, Gray8)> = match (&coverage_tight, outpaint.is_none()) {
+        (Some(tight), true) => {
+            let named = template::find(&template_id).ok().filter(|t| t.meta.highlight.is_some()).map(|t| t.meta.id.clone());
+            let id = named.or_else(|| (auto && n > 1).then(|| resolve_auto(backend.as_ref(), REMOVE_HIGHLIGHT_ORDER, "")).filter(|s| !s.is_empty()));
+            match id.and_then(|id| template::find(&id).ok()).and_then(|t| t.meta.highlight.clone().map(|c| (t.meta.id.clone(), c))) {
+                Some((id, colour)) => {
+                    let g = Gray8::new(w, h, tight.iter().map(|c| (c * 255.0 + 0.5) as u8).collect()).map_err(gen_err)?;
+                    let g = feather_outward(&g, radius)?;
+                    let g = if (rw, rh) == (w, h) { g } else { resize_gray8(&g, rw, rh)? };
+                    Some((id, highlight_covered(&image, &g, &colour), g))
+                }
+                None => None,
+            }
+        }
+        _ => None,
+    };
+    // Every variation is the adapter's when the adapter template was named; else the first.
+    let adapter_named = adapter.as_ref().is_some_and(|(id, _, _)| *id == template_id);
+    let image_plain = image.clone();
+    let image = if prefill && outpaint.is_none() && !adapter_named { smooth_covered(&image, &mask) } else { image };
     // The prompt the model gets: as typed, or rewritten by the vision-language model with the
     // picture in view (an expand keeps its own wording).
     let typed = prompt.clone();
@@ -2120,7 +2163,6 @@ fn fill_region(
     } else {
         prompt
     };
-    let enhanced = if prompt == typed { String::new() } else { prompt.clone() };
     ctx.check()?;
     // An expand template crops the model's reference to the picture: its rectangle inside the
     // request, in the request's (possibly resampled) pixels.
@@ -2145,18 +2187,17 @@ fn fill_region(
     }
     // An edit template has no noise mask: the picture goes alone and the selection only masks
     // the result layer.
-    let wants_mask = template::find(&template_id).map(|t| t.meta.needs_mask).unwrap_or(true);
-    // A removal keeps the request picture and mask to judge and tone-match the results.
-    let tone_ref = removal.then(|| (image.clone(), mask.clone()));
+    let wants_mask = |id: &str| template::find(id).map(|t| t.meta.needs_mask).unwrap_or(true);
+    let base_wants_mask = wants_mask(&template_id);
     let mut req = Request {
         template: template_id.clone(),
-        prompt,
+        prompt: prompt.clone(),
         negative,
         seed,
         steps,
         guidance,
-        image: Some(image),
-        mask: wants_mask.then_some(mask),
+        image: Some(image.clone()),
+        mask: base_wants_mask.then_some(mask.clone()),
         models,
         size: None,
         params,
@@ -2164,7 +2205,6 @@ fn fill_region(
     };
     // One backend run per variation, consecutive seeds, each its own masked layer; the first
     // is visible, the alternates sit hidden above it (`generate.variation` switches).
-    let n = variations.max(1);
     let mut made: Made = Vec::with_capacity(n as usize);
     let mut mismatches: Vec<f64> = Vec::with_capacity(n as usize);
     let mut judged: Vec<Rgba8> = Vec::with_capacity(n as usize);
@@ -2174,16 +2214,36 @@ fn fill_region(
         if n > 1 {
             ctx.progress(lo, &format!("Variation {}/{n}", i + 1));
         }
+        // Which variant this run is: the adapter's (its template, its tight red hole, its
+        // trigger sentence) or the plain fill's.
+        let this_adapter = adapter.as_ref().filter(|_| adapter_named || i == 0);
+        let (run_template, run_prompt, run_mask): (String, String, &Gray8) = match this_adapter {
+            Some((id, img, m)) => {
+                req.image = Some(img.clone());
+                (id.clone(), HIGHLIGHT_REMOVE_PROMPT.to_string(), m)
+            }
+            None => {
+                req.image = Some(image.clone());
+                (template_id.clone(), prompt.clone(), &mask)
+            }
+        };
+        req.template = run_template.clone();
+        req.prompt = run_prompt.clone();
+        req.mask = wants_mask(&run_template).then(|| run_mask.clone());
+        let run_enhanced = if run_prompt == typed { String::new() } else { run_prompt.clone() };
         let resp = run_switching(backend.as_ref(), &server, &req, &JobProgress::span(ctx, lo, hi)).map_err(gen_err)?;
         ctx.check()?;
         let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
-        let (out, mismatch) = match &tone_ref {
-            Some((picture, mask)) if (out.width, out.height) == (picture.width, picture.height) => {
-                let matched = tone_matched(&out, picture, mask);
-                judged.push(crop_rgba8(&matched, judged_rect(mask, TONE_MATCH_INSIDE)));
-                (matched, edge_mismatch(&out, picture, mask))
-            }
-            _ => (out, 0.0),
+        // A removal's result is tone-matched to the picture at the hole's edge and judged.
+        let (out, mismatch) = if removal && (out.width, out.height) == (image_plain.width, image_plain.height) {
+            // The adapter leaving its red in the hole is a loss before any judging: the judge
+            // once chose a red-tinted glass as the natural one (measured 2026-10-22).
+            let painted = this_adapter.is_some() && paint_left(&out, run_mask);
+            let matched = tone_matched(&out, &image_plain, run_mask);
+            judged.push(crop_rgba8(&matched, judged_rect(run_mask, TONE_MATCH_INSIDE)));
+            (matched, if painted { f64::INFINITY } else { edge_mismatch(&out, &image_plain, run_mask) })
+        } else {
+            (out, 0.0)
         };
         mismatches.push(mismatch);
         let out = if (out.width, out.height) == (w, h) { out } else { resize_rgba8(&out, w, h)? };
@@ -2200,7 +2260,7 @@ fn fill_region(
                 command: command.to_string(),
                 prompt: typed.clone(),
                 negative: req.negative.clone(),
-                template: template_id.clone(),
+                template: run_template.clone(),
                 seed: req.seed,
                 steps: req.steps,
                 guidance: req.guidance,
@@ -2210,7 +2270,7 @@ fn fill_region(
                 },
                 rect: [rect.x0, rect.y0, rect.width() as i32, rect.height() as i32],
                 name: name.clone(),
-                enhanced: enhanced.clone(),
+                enhanced: run_enhanced,
                 references: refs.specs.clone(),
                 grow,
                 erase,
@@ -2230,11 +2290,16 @@ fn fill_region(
         let mut best = 0usize;
         for i in 1..made.len() {
             ctx.progress(0.96, "Judging");
-            let verdict = match (judged.get(best), judged.get(i)) {
-                (Some(a), Some(b)) => judge_pair(backend.as_ref(), a, b, seed.wrapping_add(100 + i as u64), &JobProgress::span(ctx, 0.96, 0.97)),
-                _ => None,
+            let (m_best, m_i) = (mismatches.get(best).copied().unwrap_or(0.0), mismatches.get(i).copied().unwrap_or(0.0));
+            let verdict = if m_best.is_infinite() || m_i.is_infinite() {
+                Some(m_best <= m_i)
+            } else {
+                match (judged.get(best), judged.get(i)) {
+                    (Some(a), Some(b)) => judge_pair(backend.as_ref(), a, b, object.as_deref(), seed.wrapping_add(100 + i as u64), &JobProgress::span(ctx, 0.96, 0.97)),
+                    _ => None,
+                }
             };
-            let left_wins = verdict.unwrap_or_else(|| mismatches.get(best).copied().unwrap_or(0.0) <= mismatches.get(i).copied().unwrap_or(0.0));
+            let left_wins = verdict.unwrap_or(m_best <= m_i);
             if !left_wins {
                 best = i;
             }
@@ -2411,6 +2476,67 @@ fn smooth_covered(img: &Rgba8, mask: &Gray8) -> Rgba8 {
 /// (255), not the feathered band outside it.
 const SMOOTH_INSIDE: u8 = 250;
 
+/// What a removal adapter trained on a painted highlight is told (the Object Remover v2
+/// card's sample prompts, every one of them this sentence).
+const HIGHLIGHT_REMOVE_PROMPT: &str = "Remove the red highlighted object from the scene.";
+/// The removal adapters `auto` tries, first installed one first, for a removal's first
+/// variation (the plain fill takes the rest, and the judge picks).
+const REMOVE_HIGHLIGHT_ORDER: &[&str] = &["qwen-edit-2511/remove-lightning-8"];
+/// How far past the selection the adapter's painted hole reaches: a few pixels, as the
+/// highlights it was trained on, not the removal's 15 % growth (a fat red hole came back red
+/// on a third of the stock set; the selection is the object's silhouette already).
+const HIGHLIGHT_GROW: usize = 6;
+
+/// Whether a removal adapter left its paint in the hole: more than [`PAINT_LEFT_SHARE`] of
+/// the pixels under `mask` (at [`SMOOTH_INSIDE`] or more) are saturated red in `result`.
+fn paint_left(result: &Rgba8, mask: &Gray8) -> bool {
+    if (mask.width, mask.height) != (result.width, result.height) {
+        return false;
+    }
+    let (mut hole, mut red) = (0usize, 0usize);
+    for (i, m) in mask.data.iter().enumerate() {
+        if *m < SMOOTH_INSIDE {
+            continue;
+        }
+        hole += 1;
+        if let Some(px) = result.data.get(i * 4..i * 4 + 3)
+            && px[0] >= 150
+            && i32::from(px[0]) - i32::from(px[1].max(px[2])) >= 70
+        {
+            red += 1;
+        }
+    }
+    hole > 0 && red as f64 / hole as f64 > PAINT_LEFT_SHARE
+}
+
+/// The share of the hole that may be saturated red before the adapter's result is out.
+const PAINT_LEFT_SHARE: f64 = 0.05;
+
+/// `img` with the hole (`mask` at [`SMOOTH_INSIDE`] or more) painted solid in `colour`
+/// ("red", "green", "blue", or `#rrggbb`; anything else red): what a removal adapter trained
+/// on a highlight expects to see.
+fn highlight_covered(img: &Rgba8, mask: &Gray8, colour: &str) -> Rgba8 {
+    let rgb = match colour.trim().to_ascii_lowercase().as_str() {
+        "green" => [0, 255, 0],
+        "blue" => [0, 0, 255],
+        hex if hex.len() == 7 && hex.starts_with('#') => {
+            let v = |i: usize| u8::from_str_radix(hex.get(i..i + 2).unwrap_or("ff"), 16).unwrap_or(255);
+            [v(1), v(3), v(5)]
+        }
+        _ => [255, 0, 0],
+    };
+    if (mask.width, mask.height) != (img.width, img.height) {
+        return img.clone();
+    }
+    let mut data = img.data.clone();
+    for (i, m) in mask.data.iter().enumerate() {
+        if *m >= SMOOTH_INSIDE && let Some(px) = data.get_mut(i * 4..i * 4 + 4) {
+            px.copy_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
+        }
+    }
+    Rgba8::new(img.width, img.height, data).unwrap_or_else(|_| img.clone())
+}
+
 /// Paint the pixels `coverage` selects (half or more) mid-grey: the request image shows a hole
 /// where the model is to paint, not the object it is to replace.
 fn erase_covered(img: &mut Rgba8, coverage: &[f32]) {
@@ -2424,11 +2550,11 @@ fn erase_covered(img: &mut Rgba8, coverage: &[f32]) {
 /// Whether `left` looks more natural than `right` to the vision-language model
 /// ([`ENHANCE_JUDGE_SYSTEM`]): `Some(true)` left, `Some(false)` right, `None` when it could
 /// not be asked or did not answer (the caller falls back to [`edge_mismatch`]).
-fn judge_pair(backend: &dyn GenerativeBackend, left: &Rgba8, right: &Rgba8, seed: u64, progress: &JobProgress) -> Option<bool> {
+fn judge_pair(backend: &dyn GenerativeBackend, left: &Rgba8, right: &Rgba8, object: Option<&str>, seed: u64, progress: &JobProgress) -> Option<bool> {
     let seen = side_by_side(left, right).ok()?;
     let (rw, rh) = request_size(seen.width, seen.height);
     let seen = if (rw, rh) == (seen.width, seen.height) { seen } else { resize_rgba8(&seen, rw, rh).ok()? };
-    let answer = enhance_prompt(backend, EnhanceKind::Judge, JUDGE_QUESTION, Some(&seen), None, seed, progress).ok()??.to_lowercase();
+    let answer = enhance_prompt(backend, EnhanceKind::Judge, &judge_question(object), Some(&seen), None, seed, progress).ok()??.to_lowercase();
     match (answer.find("left"), answer.find("right")) {
         (Some(l), Some(r)) => Some(l < r),
         (Some(_), None) => Some(true),
@@ -2557,6 +2683,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
         removal: false,
         prefill: false,
         tuning,
+        object: None,
     };
     crate::jobs::edit_job(
         s,
@@ -2752,6 +2879,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
         removal: false,
         prefill: false,
         tuning,
+        object: None,
     };
     crate::jobs::edit_job(
         s,
@@ -2960,6 +3088,7 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
         removal: false,
         prefill: false,
         tuning,
+        object: None,
     };
     crate::jobs::edit_job(
         s,
@@ -3616,6 +3745,7 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
         removal: false,
         prefill: false,
         tuning: Tuning::default(),
+        object: None,
     };
     let label = format!("Generate Similar: {}", short(&info.prompt));
     crate::jobs::edit_job(

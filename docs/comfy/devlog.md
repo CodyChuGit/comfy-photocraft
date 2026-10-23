@@ -4,6 +4,38 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-22: the removal adapter, installed and measured
+
+- **Downloaded on the user's go**: `Qwen-Image-Edit-2511-Object-Remover-v2-9200.safetensors`
+  (225 MB, Apache-2.0, sha256 verified against the Hugging Face manifest) into the portable
+  install's `models/loras` (not `C:\Users\5090\ComfyUI\models`, which does not exist: the
+  server's `argv` in `/system_stats` gives the real root). New template
+  `qwen-edit-2511/remove-lightning-8`: the Lightning fill graph with a second
+  `LoraLoaderModelOnly`, `highlight: "red"` in its meta; the engine paints the hole red
+  (`highlight_covered`) and sends the trigger sentence. Template meta gained `highlight`;
+  the ComfyUI client binds `sampler`/`scheduler` to the official pair when a request leaves
+  them out.
+- **As the named template** on both sets: removes what the plain fill cannot (the fresco's
+  earring, the tattoo, the bicycle, the Liddell print, the umbrella, the beach walkers) and
+  leaves red in the hole wherever the hole was grown far past the object (every 96-px hole
+  on the generated set, the glass, the motorcycle). `benchmarks.md` §5i, "The removal adapter".
+- **Shipped path**: under `auto` with two variations a removal now runs the adapter on the
+  selection grown 6 px (`HIGHLIGHT_GROW`) as the first variation and the smoothed plain fill
+  as the second; the judge picks. First round (`auto2-run.ps1`): a wash in count, the adapter
+  winning the tattoo, the Liddell print, the bicycle, the umbrella and losing where the judge
+  kept a crow, a boat and a red-tinted glass as "natural". So the judge is told what was to be
+  removed (`judge_question` with the rewriter's name; the system turn says a version where it
+  is still there loses, and flat paint is a flaw), and an adapter result with saturated red on
+  more than 5 % of its hole is out before judging (`paint_left`). Second round
+  (`auto3-run.ps1`): 63 of 76 against the smoothed-only 61, the generated set 28 of 28, the
+  stock set a draw in count (whole 17 against 19, half 18 against 16) and a win in kind (the
+  tattoo, the fresco's earring, the Liddell print, the umbrella's head, no red anywhere);
+  the judge still kept transparent-framed glasses it was told to remove. Ships as the
+  default. `benchmarks.md` §5i, "The judged pair".
+- Open: the judge on thin transparent things (a bigger judged crop, or a third variation);
+  the blurred-face seed on the daguerreotype; the detector asked by the adapter's own name
+  convention; FLUX.2 klein 4B with fal's adapter as a second family (`models.md`).
+
 ## 2026-10-21 (late night): the fill's own settings, measured
 
 - **"The Qwen settings can be refined"**: the fill templates run ComfyUI's official 2511

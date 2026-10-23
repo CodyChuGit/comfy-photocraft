@@ -251,8 +251,13 @@ visible; one new document holds them all with `target: document`).
   an edit model copies what its reference shows, so a hole with the object in it is redrawn, a
   flat grey one painted back as a panel and a PatchMatch pre-fill's copied blobs kept (all
   measured), while a smooth continuation is nothing to copy; on real photographs it took the
-  removals from 27 to 35 of 48. The fourteen-scene generated set, the twenty-six-scene stock
-  set and their rounds are in `benchmarks.md` §5i.
+  removals from 27 to 35 of 48. With the Object Remover adapter installed (an Apache-2.0 LoRA
+  on 2511 trained to delete what is painted red, `qwen-edit-2511/remove-lightning-8`,
+  `highlight` in its meta), the first of a removal's two variations is the adapter's (the
+  selection grown 6 px, painted red, the adapter's trigger sentence) and the second the
+  smoothed plain fill; a result with red left in its hole is out, and the judge, told what
+  was to be removed, picks between the rest. The fourteen-scene generated set, the
+  twenty-six-scene stock set and their rounds are in `benchmarks.md` §5i.
 - **References on a fill.** `generate.fill` takes `references[]` like an edit; with no template
   named it runs the fill-from-reference template (the plain fill templates take none), whose
   wrapper names the grey hole and says to take the thing "exactly as the references show it".

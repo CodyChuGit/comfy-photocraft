@@ -616,6 +616,61 @@ else. The "realistic Qwen outputs" seen elsewhere are whole-picture generations 
 1 MP and up with long prompts; a removal is a crop with the object taken out, and its realism
 is bounded by what the model can continue from the edge.
 
+**The removal adapter** (2026-10-22; `lora-run.ps1`). prithivMLmods' Object Remover v2, an
+Apache-2.0 LoRA on 2511 trained to delete what is painted red (`models.md`), as the
+`qwen-edit-2511/remove-lightning-8` template: the Lightning graph with the adapter loaded
+after the Lightning LoRA, the hole painted solid red, the adapter's trigger sentence "Remove
+the red highlighted object from the scene." Both sets through it as the named template, the
+hole grown as for any removal (15 %, 16–96 px), against the smoothed default:
+
+| | Better than the smoothed fill | Worse |
+|---|---|---|
+| stock | the fresco's earring (a clean wall), the spider-web tattoo (gone, no trace), the bicycle (no puddle), the Liddell print (the sofa continued), the umbrella (the figure kept its head), the hat (a plausible head), the beach (both walkers gone on the whole stroke) | **red left in the hole** on the glass that fills its frame, the church's car (a red smear on the fence), the museum motorcycle (the whole hall tinted); the glasses and the tiara stayed on the half strokes |
+| generated | nothing better (the smoothed fill was already clean) | **red left** on the lamp post's sky, the crow's sky, the gingham cloth, the dog's hedge: every hole grown to the 96-px cap |
+
+The adapter removes what the plain fill cannot, and leaves its red where the painted area is
+far bigger than the object: it was trained on object-shaped highlights, and the removal's
+15 % growth (96 px on a big object) hands it a slab. So the shipped path (`auto`, two
+variations) now runs **the adapter on the selection grown 6 px as the first variation and the
+smoothed plain fill as the second**, and the judge picks; any red left is what the judge is
+there to see. Measured on both sets below (`auto2-run.ps1`).
+
+**The judged pair, first round** (`auto2-run.ps1`, the sheets `st-auto2-*`, `rb-auto2-*`):
+the judge chose the adapter's result in 49 of 78 strokes. Against the smoothed-only run:
+
+| | Won | Lost |
+|---|---|---|
+| stock, whole strokes | the tattoo (gone), the Liddell print, the bicycle, the umbrella, the bench, the tiara | the glasses kept, a boat with one figure kept, **the red-tinted glass chosen**, the motorcycle hall blurred |
+| stock, half strokes | the hat, the hydrant | a white saucer left where the half-removed cup was |
+| generated | nothing to win | **the crow kept** on the half stroke, a ghost of the poster's text |
+
+A wash in count, and two kinds of loss the judge should have caught: it kept a crow on its
+wire and a boat on its lake because both look natural, and it took a red-tinted glass. So
+the judge is now told what was to be removed ("The crow was to be removed. In which one is
+the crow gone and the scene untouched?") and that flat paint is a flaw, and an adapter result
+with saturated red on more than 5 % of its hole is out before any judging (`paint_left`).
+
+**The judged pair, second round** (`auto3-run.ps1`, the sheets `st-auto3-*`, `rb-auto3-*`;
+the judge chose the adapter's result in 17 of 78 strokes, against 49 before):
+
+| | Smoothed only | Judged pair, round 2 |
+|---|---|---|
+| stock, whole strokes (24 judged) | 19 | 17 |
+| stock, half strokes (24 judged) | 16 | 18 |
+| generated, both strokes (28) | 26 | **28** |
+| all | 61 | 63 |
+
+Won: the tattoo (gone without a trace), the fresco's earring (a clean wall), the Liddell print
+(the sofa continued), the umbrella's figure with its head on the half stroke, the half-removed
+cup clean, the hat's half stroke a sharp gentleman, the crow and the poster on the generated
+set. Lost: the glasses kept at both strokes (the judge, told "the transparent-framed glasses
+was to be removed", still took the adapter's result with them on: thin transparent frames in
+a small crop), the hat's whole stroke a blurred face, a blur patch for the church's car, the
+museum hall blurred. The two-seed noise between any two runs is about this size, so the pair
+is a draw on real photographs in count and a win in kind: it removes thin and overlapping
+things the plain fill cannot, and the red is gone. It ships as the default; the plain fill
+alone is `variations: 1`.
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP

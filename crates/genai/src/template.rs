@@ -202,6 +202,11 @@ pub struct Meta {
     /// caller's `erase` overrides it.
     #[serde(default)]
     pub erase_selection: bool,
+    /// Fill templates with a removal adapter trained on a painted highlight: the colour the
+    /// engine paints the selection in the request picture ("red"), sending the adapter's
+    /// trigger sentence instead of the removal wording (PhotoshopEX).
+    #[serde(default)]
+    pub highlight: Option<String>,
     #[serde(default)]
     pub notes: String,
     /// Who made the model ("Alibaba Qwen", "Krea", "Meta"), for the picker.
@@ -280,6 +285,7 @@ const BUILTIN: &[&str] = &[
     include_str!("../workflows/qwen-2.1-edit.json"),
     include_str!("../workflows/qwen-edit-2511-angles.json"),
     include_str!("../workflows/sam3.1-segment-box.json"),
+    include_str!("../workflows/qwen-edit-2511-remove-lightning-8.json"),
 ];
 
 /// Verbs a prompt can open with when it is already an edit instruction ("remove the car",
