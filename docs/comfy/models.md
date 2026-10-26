@@ -72,6 +72,16 @@ in `plan-native-engine.md` §9 for the native engine, and the app's fill-from-re
 (Apache-2.0) covers the use case today
 (`docs/comfy/research/notes/ausboss-krea2-clothing-workflow.md`, 2026-10-21).
 
+The author's other three Krea 2 adapters, fetched the same day on the owner's go (rank 32,
+Krea 2 Community License, each repo's `SHA256SUMS` matched; all three are "functional
+adapters" that need their own pipeline code, not a plain LoRA load):
+
+| File | What it does (the card's words, briefly) | sha256 |
+|---|---|---|
+| `krea2_outpaint_rank32.safetensors` (218 MB) | Registered Outpaint: extends one axis per pass; superseded by AnyPaint for arbitrary masks | `1de7c106…3a7e76` |
+| `krea2_anygles_rank32.safetensors` (219 MB) | Anygles: a new camera view of one person (orbit, elevation, distance) from an aligned 3-D human normal and a short instruction | `248a2a65…631ce9` |
+| `krea2_reid_rank32.safetensors` (218 MB) | ReID Reference: a character reference that keeps identity, with reference K/V caching | `a80349fa…d967944` |
+
 Sources: [yijunwang2/krea2-anypaint](https://huggingface.co/yijunwang2/krea2-anypaint) · [ausboss/ComfyUI-AusBoss](https://github.com/ausboss/ComfyUI-AusBoss) (node help under `js/docs/`).
 
 ### Removal-trained adapters and other fill models (searched 2026-10-21)
