@@ -621,6 +621,18 @@ preference is `best` (`generate_cmds::removal_quality`): in the app, where Quali
 to `best`, a Spot Healing dab had been two 40-step fills, 98 s measured against 20–28 s
 here, and read as the tool not working. `fast` still halves the candidates' tier.
 
+**Where a Lightning fill's 25 s go** (2026-10-26, `same-graph-probe.ps1`, the app's
+preferences, the lighthouse's boat at a 512×400 request, the card clean): the sampler's
+eight steps take 6 s (1.3 it/s); the server's "Model Initializing" before the first step,
+ComfyUI 0.39's dynamic loader re-staging the 19.6 GB 2511 with its LoRA patches, takes
+**10–12 s on every prompt**, the same graph run twice in a row included (10.7 s the second
+time); the text encoder, the VAE and the transfers take the rest. The second candidate of a
+Best-of-two pair, with no VLM call in between, re-stages in 5.7 s (720 patches after 840). So
+a dab is 40 % staging that no setting of ours removes. Launch flags measured against it
+(`flag-probe.ps1`): `--disable-fast-disk` worse, `--highvram` stalled, `--disable-dynamic-vram`
+unusable (`comfyui-setup.md`'s table). The staging is the loader's design; the way past it is
+the native engine, which holds a model resident between runs.
+
 **The removal adapter** (2026-10-22; `lora-run.ps1`). prithivMLmods' Object Remover v2, an
 Apache-2.0 LoRA on 2511 trained to delete what is painted red (`models.md`), as the
 `qwen-edit-2511/remove-lightning-8` template: the Lightning graph with the adapter loaded

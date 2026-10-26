@@ -16,8 +16,14 @@ can pick up.
   measured no better on removals and worse under the smoothed hole (`benchmarks.md` §5i,
   "The fill's own settings"). Quality still governs generations, edits and expansions. The
   classical-tools test asserts the Lightning template under the default Quality.
-- Open: the GPU tenants (`dev-environment-windows.md`) still cap what a clean stroke costs
-  in the app; a 25 s dab is the floor until the native 2511 removal lands.
+- **Where the rest goes** (`same-graph-probe.ps1`, `flag-probe.ps1`): of a 25 s Lightning
+  fill, 6 s is sampling and 10–12 s is ComfyUI 0.39's dynamic loader re-staging the 2511
+  with its LoRA patches before the first step, on every prompt, the same graph twice in a
+  row included. Three launch flags measured against it, all worse (`comfyui-setup.md`'s
+  table, `benchmarks.md` §5i); the session-0 tenants (`sd-server`, four pythons) came back
+  during the last two and hold 5 GB again. The server runs the measured flags again.
+- Open: the staging is the loader's; the native engine is the way past it (a resident
+  model, no re-staging). The GPU tenants cap what a clean stroke costs in the app.
 
 ## 2026-10-22: the removal adapter, installed and measured
 
