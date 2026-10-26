@@ -277,6 +277,16 @@ the side-by-side rewriter; learnt from AusBoss's Krea 2 clothing workflow, see
 - Measured quality: a small public-domain test set with prompts and expected properties (mask
   respected, seams within tolerance, no change outside the mask), run nightly like
   `perf-nightly.yml`.
+- ✅ 2026-10-26 **LoRAs on the native engine**: `loras: [{file, strength}]` on the fill, edit,
+  image and removal commands, applied by the worker as side paths on the resident Qwen-Image-2.1
+  and Krea 2 DiTs (plan-native-engine §9); the installed set (AusBoss's Consistency, Outpaint,
+  Restore and Outfit Swap, AnyPaint, Viggle Turbo, the MIT BFS swaps) in `models.md`.
+  Open: the picker rows for them, a parity run against ComfyUI, the Krea 2 reference path
+  AnyPaint needs.
+- Taken from AusBoss's catalogue, in order (`research/notes/ausboss-catalogue-2026-10.md` §4):
+  the 2.1 route for removals (measuring), realign to source, the differential composite
+  ("remove with its shadow"), remove to its own layer, the rewriter on the resident encoder,
+  LaMa as Spot Healing's first tier, Generative Upscale with the restore recipe, 2.1 Turbo.
 
 ## Phase 6: Beyond ComfyUI
 

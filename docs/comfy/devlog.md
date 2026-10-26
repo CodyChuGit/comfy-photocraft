@@ -32,6 +32,45 @@ can pick up.
   resident model, which means the native engine; the owner's decision (plan §15.6) has
   2511 native out of scope, so the next step is the owner's call.
 
+## 2026-10-26 (afternoon): the 2.1 route, AusBoss's catalogue, the LoRA engine
+
+- **Direction.** Asked for the next lever, the owner first picked the 2511 port, then asked
+  whether Qwen-Image-2.1 would do (AusBoss's 2.1 workflows on Civitai) and set **Krea 2 and
+  Qwen-Image-2.1 as the main models of the build**, the app being open-sourced, not sold (the
+  research licence is the installer's to accept; BYOM stays). 2511 stays the permissive
+  fallback; the port is off the list (plan §15.6).
+- **AusBoss's whole catalogue read** (31 models through Civitai's API, the pages' own
+  measurements): `research/notes/ausboss-catalogue-2026-10.md`. The concepts worth taking, in
+  order: realign to source, the differential composite ("remove with its shadow"), remove to
+  its own layer, the rewriter on the resident encoder, LaMa for small marks, tiled generative
+  upscale with the restore recipe and per-tile colour matching, 2.1 Turbo, LoRA loading. His
+  LoRAs fetched on the owner's go (Consistency, Outpaint v1/v2, Restore, Outfit Swap; AnyPaint;
+  Viggle Turbo v0.3; the MIT BFS swaps), checksums in `models.md`; the Civitai workflow JSONs
+  need his login (links given).
+- **A worker many processes join.** The CLI spawns its own worker per process, so a bench
+  stroke on the native route paid the whole cold load (368 s). `photocraft-cli --engine
+  --stay` (gn-engine `serve_with(stay)`, genai-native `e91865b`) outlives its clients and
+  `PHOTOCRAFT_NATIVE_ENGINE=port:token` makes `native_backend` attach to it
+  (`NativeBackend::attached`); `bench/scripts/native-worker.ps1` starts and stops it.
+  genai-native is consumed from the local checkout through a `[patch]` in the user-level cargo
+  config (`CARGO_HOME\config.toml`) until the revision is pushed and bumped.
+- **The rewriter kept off the worker** (`thinker_for`): a job's vision-language questions go
+  to the backend serving the enhancer template, the ComfyUI route, while the worker serves the
+  picture; with both on the worker the name was lost and the detector fell back to the point
+  prompt (the first native strokes). And `release_thinker`: on the native route the ComfyUI
+  server drops its models after each answer (unless purges are off), because the 5 GB
+  vision model resident beside the worker's 2.1 set and the card's other tenants paged a stroke
+  for eight minutes (31.5 GB in use).
+- **The LoRA engine** (the owner's standing ask), in `qir::lora` with slots on both DiTs,
+  `params.loras` through the worker and `loras: [{file, strength}]` on the fill, edit, image and
+  removal commands: plan §9's status paragraph has the design. Tests: the side path equals the
+  merged weight; both file layouts load and the fused gate-up splits as ComfyUI does; the
+  worker's request parsing and path rules; the app's validation on both routes. Not yet
+  measured against ComfyUI with the same file.
+- **The native 2.1 removal bench** (`native21-run.ps1`) ran three times today and was stopped
+  three times: once without the worker shared, once without the rewriter's name, once paging.
+  It runs again with all three fixed; the numbers go in `benchmarks.md` §5i when it lands.
+
 ## 2026-10-22: the removal adapter, installed and measured
 
 - **Downloaded on the user's go**: `Qwen-Image-Edit-2511-Object-Remover-v2-9200.safetensors`

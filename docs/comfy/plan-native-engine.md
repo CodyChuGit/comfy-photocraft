@@ -654,6 +654,24 @@ the fp8 GEMM (§11) to keep both speed and precision, the style reference (6 cas
 NVFP4 file (dequantised on load would work through the same converter path; the NVFP4 GEMM is
 §11), the definition's ≤ 600-line gate is met but the blocks are not yet in `gn-blocks` (§7.1).
 
+**LoRA loading (2026-10-26): done as a runtime side path**, in `qir::lora` (`genai-native`).
+For every linear of both DiTs, `y += s · B (A x)` with `A (r, in)`, `B (out, r)` in the model's
+dtype and `s = strength · alpha / r`; the base weights stay as loaded, INT8 ConvRot included
+(the merged q|k and gate|proj GEMMs add their deltas after the fact, the fused SwiGLU's out
+delta forms `silu(g)·p` only when an adapter asks), so adapters are set per request on the
+resident model (`QwenImageDit::set_loras`, `Krea2Dit::set_loras`, a `LoraSlot` on each linear)
+and a strength is a number. Files: `lora_A/lora_B` and `lora_down/lora_up`, `alpha`, the
+`diffusion_model.` / `transformer.` prefixes, ComfyUI's fused `img_mlp.gate_up` of 2.1 split
+as its own loader does (gate first). The 2.1 tails (modulation, timestep embedder, img_in,
+norm_out, proj_out) take adapters too (Viggle's Turbo LoRA touches them); `txt_in` does not
+yet. The worker (`gn-diffusion`) reads `params.loras` (`[{file, strength}]`, a file name under
+`<models>/loras/` or an absolute path, six files cached on the device) and the editor's fill,
+edit, image and removal commands take `loras` (`generate_cmds::Tuning`); a ComfyUI template
+ignores the list and carries its own LoRA nodes. Unmatched module names are logged, so a file
+for another model is visible. Parity against ComfyUI with the same file is the next
+measurement (the Consistency LoRA on a 2.1 edit, AnyPaint on Krea 2 once its reference path
+exists); the owner's installed set is in `models.md`.
+
 **Krea 2 inpainting and outpainting natively (added 2026-10-21, from AusBoss's clothing
 workflow, `docs/comfy/research/notes/ausboss-krea2-clothing-workflow.md`).** Krea 2 has no mask
 input and no reference slot; the community's **AnyPaint** LoRA (`krea2_anypaint_rank32`,
@@ -903,6 +921,11 @@ serve it today at good speed), keeping SAM + 2.1 native; or drop GGUF reading fr
    and file hashes so most users never run it.*
 6. **Qwen-Image-Edit-2511 native**: in or out of this plan? *Recommendation: out;* the rented
    lanes serve it, and 2.1 covers editing for the native scope. Revisit after the walkthrough.
+   *2026-10-26:* the owner first chose the port (the ComfyUI route's removal floor is 22–25 s a
+   dab, all of it the server's re-staging), then, on AusBoss's Qwen-Image-2.1 workflows, set
+   **Krea 2 and Qwen-Image-2.1 as the main models of the build**: removals go to the native
+   2.1 route (measured on the bench sets, `native21-run.ps1`), LoRA loading came first (above),
+   and 2511 stays the permissive fallback on ComfyUI. The port stays out.
 
 ---
 

@@ -82,17 +82,28 @@ pub(crate) struct Tuning {
     pub sampler: Option<String>,
     pub scheduler: Option<String>,
     pub max_pixels: u64,
+    /// LoRA adapters on the model for this request, `(file name, strength)`, in order
+    /// (`loras` on the fill, edit, image and removal commands). The native engine applies them
+    /// as side paths on its resident model (plan-native-engine §9: AnyPaint, AusBoss's
+    /// Consistency, Outpaint, Restore and Outfit Swap, the BFS swaps); a ComfyUI template
+    /// carries its own LoRA nodes and ignores the list.
+    pub loras: Vec<(String, f32)>,
 }
 
 impl Default for Tuning {
     fn default() -> Self {
-        Self { sampler: None, scheduler: None, max_pixels: MAX_FILL_REQUEST_PIXELS }
+        Self { sampler: None, scheduler: None, max_pixels: MAX_FILL_REQUEST_PIXELS, loras: Vec::new() }
     }
 }
 
+/// At most this many LoRAs on one request.
+const MAX_LORAS: usize = 8;
+
 impl Tuning {
     /// From a command's params; a sampler or scheduler is a plain ComfyUI name (letters,
-    /// digits, underscores), `maxPixels` 65 536 to 16 M.
+    /// digits, underscores), `maxPixels` 65 536 to 16 M, `loras` a list of
+    /// `{"file": "name.safetensors", "strength": 1.0}` (a file name, no folders; strength
+    /// -4 to 4, 1 unless given).
     pub(crate) fn from_params(cmd: &str, p: &Value) -> Result<Tuning> {
         let name = |key: &str| -> Result<Option<String>> {
             match opt_str(cmd, p, key, 40)?.map(str::trim).filter(|s| !s.is_empty()) {
@@ -102,8 +113,35 @@ impl Tuning {
             }
         };
         let max_pixels = opt_num(cmd, p, "maxPixels", 65_536.0, MAX_REQUEST_PIXELS as f64)?.map_or(MAX_FILL_REQUEST_PIXELS, |v| v as u64);
-        Ok(Tuning { sampler: name("sampler")?, scheduler: name("scheduler")?, max_pixels })
+        Ok(Tuning { sampler: name("sampler")?, scheduler: name("scheduler")?, max_pixels, loras: loras_of(cmd, p)? })
     }
+
+    /// The `loras` request parameter for the worker, or nothing.
+    pub(crate) fn loras_param(&self) -> Option<Value> {
+        (!self.loras.is_empty()).then(|| Value::Array(self.loras.iter().map(|(f, s)| json!({"file": f, "strength": s})).collect()))
+    }
+}
+
+/// `loras` from a command's params: `[{"file": …, "strength": …}]`, validated.
+pub(crate) fn loras_of(cmd: &str, p: &Value) -> Result<Vec<(String, f32)>> {
+    let Some(v) = p.get("loras").filter(|v| !v.is_null()) else { return Ok(Vec::new()) };
+    let Some(items) = v.as_array() else { return Err(bad(cmd, "`loras` must be a list of {file, strength}")) };
+    if items.len() > MAX_LORAS {
+        return Err(bad(cmd, format!("at most {MAX_LORAS} LoRAs on one request")));
+    }
+    let mut out = Vec::with_capacity(items.len());
+    for it in items {
+        let file = it.get("file").and_then(Value::as_str).map(str::trim).unwrap_or_default();
+        if file.is_empty() || file.len() > 200 || file.contains(['/', '\\', ':']) || file.starts_with('.') {
+            return Err(bad(cmd, "a LoRA is named by its file name in the LoRA folder (`file`), no folders"));
+        }
+        let strength = match it.get("strength") {
+            None | Some(Value::Null) => 1.0,
+            Some(s) => s.as_f64().filter(|v| v.is_finite() && (-4.0..=4.0).contains(v)).ok_or_else(|| bad(cmd, "a LoRA `strength` is a number from -4 to 4"))? as f32,
+        };
+        out.push((file.to_string(), strength));
+    }
+    Ok(out)
 }
 /// Seeds stay below 2^53 so they survive a round trip through JSON numbers.
 const MAX_SEED: u64 = 1 << 53;
@@ -741,6 +779,17 @@ pub(crate) fn thinker_for(s: &Session, own: &Arc<dyn GenerativeBackend>) -> Arc<
     backend_for(s, ENHANCE_EDIT_TEMPLATE).map(|(b, _)| b).unwrap_or_else(|_| Arc::clone(own))
 }
 
+/// On the native route the ComfyUI server holds only the vision-language model between a job's
+/// questions (the rewriter, the judge): it leaves after each answer unless purges are off, so
+/// the worker's resident models have the card. Measured 2026-10-26: with the 5 GB model kept
+/// resident beside the worker's 2.1 set and the card's other tenants, a native stroke paged for
+/// minutes; ComfyUI loads it again in two seconds for the next question.
+fn release_thinker(server: &str, purge: &str, thinker: &dyn GenerativeBackend) {
+    if server == NATIVE_SERVER_KEY && purge != "never" {
+        let _ = thinker.free();
+    }
+}
+
 /// The model families `auto` sends to the native worker when it serves them: those whose native
 /// route beat their ComfyUI row at parity (plan-native-engine §3.3, §12.1). SAM 3.1 since
 /// 2026-10-19; Qwen-Image-2.1 text to image since 2026-10-20 (ComfyUI's noise, schedule and
@@ -1314,6 +1363,7 @@ pub(crate) fn generative_remove(
                 }
                 // Named or not, the fill's prompt is settled here.
                 job.enhance = false;
+                release_thinker(&job.server, job.purge, job.thinker.as_ref());
                 ctx.check()?;
             }
             if !taken && let Some(finder) = &object {
@@ -1698,6 +1748,8 @@ struct ImagePlan {
     variations: u32,
     /// Reference images (`references`).
     refs: crate::generate_refs::Refs,
+    /// LoRA adapters for the native engine (`loras`; see [`Tuning::loras`]).
+    loras: Vec<(String, f32)>,
 }
 
 /// The template `generate.image` switches to when references come with the default template,
@@ -1826,7 +1878,9 @@ fn plan_image(s: &Session, p: &Value) -> Result<ImagePlan> {
     };
     let enhance = opt_bool(IMAGE, p, "enhance", s.prefs().integrations.enhance_prompts)?;
     let refs = crate::generate_refs::Refs { images: crate::generate_refs::resolve(s, &ref_specs)?, specs: ref_specs };
+    let loras = loras_of(IMAGE, p)?;
     Ok(ImagePlan {
+        loras,
         template,
         prompt,
         typed,
@@ -1893,9 +1947,11 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
         to_document,
         variations,
         refs,
+        loras,
     } = plan;
     let label = name.clone();
     let tid = template.meta.id.clone();
+    let params: BTreeMap<String, Value> = Tuning { loras, ..Tuning::default() }.loras_param().map(|l| BTreeMap::from([("loras".to_string(), l)])).unwrap_or_default();
     // What the result layer remembers (`generate.similar` re-runs it).
     let info = GenerativeInfo {
         command: IMAGE.to_string(),
@@ -1923,7 +1979,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
         mask: None,
         models,
         size: Some((width, height)),
-        params: BTreeMap::new(),
+        params,
         references: refs.images,
     };
     let n = variations.max(1);
@@ -2248,11 +2304,15 @@ fn fill_region(
         prompt
     };
     ctx.check()?;
+    release_thinker(&server, purge, thinker.as_ref());
     // An expand template crops the model's reference to the picture: its rectangle inside the
     // request, in the request's (possibly resampled) pixels.
     let mut params = BTreeMap::new();
     params.insert("sampler".to_string(), Value::String(tuning.sampler.clone().unwrap_or_else(|| DEFAULT_SAMPLER.to_string())));
     params.insert("scheduler".to_string(), Value::String(tuning.scheduler.clone().unwrap_or_else(|| DEFAULT_SCHEDULER.to_string())));
+    if let Some(l) = tuning.loras_param() {
+        params.insert("loras".to_string(), l);
+    }
     if let Some(o) = &outpaint {
         let (sx, sy) = (f64::from(rw) / f64::from(w.max(1)), f64::from(rh) / f64::from(h.max(1)));
         let p = o.picture;
@@ -2402,6 +2462,7 @@ fn fill_region(
                 best = i;
             }
         }
+        release_thinker(&server, purge, thinker.as_ref());
         if best > 0 {
             let chosen = made.remove(best);
             made.insert(0, chosen);
@@ -3209,7 +3270,9 @@ fn plan_edit(s: &Session, p: &Value) -> Result<FillPlan> {
     // References (image 2, image 3 …): checked against the planned template; `auto` only
     // picks among templates with the same slots.
     let refs = crate::generate_refs::plan(s, EDIT, p, &template)?;
-    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow: 0, erase: false, tuning: Tuning::default() })
+    // An edit tunes nothing but its LoRAs (its templates bind no sampler; the size cap is its own).
+    let tuning = Tuning { loras: loras_of(EDIT, p)?, ..Tuning::default() };
+    Ok(FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow: 0, erase: false, tuning })
 }
 
 fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
@@ -3999,7 +4062,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Fill…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"grow":0..512=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"erase":{bool?=the template's},"sampler":{str?=euler},"scheduler":{str?=simple},"maxPixels":{int?=1048576},"references":{[{"layer":id} | {"path":"…"} | {"job":id,"index":0}]?},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; grow = widen the selection by that many pixels first, so a bulkier replacement has room; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; references = up to two reference images: with no template named the run switches to the fill-from-reference template, which flattens the selection to grey in the request so the model paints what the references show there (erase; `erase: true` does the same on any fill, `false` keeps the pixels); variations 1..4 = results with consecutive seeds, each a layer, only the first visible; sampler and scheduler = the KSampler's, ComfyUI names; maxPixels = the request is downscaled to at most this many pixels (the model's working size); areas over 1 megapixel are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"grow":0..512=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"erase":{bool?=the template's},"sampler":{str?=euler},"scheduler":{str?=simple},"maxPixels":{int?=1048576},"loras":{[{"file":name,"strength":-4..4=1}]?},"references":{[{"layer":id} | {"path":"…"} | {"job":id,"index":0}]?},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; loras = LoRA files from the LoRA folder (the native model root's loras/), applied by the native engine as side paths on its resident model, up to 8; a ComfyUI template carries its own LoRA nodes and ignores the list; enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; grow = widen the selection by that many pixels first, so a bulkier replacement has room; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; references = up to two reference images: with no template named the run switches to the fill-from-reference template, which flattens the selection to grey in the request so the model paints what the references show there (erase; `erase: true` does the same on any fill, `false` keeps the pixels); variations 1..4 = results with consecutive seeds, each a layer, only the first visible; sampler and scheduler = the KSampler's, ComfyUI names; maxPixels = the request is downscaled to at most this many pixels (the model's working size); areas over 1 megapixel are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: fill_enabled,
             run: run_fill,
             journal: true,
