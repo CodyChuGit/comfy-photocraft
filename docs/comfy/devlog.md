@@ -105,9 +105,17 @@ can pick up.
   Klein adapters (Klein is not a model of the build) and the step checkpoints of each repo
   (alternates). Also in: yijunwang2's four Krea 2 adapters (AnyPaint, Registered Outpaint,
   Anygles, ReID), Viggle's Turbo, the MIT BFS swaps. `models.md` has them with checksums.
-- Open, in order: the 2.1 edit removal with `prefill` off and the 4B's names; the worker's
-  memory on a shared card (the head and the vision tower in f32, the prefix cache at 1 MP);
-  the 8B rewriter's naming; a key/value cache for `chat`.
+- **Evening: the 2.1 edit route AusBoss's way** (`benchmarks.md` §5i): the real picture in
+  view (a 2.1 template never gets the smoothed hole now: `qwen21` in `fill_region`, a test),
+  the crop at 0.75 MP. One candidate: 2.1 14 of 20 against 2511's 12.5. Best of two: the
+  shipped 2511 14, 2.1 on the worker alone 12, at 10–38 s a stroke against 43–62. **The memory
+  fix that made the native route fast**: the CUDA pool's retained memory goes back to the
+  driver after each request and counts as free inside (genai-native `da60b3c`); strokes went
+  from 100–420 s to 9–30 s. The rewriter's wording now names the object, not its wearer: better
+  names from the 4B, the 8B still names the man on two scenes. `PHOTOCRAFT_THINKER=comfy`
+  (bench only) keeps the questions on ComfyUI.
+- Open, in order: the 8B's naming of worn things (or the 4B ported for the worker); the cup's
+  smudge on 2.1 (the differential composite, catalogue §2.2); a key/value cache for `chat`.
 - Also taken from the catalogue today: **realign to source** (`generate_realign`, on edits and
   every 2.1 template: the result moved back onto the picture by the translation that matches
   it outside the mask) and **`keepObject`** on the removal commands (the removed thing as its

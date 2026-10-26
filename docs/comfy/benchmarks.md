@@ -659,10 +659,35 @@ the native worker, one candidate a stroke, against the 2511 one-candidate run `-
 | `qwen-2.1/edit` + AusBoss's Consistency LoRA (the removal as an instruction on the crop, `edit21-run.ps1`, rewriter on the worker's 8B) | 20 | **unusable as run**: the smoothed hole (`prefill`) came back as the blur it was, and the 8B rewriter named the person instead of the thing ("the man's face", "the man wearing the cap and mask", "the person under the umbrella"), so faces and people went. Only the hat came out right |
 
 Also: with the 2.1 set, the head, the LoRA and the card's other tenants, the worker ran at
-0 GB free and sampling paged (6 s became 26–123 s). Not concluded yet: the edit route with
-`prefill` off (AusBoss shows the model the real picture) and the 4B's names, at a size that
-fits. Until then **2511 stays the removal model**; 2.1 keeps generation, edits, expand and the
-matte, where it was measured at parity.
+0 GB free and sampling paged (6 s became 26–123 s).
+
+**The 2.1 edit route done AusBoss's way** (the same evening; the ten hard stock scenes, half and
+whole strokes, 20 a run; sheets `st-e21p-*`, `st-e21pc-*`, `st-e21n-*`, `st-p21-vs-auto3-*`,
+`st-auto4-*`, `st-auto5-*` in `bench\stock`). The real picture in the model's view (`prefill`
+off; now the rule for every 2.1 template), the crop at 0.75 MP, realigned. My count of clean
+removals:
+
+| Route | Rewriter | Candidates | Clean, of 20 | Time a stroke |
+|---|---|---|---|---|
+| 2511 fill (`-one`) | ComfyUI 4B | 1 | 12.5 | 22–35 s |
+| 2.1 edit (`-e21p`) | ComfyUI 4B | 1 | 14 | 10–170 s (paging, before the pool trim) |
+| 2.1 edit + Consistency LoRA (`-e21pc`) | ComfyUI 4B | 1 | 13.5 | 20–420 s (the same) |
+| 2.1 edit (`-e21n`) | the worker's 8B, reworded | 1 | 13 | **9–30 s**, no ComfyUI |
+| **2511 shipped** (`-auto3`: adapter + smoothed fill, judged) | ComfyUI 4B | 2 | **14** | 43–62 s |
+| 2.1 edit (`-p21`) | the worker's 8B, judged by it | 2 | 12 | **10–38 s**, no ComfyUI |
+
+2.1 wins the top hat and the umbrella (the person under it kept), loses the cup (a dark smudge
+where it stood) and, with the 8B, the strokes where the 8B names the person instead of the
+thing ("the man's face and glasses", "the man wearing the cap and mask"). The Consistency LoRA
+helps small removals and brings big ones back (the motorcycle, the half-stroke bicycle), as its
+author warns. So **2511's Best of two stays the removal default**; 2.1 as an edit is a close
+second at twice the speed with no ComfyUI, and the 8B's naming is what separates them.
+
+The rewriter's wording now says the object is the thing itself, not the person or animal that
+wears, holds or carries it. On 2511 with the 4B (`-auto4`, `-auto5`): the whole-stroke glasses
+are named "glasses" (was "white beard"), the boat and the umbrella come out cleaner, nothing
+lost once "the thing the close-up is centred on" was dropped from the wording (it made the 4B
+say "the black bicycle seat"). The 8B still names the wearer on two scenes.
 
 **The removal adapter** (2026-10-22; `lora-run.ps1`). prithivMLmods' Object Remover v2, an
 Apache-2.0 LoRA on 2511 trained to delete what is painted red (`models.md`), as the

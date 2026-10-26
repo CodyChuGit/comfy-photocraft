@@ -211,7 +211,7 @@ const ENHANCE_FILL_NOTE: &str = "The user selected the {place} of the image; the
 /// "the hand" for a ring) or the most salient thing in view ("the pendant" for a stroke on
 /// the chain); with the painted area outlined in green it talked about the outline ("the
 /// green circle", "the green-painted face"). Measured 2026-10-21 on the robustness set.
-const ENHANCE_REMOVE_NOTE: &str = "You can see two views of the same photo side by side: on the right, a close-up of an object to remove (or of part of it); on the left, the same with its surroundings. Reply with exactly one sentence of the form \"Remove the <object>.\" The object is the whole thing, not a part of it (the whole car, not its window; the whole dog, not its head; the whole necklace, not its pendant; the whole cup, not the coffee in it), named by what it is and its colour in at most five words; never call it an area, region, part or selection. Say nothing else: not what is behind it, not the two views, not other things in the picture.";
+const ENHANCE_REMOVE_NOTE: &str = "You can see two views of the same photo side by side: on the right, a close-up of an object to remove (or of part of it); on the left, the same with its surroundings. Reply with exactly one sentence of the form \"Remove the <object>.\" The object is the whole thing, not a part of it (the whole car, not its window; the whole dog, not its head; the whole necklace, not its pendant; the whole cup, not the coffee in it), named by what it is and its colour in at most five words; never call it an area, region, part or selection. It is the object itself, not the person, animal or larger thing that wears, holds or carries it (the glasses, not the man wearing them; the mask, not the face; the ring, not the hand; the umbrella, not the person under it). Say nothing else: not what is behind it, not the two views, not other things in the picture.";
 
 /// The system turn for judging two results of a removal side by side ([`judge_pair`]): the
 /// edge-match score preferred a smeared skin-coloured blob over a man's eyes to the eyes
@@ -791,7 +791,10 @@ pub(crate) fn backend_for(s: &Session, template: &str) -> Result<(Arc<dyn Genera
 /// template (the ComfyUI route); when no such route is configured, the job's own backend, which
 /// then answers or declines as before.
 pub(crate) fn thinker_for(s: &Session, own: &Arc<dyn GenerativeBackend>, server: &str) -> Arc<dyn GenerativeBackend> {
-    if server == NATIVE_SERVER_KEY && own.model_files("").is_ok_and(|m| m.iter().any(|t| t == ENHANCE_EDIT_TEMPLATE)) {
+    // `PHOTOCRAFT_THINKER=comfy` keeps the questions on the ComfyUI route even for a native
+    // job (a bench comparing the two rewriters; not a preference).
+    let comfy_only = std::env::var("PHOTOCRAFT_THINKER").is_ok_and(|v| v.trim() == "comfy");
+    if !comfy_only && server == NATIVE_SERVER_KEY && own.model_files("").is_ok_and(|m| m.iter().any(|t| t == ENHANCE_EDIT_TEMPLATE)) {
         return Arc::clone(own);
     }
     backend_for(s, ENHANCE_EDIT_TEMPLATE).map(|(b, _)| b).unwrap_or_else(|_| Arc::clone(own))
@@ -2330,8 +2333,13 @@ fn fill_region(
     // A route that regenerates the whole picture (an edit by instruction; every Qwen-Image-2.1
     // template, whose "fill" is an edit with the mask in view) hands it back a few pixels off:
     // the result is realigned to the picture outside the mask (`generate_realign`).
-    let realign = outpaint.is_none() && (command == EDIT || template::find(&template_id).is_ok_and(|t| t.meta.family == "qwen-image-2.1"));
-    let image = if prefill && outpaint.is_none() && !adapter_named { smooth_covered(&image, &mask) } else { image };
+    let qwen21 = template::find(&template_id).is_ok_and(|t| t.meta.family == "qwen-image-2.1");
+    let realign = outpaint.is_none() && (command == EDIT || qwen21);
+    // The smoothed hole helps 2511 (it copies what its reference shows, so a smooth
+    // continuation gives it nothing to keep); Qwen-Image-2.1 hands the smoothing back as the
+    // blur it is, and removes from the real picture as well as 2511 does from the smoothed one
+    // (benchmarks.md 5i, 2026-10-26). So 2.1 sees the picture as it is.
+    let image = if prefill && outpaint.is_none() && !adapter_named && !qwen21 { smooth_covered(&image, &mask) } else { image };
     // The prompt the model gets: as typed, or rewritten by the vision-language model with the
     // picture in view (an expand keeps its own wording).
     let typed = prompt.clone();

@@ -162,6 +162,36 @@ fn grow_widens_the_selection_and_erase_is_a_choice() {
     assert!(matches!(s.execute(FILL, json!({"prompt": "x", "grow": 9999})), Err(EngineError::BadParams { .. })));
 }
 
+/// A removal through a Qwen-Image-2.1 template shows the model the picture as it is; through
+/// 2511 the hole is smoothed over first (`prefill`). The red hat sits inside the selection with
+/// blue all round it, so the smoothed hole is blue where the real picture is red.
+#[test]
+fn a_qwen_21_removal_sees_the_picture_as_it_is_and_a_2511_one_the_hole_smoothed() {
+    let fake = FakeComfy::start().unwrap();
+    let (mut s, _, _) = session(&fake.url);
+    // The picture is a run's first upload (a fill's mask follows it).
+    let centre_of_hole = |fake: &FakeComfy, first: usize| -> [u8; 4] {
+        let st = fake.state();
+        let pic = photocraft_genai::png::decode_rgba8(&st.uploads[first].1).unwrap();
+        // The request is the whole 64×48 canvas resampled; the hole's centre is (20, 16).
+        pic.get(pic.width * 20 / 64, pic.height * 16 / 48).unwrap()
+    };
+    s.edit_prefs(|p| {
+        p.integrations.allow_research_models = true;
+        p.integrations.default_fill_template = "qwen-2.1/edit".into();
+    });
+    let r = s.execute("edit.contentAwareFill", json!({"generative": true, "variations": 1, "enhance": false})).unwrap();
+    assert_eq!(r["template"], "qwen-2.1/edit", "{r}");
+    let [rd, _, b, _] = centre_of_hole(&fake, 0);
+    assert!(rd > 180 && b < 80, "2.1 sees the red hat: {rd} {b}");
+    s.edit_prefs(|p| p.integrations.default_fill_template = "auto".into());
+    let before = fake.state().uploads.len();
+    let r = s.execute("edit.contentAwareFill", json!({"generative": true, "variations": 1, "enhance": false})).unwrap();
+    assert!(r["template"].as_str().unwrap_or_default().starts_with("qwen-edit-2511/"), "{r}");
+    let [rd, _, b, _] = centre_of_hole(&fake, before);
+    assert!(b > rd, "2511 sees the hole smoothed from the blue around it: {rd} {b}");
+}
+
 /// Content-Aware Fill, the Remove tool and Spot Healing go through the fill model when asked
 /// (`generative`), with the removal instruction and the hole flattened to grey, each as a masked
 /// layer; without a backend configured they fall back to their classical fills, in place.
