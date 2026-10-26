@@ -83,8 +83,15 @@ can pick up.
   before another engine of the worker runs (`Engine::yields`, the perception engine yields;
   genai-native `937c149`). Result, two strokes on one worker: **25 s and 60 s** (the 2.1 fill
   itself 10–15 s: encode 3.7–9.7, sampling 5.1, decode 0.6), against 135 s and 492 s before.
-  Still open: the rewriter on the resident encoder, which would take ComfyUI's model off the
-  card and its reload out of every stroke.
+- **The rewriter on the resident encoder** (genai-native `9e856bf`, PhotoshopEX `3999b2d4`):
+  the 2.1 snapshot's text encoder is Qwen3-VL 8B Instruct with its `lm_head`, so
+  `Pipeline::chat` answers as the vision-language model (chat template, the picture through
+  the vision tower, sampling through the resident encoder plus the final norm and a Q8 head
+  loaded on first use; no key/value cache yet). The worker serves `enhance/edit` and
+  `enhance/image` with it, and a native job's rewriter and judge go to the worker
+  (`thinker_for` with the job's server key; the worker is never told to unload after
+  answering). ComfyUI then has no part in a native removal. Not yet measured live: the
+  rewriter's names from the 8B against the 4B's, and the time per answer.
 - Also taken from the catalogue today: **realign to source** (`generate_realign`, on edits and
   every 2.1 template: the result moved back onto the picture by the translation that matches
   it outside the mask) and **`keepObject`** on the removal commands (the removed thing as its
