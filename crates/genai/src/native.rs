@@ -44,6 +44,21 @@ impl std::fmt::Debug for NativeBackend {
 /// The argument that turns this executable into the engine worker.
 pub const ENGINE_FLAG: &str = "--engine";
 
+/// How a run that lost its worker mid-way begins its error.
+const STOPPED: &str = "the engine stopped";
+
+/// `attempt`, and once more when it lost its worker mid-run and a fresh one can be started
+/// (`respawns`) and the run was not cancelled.
+fn retry_after_stop<T>(respawns: bool, progress: &dyn Progress, attempt: impl Fn() -> Result<T>) -> Result<T> {
+    match attempt() {
+        Err(Error::Unavailable(m)) if m.starts_with(STOPPED) && respawns && !progress.cancelled() => {
+            progress.report(0.0, "The engine restarted; trying again");
+            attempt()
+        }
+        other => other,
+    }
+}
+
 impl NativeBackend {
     /// A backend that starts `program args…` as its worker when first needed.
     pub fn new(program: PathBuf, args: Vec<String>) -> Self {
@@ -116,7 +131,7 @@ impl NativeBackend {
             Ok(v) => Ok(v),
             Err(ClientError::Gone(m)) => {
                 *guard = None;
-                Err(Error::Unavailable(format!("the engine stopped: {m}")))
+                Err(Error::Unavailable(format!("{STOPPED}: {m}")))
             }
             Err(e) => Err(map_err(e)),
         }
@@ -224,10 +239,16 @@ impl GenerativeBackend for NativeBackend {
             params: req.params.clone(),
         };
         let started = std::time::Instant::now();
-        let (info, pictures) = self.with_client(|c| {
-            let mut report = |f: f32, m: &str| progress.report(f, m);
-            c.run(&rr, &bytes, &mut report, &|| progress.cancelled())
-        })?;
+        let attempt = || {
+            self.with_client(|c| {
+                let mut report = |f: f32, m: &str| progress.report(f, m);
+                c.run(&rr, &bytes, &mut report, &|| progress.cancelled())
+            })
+        };
+        // A worker that stopped mid-run (it exits on a poisoned CUDA context) is replaced and
+        // the run tried once more on the fresh one (plan-native-engine §12.2); a worker this
+        // process only joined cannot be replaced from here.
+        let (info, pictures) = retry_after_stop(!self.attached, progress, attempt)?;
         let mut images = Vec::with_capacity(info.images.len());
         for (i, b) in info.images.iter().enumerate() {
             let data = pictures.get(i).ok_or_else(|| Error::Protocol(format!("picture {i} missing")))?;
@@ -437,6 +458,31 @@ mod tests {
         assert!(matches!(b.run(&long, &*c), Err(Error::Cancelled)));
         assert_eq!(b.model_files("diffusion_models").unwrap().len(), 3);
         b.free().unwrap();
+    }
+
+    #[test]
+    fn a_run_that_lost_its_worker_is_tried_once_more_on_a_fresh_one() {
+        use std::cell::Cell;
+        let calls = Cell::new(0);
+        let stopped_once = || {
+            calls.set(calls.get() + 1);
+            if calls.get() == 1 { Err(Error::Unavailable(format!("{STOPPED}: closed"))) } else { Ok(7) }
+        };
+        let p = Cancel(AtomicBool::new(false), Mutex::new(Vec::new()));
+        assert_eq!(retry_after_stop(true, &p, stopped_once).unwrap(), 7);
+        assert_eq!(calls.get(), 2);
+        assert!(p.1.lock().unwrap().iter().any(|(_, m)| m.contains("trying again")));
+        // A worker that cannot be replaced, a cancelled run, or another error: no second try.
+        calls.set(0);
+        assert!(retry_after_stop(false, &p, stopped_once).is_err());
+        assert_eq!(calls.get(), 1);
+        calls.set(0);
+        p.0.store(true, Ordering::SeqCst);
+        assert!(retry_after_stop(true, &p, stopped_once).is_err());
+        assert_eq!(calls.get(), 1);
+        let other = || -> Result<i32> { Err(Error::Server("x".into())) };
+        p.0.store(false, Ordering::SeqCst);
+        assert!(matches!(retry_after_stop(true, &p, other), Err(Error::Server(_))));
     }
 
     #[test]

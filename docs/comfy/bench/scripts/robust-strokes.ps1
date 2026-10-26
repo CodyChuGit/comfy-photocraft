@@ -16,14 +16,24 @@
 # integrations.purgeModels for the run.
 # -Engine comfy|auto|native sets integrations.engine (auto and native need the app's runtime
 # and model folders, given here as the owner's; the detector then runs natively too).
-param([string]$Tags = "", [string]$Dir = "C:\Users\5090\ComfyUI\photocraft-tests\bench", [string]$Prefix = "rb", [string]$Objects = "rb-objects.json", [string]$Quality = "balanced", [string]$Suffix = "", [string]$Kinds = "half,whole", [string]$Extra = "", [string]$Template = "", [string]$Purge = "switch", [string]$Engine = "comfy")
+# -Loras "file.safetensors:1.0,other.safetensors:0.5" adds the LoRAs to every stroke (the
+# native engine applies them). With a shared native worker (PHOTOCRAFT_NATIVE_ENGINE, from
+# native-worker.ps1) a worker that stopped mid-run is started again and the stroke retried.
+param([string]$Tags = "", [string]$Dir = "C:\Users\5090\ComfyUI\photocraft-tests\bench", [string]$Prefix = "rb", [string]$Objects = "rb-objects.json", [string]$Quality = "balanced", [string]$Suffix = "", [string]$Kinds = "half,whole", [string]$Extra = "", [string]$Template = "", [string]$Purge = "switch", [string]$Engine = "comfy", [string]$Loras = "")
 Set-Location "C:\Users\5090\Documents\PhotoshopEX"
-$cli = (Resolve-Path "target\release\photocraft-cli.exe").Path
+$cli = if ($env:PHOTOCRAFT_CLI) { $env:PHOTOCRAFT_CLI } else { (Resolve-Path "target\release\photocraft-cli.exe").Path }
 $out = $Dir
 $tpl = if ($Template -eq "") { "" } else { ',\"integrations.defaultFillTemplate\":\"' + $Template + '\",\"integrations.allowResearchModels\":true' }
 # -Extra is key=value pairs separated by semicolons ("prefill=true;grow=20"): quotes do not
 # survive the outer shell's argument passing, so they are added here.
 $Extra = (($Extra -split ';' | Where-Object { $_ -match '^\s*([A-Za-z]\w*)\s*=\s*(.+?)\s*$' } | ForEach-Object { $k = $Matches[1]; $v = $Matches[2]; if ($v -match '^(true|false|-?\d+(\.\d+)?)$') { ',\"' + $k + '\":' + $v } else { ',\"' + $k + '\":\"' + $v + '\"' } }) -join '')
+if ($Loras) {
+    $items = $Loras -split ',' | Where-Object { $_ -match '^\s*([^:]+?)\s*(?::\s*(-?\d+(\.\d+)?))?\s*$' } | ForEach-Object {
+        $s = if ($Matches[2]) { $Matches[2] } else { "1" }
+        '{\"file\":\"' + $Matches[1] + '\",\"strength\":' + $s + '}'
+    }
+    $Extra += ',\"loras\":[' + ($items -join ',') + ']'
+}
 $folders = if ($Engine -eq "comfy") { "" } else { ',\"integrations.runtimePath\":\"C:/Users/5090/Documents/_eval/onnxruntime-cuda13/onnxruntime-win-x64-gpu_cuda13-1.31.0/lib;C:/Users/5090/scoop/apps/cuda/current/bin/x64;C:/Users/5090/ComfyUI/ComfyUI_windows_portable/python_embeded/Lib/site-packages/torch/lib\",\"integrations.modelsPath\":\"C:/Users/5090/Documents/_eval/native-models\"' }
 $env:CM_PREFS = '{\"values\":{\"integrations.engine\":\"' + $Engine + '\",\"integrations.enhancePrompts\":false,\"integrations.quality\":\"' + $Quality + '\",\"integrations.purgeModels\":\"' + $Purge + '\"' + $tpl + $folders + '}}'
 # (not `$kinds`: that is the [string] parameter, case ignored, and would turn the list into "half whole")
@@ -55,6 +65,15 @@ function Tool($tag, $kind, $cmd, $params) {
         $deadline = (Get-Date).AddMinutes(4)
         while ((Get-Date) -lt $deadline) { try { $null = Invoke-RestMethod http://127.0.0.1:8188/system_stats -TimeoutSec 3; break } catch { Start-Sleep -Seconds 5 } }
         "(server restarted at $stamp, stroke retried)" | Out-File $log -Append -Encoding utf8
+        $sw.Restart()
+        $lines = Invoke-Cli 2>&1 | ForEach-Object { "$_" }
+    }
+    # A shared native worker that stopped (it exits on a poisoned CUDA context): a fresh one.
+    if ($env:PHOTOCRAFT_NATIVE_ENGINE -and (($lines -join " ") -match "the engine stopped|the engine is gone|connect to port|CUDA_ERROR")) {
+        $script:restarts++
+        & "$PSScriptRoot\native-worker.ps1" -Stop | Out-Null
+        . "$PSScriptRoot\native-worker.ps1" | Out-Null
+        "(native worker restarted, stroke retried)" | Out-File $log -Append -Encoding utf8
         $sw.Restart()
         $lines = Invoke-Cli 2>&1 | ForEach-Object { "$_" }
     }

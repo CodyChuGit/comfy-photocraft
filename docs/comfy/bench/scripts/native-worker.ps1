@@ -18,7 +18,7 @@ if ($Stop) {
     $env:PHOTOCRAFT_NATIVE_ENGINE = $null
     return
 }
-$cli = "C:\Users\5090\Documents\PhotoshopEX\target\release\photocraft-cli.exe"
+$cli = if ($env:PHOTOCRAFT_CLI) { $env:PHOTOCRAFT_CLI } else { "C:\Users\5090\Documents\PhotoshopEX\target\release\photocraft-cli.exe" }
 $runtime = "C:/Users/5090/Documents/_eval/onnxruntime-cuda13/onnxruntime-win-x64-gpu_cuda13-1.31.0/lib;C:/Users/5090/scoop/apps/cuda/current/bin/x64;C:/Users/5090/ComfyUI/ComfyUI_windows_portable/python_embeded/Lib/site-packages/torch/lib"
 $models = "C:/Users/5090/Documents/_eval/native-models"
 $token = -join ((1..48) | ForEach-Object { "{0:x}" -f (Get-Random -Maximum 16) })
