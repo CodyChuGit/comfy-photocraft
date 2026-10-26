@@ -616,6 +616,11 @@ else. The "realistic Qwen outputs" seen elsewhere are whole-picture generations 
 1 MP and up with long prompts; a removal is a crop with the object taken out, and its realism
 is bounded by what the model can continue from the edge.
 
+Since 2026-10-26 the removal commands therefore run at `balanced` even when the Quality
+preference is `best` (`generate_cmds::removal_quality`): in the app, where Quality defaults
+to `best`, a Spot Healing dab had been two 40-step fills, 98 s measured against 20–28 s
+here, and read as the tool not working. `fast` still halves the candidates' tier.
+
 **The removal adapter** (2026-10-22; `lora-run.ps1`). prithivMLmods' Object Remover v2, an
 Apache-2.0 LoRA on 2511 trained to delete what is painted red (`models.md`), as the
 `qwen-edit-2511/remove-lightning-8` template: the Lightning graph with the adapter loaded

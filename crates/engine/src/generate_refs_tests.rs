@@ -173,6 +173,10 @@ fn the_classical_tools_go_through_the_model_when_asked_and_fall_back_without_a_s
     let r = s.execute("edit.contentAwareFill", json!({"generative": true, "variations": 1})).unwrap();
     assert!(r["layer"].is_number(), "a generative layer: {r}");
     assert_eq!(s.active().unwrap().doc.layers.len(), layers + 1);
+    // Under Quality best (the default) a removal still runs the 8-step tier: the 40-step one
+    // was no better on removals and four times the time.
+    assert_eq!(crate::generate_cmds::quality(&s), "best");
+    assert_eq!(r["template"], "qwen-edit-2511/fill-lightning-8", "{r}");
     {
         let st = fake.state();
         // The rewriter names the object first (the fake echoes the instruction), then the fill.

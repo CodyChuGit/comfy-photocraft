@@ -441,6 +441,19 @@ pub fn quality(s: &Session) -> &'static str {
     }
 }
 
+/// The quality a removal (Content-Aware Fill, the Remove tool, Spot Healing through the
+/// model) runs at: `best` becomes `balanced`. The 40-step tier was measured no better than
+/// the 8-step one on removals and worse under the smoothed hole (a face erased to a blur,
+/// a seam in a lawn; `benchmarks.md` §5i), and at two candidates a stroke it took a
+/// Spot Healing dab from about 25 s to 100 s, which reads as the tool not working.
+/// `fast` stays `fast`.
+pub fn removal_quality(s: &Session) -> &'static str {
+    match quality(s) {
+        "fast" => "fast",
+        _ => "balanced",
+    }
+}
+
 /// The templates `auto` picks from for `command` under `quality` (the first one the server has
 /// every file for runs): `best` = the full-step base template, `balanced` = the 8-step Lightning
 /// tier then the base, `fast` = the 4-step tier where one exists.
@@ -1203,7 +1216,7 @@ pub(crate) fn generative_remove(
         command: if as_edit { EDIT } else { FILL },
         template_id: template.meta.id.clone(),
         auto,
-        auto_order: auto_order(FILL, quality(s)),
+        auto_order: auto_order(FILL, removal_quality(s)),
         prompt,
         negative,
         seed,

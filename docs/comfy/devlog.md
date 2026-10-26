@@ -4,6 +4,21 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-26: removals stay on the Lightning tier under Quality best
+
+- The user reported Spot Healing and image generation "not working" in the app with the
+  server up. `app-prefs-probe.ps1` (the CLI with the app's own preferences: engine `auto`,
+  the sidecar `comfyPath`, Quality at its default `best`) showed both working, the image in
+  7 s and a Spot Healing dab in **98 s**: two 40-step fills (Best of two) where the bench
+  strokes, all run with `-Quality balanced`, take 20–28 s. The server log had a 40-step fill
+  cut by a "Global interrupt" (the user giving up). So a removal now runs at `balanced`
+  whatever Quality says (`removal_quality`; `fast` stays `fast`): the 40-step tier was
+  measured no better on removals and worse under the smoothed hole (`benchmarks.md` §5i,
+  "The fill's own settings"). Quality still governs generations, edits and expansions. The
+  classical-tools test asserts the Lightning template under the default Quality.
+- Open: the GPU tenants (`dev-environment-windows.md`) still cap what a clean stroke costs
+  in the app; a 25 s dab is the floor until the native 2511 removal lands.
+
 ## 2026-10-22: the removal adapter, installed and measured
 
 - **Downloaded on the user's go**: `Qwen-Image-Edit-2511-Object-Remover-v2-9200.safetensors`
