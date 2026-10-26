@@ -90,8 +90,24 @@ can pick up.
   loaded on first use; no key/value cache yet). The worker serves `enhance/edit` and
   `enhance/image` with it, and a native job's rewriter and judge go to the worker
   (`thinker_for` with the job's server key; the worker is never told to unload after
-  answering). ComfyUI then has no part in a native removal. Not yet measured live: the
-  rewriter's names from the 8B against the 4B's, and the time per answer.
+  answering). ComfyUI then has no part in a native removal. Live (`chat-smoke.ps1`): sensible
+  rewrites, 6.4 s for a 28-token edit instruction with the picture, 4.7 s for a 120-token image
+  prompt, the head's first load 10 s. But on removals the 8B names the person rather than the
+  thing under the stroke ("the man's face" for glasses): its naming needs its own pass before
+  it replaces the 4B's.
+- **The 2.1 removal measurements** (`benchmarks.md` §5i): the plain `qwen-2.1/fill` is worse
+  than 2511 on every hard scene; the 2.1 edit route as first run (smoothed hole, 8B names) is
+  unusable. 2511 stays the removal model. A poisoned CUDA context now ends the worker
+  (`gn-diffusion` `562b413`) and the app tries the run once more on a fresh one
+  (`retry_after_stop`); the bench restarts a shared worker that stopped.
+- **LoRAs, the owner's question "did you get all of them":** AusBoss's five Qwen-Image-2.1
+  files (Consistency, Outpaint v1 and v2, Restore, Outfit Swap) are in; not taken: his FLUX 3
+  Klein adapters (Klein is not a model of the build) and the step checkpoints of each repo
+  (alternates). Also in: yijunwang2's four Krea 2 adapters (AnyPaint, Registered Outpaint,
+  Anygles, ReID), Viggle's Turbo, the MIT BFS swaps. `models.md` has them with checksums.
+- Open, in order: the 2.1 edit removal with `prefill` off and the 4B's names; the worker's
+  memory on a shared card (the head and the vision tower in f32, the prefix cache at 1 MP);
+  the 8B rewriter's naming; a key/value cache for `chat`.
 - Also taken from the catalogue today: **realign to source** (`generate_realign`, on edits and
   every 2.1 template: the result moved back onto the picture by the translation that matches
   it outside the mask) and **`keepObject`** on the removal commands (the removed thing as its

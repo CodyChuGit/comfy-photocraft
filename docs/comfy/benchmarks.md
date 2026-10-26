@@ -649,6 +649,21 @@ own process and reloads the detector too. The naming stays; a one-candidate dab 
 on this card with the tenants, the floor of the ComfyUI route. (The 2511's own encoder, which
 is resident, cannot generate through `TextGenerate`: measured 2026-10-09, `enhance-edit.json`.)
 
+**Qwen-Image-2.1 as the removal model** (2026-10-26, the owner's question "do we need 2511?";
+the native worker, one candidate a stroke, against the 2511 one-candidate run `-one`; sheets
+`st-n21-*.png`, `st-e21c-*.png` in `bench\stock`):
+
+| Route | Strokes | What it did |
+|---|---|---|
+| `qwen-2.1/fill` (the mask shown as a second picture, `native21-run.ps1`, rewriter on ComfyUI's 4B) | 33 of 78 (the worker's CUDA context died at the 34th: an illegal address on a full card; recovery since added) | **worse than 2511 on every hard scene**: a grey panel over the glasses, the spider-web tattoo redrawn as a spider, a new cup of coffee, the retriever back, the beach walkers half there; fine on the ring, the sign, the birds, the lamppost. 2.1 copies what its pictures show, the mask included |
+| `qwen-2.1/edit` + AusBoss's Consistency LoRA (the removal as an instruction on the crop, `edit21-run.ps1`, rewriter on the worker's 8B) | 20 | **unusable as run**: the smoothed hole (`prefill`) came back as the blur it was, and the 8B rewriter named the person instead of the thing ("the man's face", "the man wearing the cap and mask", "the person under the umbrella"), so faces and people went. Only the hat came out right |
+
+Also: with the 2.1 set, the head, the LoRA and the card's other tenants, the worker ran at
+0 GB free and sampling paged (6 s became 26–123 s). Not concluded yet: the edit route with
+`prefill` off (AusBoss shows the model the real picture) and the 4B's names, at a size that
+fits. Until then **2511 stays the removal model**; 2.1 keeps generation, edits, expand and the
+matte, where it was measured at parity.
+
 **The removal adapter** (2026-10-22; `lora-run.ps1`). prithivMLmods' Object Remover v2, an
 Apache-2.0 LoRA on 2511 trained to delete what is painted red (`models.md`), as the
 `qwen-edit-2511/remove-lightning-8` template: the Lightning graph with the adapter loaded

@@ -14,7 +14,10 @@ try { $null = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8188/free -Bo
 foreach ($variant in @(@("-e21", ""), @("-e21c", "qwen-image-2.1-consistency.safetensors:1.0"))) {
     $suffix, $loras = $variant
     "=== $suffix (loras: '$loras') $(Get-Date -Format HH:mm:ss)"
-    & powershell -NoProfile -File "$scripts\robust-strokes.ps1" -Dir $st -Prefix st -Objects st-objects.json -Tags $Tags -Kinds $Kinds -Suffix $suffix -Extra "variations=1" -Purge heavy -Engine auto -Template qwen-2.1/edit -Loras $loras 2>&1 | Where-Object { "$_" -match "ms grow|FAILED|restarted" } | ForEach-Object { "$_" -replace ': Remove the (.{0,40}).*', ': $1' }
+    # (an empty `-Loras ''` is dropped by the shell and leaves the parameter without its value:
+    # the no-LoRA pass then never ran; pass it only when there is one)
+    $more = if ($loras) { @("-Loras", $loras) } else { @() }
+    & powershell -NoProfile -File "$scripts\robust-strokes.ps1" -Dir $st -Prefix st -Objects st-objects.json -Tags $Tags -Kinds $Kinds -Suffix $suffix -Extra "variations=1" -Purge heavy -Engine auto -Template qwen-2.1/edit @more 2>&1 | Where-Object { "$_" -match "ms grow|FAILED|restarted" } | ForEach-Object { "$_" -replace ': Remove the (.{0,40}).*', ': $1' }
 }
 & "$scripts\native-worker.ps1" -Stop
 "=== done $(Get-Date -Format HH:mm:ss)"
