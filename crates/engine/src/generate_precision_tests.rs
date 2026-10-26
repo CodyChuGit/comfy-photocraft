@@ -68,6 +68,41 @@ fn a_blackwell_server_gets_the_nvfp4_encoder_and_the_purge_sees_the_switch() {
     assert_eq!(fake.state().prompts[4].1["1"]["inputs"]["unet_name"], "krea2_turbo_nvfp4.safetensors", "unbound: the policy picks");
 }
 
+/// The native worker manages what it keeps resident: a change of model set on its key never
+/// asks it to unload (a removal's detector between two fills would otherwise drop the
+/// resident diffusion pipeline), while the same change on a ComfyUI server purges.
+#[test]
+fn the_native_worker_is_never_purged_by_a_model_switch() {
+    let fake = FakeComfy::start().unwrap();
+    let backend = photocraft_genai::comfy::ComfyBackend::new(&fake.url, std::time::Duration::from_secs(10)).unwrap();
+    let req = |unet: &str| Request {
+        template: "krea2-turbo/image".into(),
+        prompt: "a fox".into(),
+        negative: String::new(),
+        seed: 1,
+        steps: 0,
+        guidance: 0.0,
+        image: None,
+        mask: None,
+        models: vec![("unet".into(), unet.into())],
+        size: Some((64, 64)),
+        params: Default::default(),
+        references: Vec::new(),
+    };
+    let ctx = crate::jobs::JobCtx::new();
+    let progress = JobProgress::span(&ctx, 0.0, 1.0);
+    let key = NATIVE_SERVER_KEY;
+    // A key of its own per run, so the other tests' runs on "native" do not count.
+    forget_models(key);
+    run_switching(&backend, key, &req("krea2_turbo_fp8_scaled.safetensors"), PURGE_SWITCH, &progress).unwrap();
+    run_switching(&backend, key, &req("krea2_turbo_nvfp4.safetensors"), PURGE_SWITCH, &progress).unwrap();
+    assert_eq!(frees(&fake), 0, "the native key never purges");
+    let server = format!("{}-switch-test", fake.url);
+    run_switching(&backend, &server, &req("krea2_turbo_fp8_scaled.safetensors"), PURGE_SWITCH, &progress).unwrap();
+    run_switching(&backend, &server, &req("krea2_turbo_nvfp4.safetensors"), PURGE_SWITCH, &progress).unwrap();
+    assert_eq!(frees(&fake), 1, "a ComfyUI server does");
+}
+
 #[test]
 fn other_gpus_keep_the_default_files_unless_forced_and_a_missing_file_is_never_chosen() {
     let fake = FakeComfy::start().unwrap();

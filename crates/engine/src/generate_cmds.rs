@@ -619,7 +619,11 @@ pub(crate) fn run_switching(
     let prepared = backend.prepare(req);
     let req = &prepared;
     let set = model_set(req);
-    let switch = !set.is_empty()
+    // The native worker keeps its own residency (one diffusion family at a time, the detector
+    // beside it): a purge there dropped the resident 2.1 pipeline whenever a removal's detector
+    // ran between two fills, and the next fill loaded everything again (measured 2026-10-26).
+    let switch = server != NATIVE_SERVER_KEY
+        && !set.is_empty()
         && purge != PURGE_NEVER
         && match last_models(server) {
             // `heavy`: only a change of the diffusion model or checkpoint purges; a LoRA, an
