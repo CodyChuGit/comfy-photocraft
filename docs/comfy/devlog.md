@@ -22,8 +22,15 @@ can pick up.
   row included. Three launch flags measured against it, all worse (`comfyui-setup.md`'s
   table, `benchmarks.md` §5i); the session-0 tenants (`sd-server`, four pythons) came back
   during the last two and hold 5 GB again. The server runs the measured flags again.
-- Open: the staging is the loader's; the native engine is the way past it (a resident
-  model, no re-staging). The GPU tenants cap what a clean stroke costs in the app.
+- **The identical graph twice in a row** (`bare-twice`, no rewriter, one candidate) stages in
+  1.5 s the second time and the fill takes 10 s: the re-staging is the vision-language
+  model (5 GB) evicting the 2511 between dabs. **Skipping the rewriter measured and
+  rejected** (`noname-run.ps1`, both sets, one candidate): without the name the half strokes
+  leave the object on most scenes and the whole strokes over-take (a man replaced by a wall);
+  5 s saved a stroke. `benchmarks.md` §5i.
+- Open: the ComfyUI route's floor is 22–25 s a dab on this card. The way past it is a
+  resident model, which means the native engine; the owner's decision (plan §15.6) has
+  2511 native out of scope, so the next step is the owner's call.
 
 ## 2026-10-22: the removal adapter, installed and measured
 

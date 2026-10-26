@@ -633,6 +633,22 @@ a dab is 40 % staging that no setting of ours removes. Launch flags measured aga
 unusable (`comfyui-setup.md`'s table). The staging is the loader's design; the way past it is
 the native engine, which holds a model resident between runs.
 
+**Could a dab skip the rewriter?** (the same day, `noname-run.ps1`: both sets, one candidate
+a stroke, `enhance=false` against the default, the sheets `st-noname-*.png` and
+`rb-noname-*.png`). The vision-language model is what evicts the 2511 between dabs, and a
+one-candidate removal uses its answer only to name the object for the detector and the
+prompt. **No.** Without the name the half strokes leave the object standing on most of both
+sets (the glasses, the tattoo, the Wall St sign, the cup, the dog, the lamppost, the cat, the
+bicycle, the boat, the cone, the cow, the hydrant, the motorcycle; the watch, the glasses, the
+earring, the logo, the car, the crow, the mug, the poster, the retriever) because the point
+prompt returns the brushed part only, and the whole strokes over-take where the point lands
+on a bigger segment (the man behind the glasses replaced by a wall, the shirt under the logo
+by concrete, the hat's whole daguerreotype erased, the mug a red blur, a lawn's worth of the
+dog's park). The saving was 5 s a stroke, not the 10 s of staging: each bench stroke is its
+own process and reloads the detector too. The naming stays; a one-candidate dab is 22–25 s
+on this card with the tenants, the floor of the ComfyUI route. (The 2511's own encoder, which
+is resident, cannot generate through `TextGenerate`: measured 2026-10-09, `enhance-edit.json`.)
+
 **The removal adapter** (2026-10-22; `lora-run.ps1`). prithivMLmods' Object Remover v2, an
 Apache-2.0 LoRA on 2511 trained to delete what is painted red (`models.md`), as the
 `qwen-edit-2511/remove-lightning-8` template: the Lightning graph with the adapter loaded
