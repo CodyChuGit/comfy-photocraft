@@ -1,0 +1,38 @@
+# Start the native worker by hand so a run of many CLI processes shares one resident set of
+# models: `photocraft-cli --engine --stay --runtime … --models …` with a token, its port read
+# from its first stdout line. Prints `PHOTOCRAFT_NATIVE_ENGINE=port:token` for the caller to
+# put in the environment (dot-source this script: `. native-worker.ps1` sets $env: too).
+# -Stop ends a worker started this way (by the pid file it leaves in $env:TEMP).
+param([switch]$Stop, [string]$Log = "C:\Users\5090\ComfyUI\photocraft-tests\bench\native-worker.log")
+$pidFile = Join-Path $env:TEMP "photocraft-native-worker.pid"
+if ($Stop) {
+    if (Test-Path $pidFile) {
+        $id = [int](Get-Content $pidFile | Select-Object -First 1)
+        Stop-Process -Id $id -Force -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-Item $pidFile -Force
+        "worker $id stopped"
+    }
+    $env:PHOTOCRAFT_NATIVE_ENGINE = $null
+    return
+}
+$cli = "C:\Users\5090\Documents\PhotoshopEX\target\release\photocraft-cli.exe"
+$runtime = "C:/Users/5090/Documents/_eval/onnxruntime-cuda13/onnxruntime-win-x64-gpu_cuda13-1.31.0/lib;C:/Users/5090/scoop/apps/cuda/current/bin/x64;C:/Users/5090/ComfyUI/ComfyUI_windows_portable/python_embeded/Lib/site-packages/torch/lib"
+$models = "C:/Users/5090/Documents/_eval/native-models"
+$token = -join ((1..48) | ForEach-Object { "{0:x}" -f (Get-Random -Maximum 16) })
+$env:GN_ENGINE_TOKEN = $token
+# The worker needs the CUDA and ONNX Runtime libraries on its PATH (the app puts the runtime
+# folders there when it starts the worker itself).
+$env:PATH = ($runtime -replace "/", "\") + ";" + $env:PATH
+$p = Start-Process -FilePath $cli -ArgumentList @("--engine", "--stay", "--runtime", $runtime, "--models", $models) -RedirectStandardOutput $Log -RedirectStandardError "$Log.err" -PassThru -WindowStyle Hidden
+$deadline = (Get-Date).AddSeconds(60)
+$port = $null
+while ((Get-Date) -lt $deadline -and -not $port) {
+    Start-Sleep -Milliseconds 500
+    $line = Get-Content $Log -ErrorAction SilentlyContinue | Where-Object { $_ -match "gn-engine port=(\d+)" } | Select-Object -First 1
+    if ($line -and $line -match "port=(\d+)") { $port = $Matches[1] }
+    if ($p.HasExited) { "worker exited: " + (Get-Content "$Log.err" -Tail 5 -ErrorAction SilentlyContinue); return }
+}
+if (-not $port) { "no port line within 60 s"; return }
+Set-Content $pidFile $p.Id
+$env:PHOTOCRAFT_NATIVE_ENGINE = "${port}:$token"
+"PHOTOCRAFT_NATIVE_ENGINE=$($env:PHOTOCRAFT_NATIVE_ENGINE) (pid $($p.Id))"

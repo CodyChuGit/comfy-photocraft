@@ -70,6 +70,12 @@ impl NativeBackend {
         &self.args
     }
 
+    /// Whether this backend joined a worker it did not start ([`Self::attached`]): its flags
+    /// are not this process's to compare, and `stop` leaves it running.
+    pub fn is_attached(&self) -> bool {
+        self.attached
+    }
+
     /// The worker's environment: `PATH` with the runtime folders first, when there are any.
     fn env(&self) -> Vec<(String, String)> {
         if self.path_dirs.is_empty() {
@@ -283,16 +289,24 @@ fn engines_for(args: &[String]) -> Vec<Box<dyn gn_engine::Engine>> {
     engines
 }
 
-/// `photocraft --engine [--token T] [--step-ms N] [--runtime <dir;dir> --models <dir>] [--cpu]`:
-/// this process becomes the worker. Reads the token from `GN_ENGINE_TOKEN` when not given, binds
-/// a loopback port, prints the port line, serves until the editor says quit. Returns the exit
-/// code. With `--runtime` and `--models` it serves the perception engine (SAM 3.1 through ONNX
+/// `photocraft --engine [--token T] [--step-ms N] [--runtime <dir;dir> --models <dir>] [--cpu]
+/// [--stay]`: this process becomes the worker. Reads the token from `GN_ENGINE_TOKEN` when not
+/// given, binds a loopback port, prints the port line, serves until the editor says quit (or
+/// goes away; with `--stay` it outlives its clients, for a worker started by hand that many
+/// CLI processes join through `PHOTOCRAFT_NATIVE_ENGINE=port:token`). Returns the exit code.
+/// With `--runtime` and `--models` it serves the perception engine (SAM 3.1 through ONNX
 /// Runtime) and, when built with it, the diffusion engine; otherwise the fake engine.
 pub fn engine_main(args: &[String]) -> i32 {
     let mut token = std::env::var("GN_ENGINE_TOKEN").unwrap_or_default();
     let mut step_ms = 5u64;
+    let mut stay = false;
     let mut i = 0;
     while i < args.len() {
+        if args[i] == "--stay" {
+            stay = true;
+            i += 1;
+            continue;
+        }
         match args.get(i).map(String::as_str) {
             Some("--token") => {
                 token = args.get(i + 1).cloned().unwrap_or_default();
@@ -322,10 +336,10 @@ pub fn engine_main(args: &[String]) -> i32 {
     let engines = engines_for(args);
     let served = if engines.is_empty() {
         let mut engine = gn_engine::fake::FakeEngine { step_ms, installed: template::builtin().iter().map(|t| t.meta.id.clone()).collect(), ..Default::default() };
-        gn_engine::server::serve(&listener, &token, &mut engine)
+        gn_engine::server::serve_with(&listener, &token, &mut engine, stay)
     } else {
         let mut engine = gn_engine::Multi::new(engines);
-        gn_engine::server::serve(&listener, &token, &mut engine)
+        gn_engine::server::serve_with(&listener, &token, &mut engine, stay)
     };
     match served {
         Ok(()) => 0,

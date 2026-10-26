@@ -90,4 +90,19 @@ fn the_engine_preference_routes_to_the_native_worker() {
     // The fake's coverage is a centred disc: the selection's bounds sit inside the 128×64 picture.
     let b = &sel["instances"][0]["bounds"];
     assert!(b[0].as_i64().unwrap_or(-1) >= 40 && b[2].as_i64().unwrap_or(0) <= 48, "{sel}");
+    // A removal on the native 2.1 fill still asks the rewriter, which the worker does not
+    // serve: the question goes to the ComfyUI route (`thinker_for`), the fill stays native.
+    // Measured 2026-10-26: with both on the worker the rewriter's name was lost and the
+    // detector fell back to the point prompt.
+    let comfy = photocraft_genai::fake::FakeComfy::start().unwrap();
+    s.edit_prefs(|p| {
+        p.integrations.comfy_server = comfy.url.clone();
+        p.integrations.default_fill_template = "qwen-2.1/fill".into();
+    });
+    s.execute("select.rect", json!({"x": 10, "y": 10, "width": 40, "height": 30})).unwrap();
+    let r = s.execute("edit.contentAwareFill", json!({"generative": true, "variations": 1})).unwrap();
+    assert_eq!(r["template"].as_str(), Some("qwen-2.1/fill"), "{r}");
+    let st = comfy.state();
+    assert_eq!(st.prompts.len(), 1, "the rewriter's ask alone reached ComfyUI: {}", st.prompts.len());
+    assert_eq!(st.prompts[0].1["3"]["class_type"], "TextGenerate", "{}", st.prompts[0].1);
 }

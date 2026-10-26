@@ -65,9 +65,11 @@ reference whose tokens are pinned onto the canvas grid in the attention layers (
 AusBoss `Krea 2 Encode` + `Krea 2 Outpaint Model Patch` nodes, MIT; the model card's own
 `pipeline.py`), which stock nodes do not do. Recommended: 8 steps, guidance 0, LoRA 1.0, VLM
 reference on, KV cache on, a 32-px redraw band. **Licence: Krea 2 Community License** for the
-weights (inherited), Apache-2.0 for the pipeline code. Status for us: **not installed, BYOM,
-never a default**; the recipe is in `plan-native-engine.md` §9 for the native engine, and the
-app's fill-from-reference on 2511 (Apache-2.0) covers the use case today
+weights (inherited), Apache-2.0 for the pipeline code. Status for us: **installed on the
+owner's go 2026-10-26** (`models/loras/krea2_anypaint_rank32.safetensors`, 218 MB, sha256
+`3a7d09f6…412f7a`, equal to the repo's `SHA256SUMS`), **BYOM, never a default**; the recipe is
+in `plan-native-engine.md` §9 for the native engine, and the app's fill-from-reference on 2511
+(Apache-2.0) covers the use case today
 (`docs/comfy/research/notes/ausboss-krea2-clothing-workflow.md`, 2026-10-21).
 
 Sources: [yijunwang2/krea2-anypaint](https://huggingface.co/yijunwang2/krea2-anypaint) · [ausboss/ComfyUI-AusBoss](https://github.com/ausboss/ComfyUI-AusBoss) (node help under `js/docs/`).
@@ -102,6 +104,24 @@ objects (`benchmarks.md` §5i). None installed yet; the first is the candidate.
 | Role here | The model the user asked for ("qwen 2.1 edit"). Offered for **personal / research use**, with the licence shown in the picker. Its RGBA output is the best local **Remove Background** available: shipped as `qwen-2.1/matte` (ComfyUI's official background-removal recipe: the edit graph, the picture as image_1 at its own size, "Remove the background, and output a PNG image"; the 2.1 VAE decodes a real alpha channel, verified live 2026-10-09) and as the `transparent` option of Generate Image (`qwen-2.1/image`'s `promptFormatTransparent`). |
 
 Sources: [Qwen/Qwen-Image-2.1 model card](https://huggingface.co/Qwen/Qwen-Image-2.1) · [QwenLM/Qwen-Image-2.1](https://github.com/QwenLM/Qwen-Image-2.1) · [ComfyUI v0.37.0 notes (wiki)](https://comfyui-wiki.com/en/news/2026-09-20-comfyui-v0-37-0) · [GIGAZINE hands-on](https://gigazine.net/gsc_news/en/20260924-qwen-image-2-1/) · [licence analysis (datanorth)](https://datanorth.ai/news/qwen-releases-qwen-image-2-1) · [licence analysis (latenode)](https://latenode.com/ai-trends/qwen-image-2-1-commercial-licence).
+
+### Qwen-Image-2.1 LoRAs installed here (2026-10-26, the owner's go; BYOM, nothing ships)
+
+Read for the recipes in
+[`research/notes/ausboss-catalogue-2026-10.md`](research/notes/ausboss-catalogue-2026-10.md);
+every file in ComfyUI's `models/loras`, fetched from Hugging Face, sha256 recorded here.
+
+| File | Author, source | Licence | What it does (the author's held-out numbers) | sha256 |
+|---|---|---|---|---|
+| `qwen-image-2.1-consistency.safetensors` (152 MB, rank 32) | AusBoss, `ausboss/Qwen-Image-2.1-Consistency-LoRA` | Qwen Research (derivative) | 2.1 edits stay on the original's frame: restyle drift median 24.3 → 1.6 px; pixels changed outside a local edit 12.8 → 7.5 %; strength 1 (0.5 keeps more skin detail); not for pose changes; off for big removals | `4f44ada1…0bd63` |
+| `qwen-image-2.1-outpaint-v2.safetensors`, `-outpaint.safetensors` (v1) (152 MB each) | AusBoss, `ausboss/Qwen-Image-2.1-Outpaint-LoRA` | Qwen Research | pad flat `#808080`, no noise mask: the picture stays in place 32 of 32 (plain 2.1 moved 13 of 16); v2 for 1–2 MP extensions, v1 for big zoom-outs; trigger instruction first in the prompt | v2 `3611a5cc…eca28`, v1 `201ab351…7eb177` |
+| `qwen-image-2.1-restore.safetensors` (152 MB) | AusBoss, `ausboss/Qwen-Image-2.1-Restore-LoRA` | Qwen Research | the redraw-upscale stays on the picture (0.3 px, face match 0.79 → 0.88) and invents less grit; 0.5 for blurry inputs; with the restore prompt at about 2 MP | `65de4f6c…c08c` |
+| `qwen-image-2.1-outfit-swap.safetensors` (152 MB) | AusBoss, `ausboss/Qwen-Image-2.1-Outfit-Swap-Consistency-LoRA` | Qwen Research | two-picture outfit swap keeps face, pose, background (shift 3.6 → 0.1 px, face pixels changed 14.1 → 1.7 %) | `4ddfeac5…ae1f0` |
+| `Qwen-Image-2.1-viggle-turbo-v0.3-6step-lora-r128.safetensors` (648 MB, rank 128) | Viggle, `Viggle/Qwen-Image-2.1-viggle-turbo` | Qwen Research | 6-step sampling on the base 2.1 (about half the time, a little softer); not on top of the official Turbo checkpoint | `0c985917…c94b3` |
+| `bfs_body_swap_v1.0_qwen_2.1.safetensors` (200 MB), `bfs_head_v1.1_qwen_2.1.safetensors` (248 MB) | Alissonerdx, `Alissonerdx/BFS-Best-Face-Swap` | **MIT** | put a character from a second picture into a scene, whole body or head only (AusBoss's Person Swap workflow runs on them); the author asks for pictures of people who agreed | `7dc0a53a…b664`, `d1d748d5…a88e` |
+
+The workflow JSONs that came with them (the author's recipes, for reading) are in
+`C:\Users\5090\Documents\_eval\ausboss-downloads\`, outside the tree.
 
 ### Qwen-Image-Layered (image to layers, permissive)
 

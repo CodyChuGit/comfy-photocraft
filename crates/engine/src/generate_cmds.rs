@@ -642,12 +642,24 @@ pub(crate) fn native_backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> 
     let slot = NATIVE.get_or_init(|| std::sync::Mutex::new(None));
     let mut g = slot.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(b) = g.as_ref() {
-        // The flags after `--engine` are the preferences; a change restarts the worker.
-        if b.args().get(1..).unwrap_or(&[]) == wanted.as_slice() {
+        // The flags after `--engine` are the preferences; a change restarts the worker. A
+        // worker this process joined rather than started is kept as it is.
+        if b.is_attached() || b.args().get(1..).unwrap_or(&[]) == wanted.as_slice() {
             return Ok(Arc::clone(b) as Arc<dyn GenerativeBackend>);
         }
         b.stop();
         *g = None;
+    }
+    // `PHOTOCRAFT_NATIVE_ENGINE=port:token` joins a worker already running (one started by
+    // hand with `photocraft-cli --engine …` and `GN_ENGINE_TOKEN`), so a bench of many CLI
+    // processes shares one resident set of models instead of loading them in every process.
+    if let Ok(spec) = std::env::var("PHOTOCRAFT_NATIVE_ENGINE")
+        && let Some((port, token)) = spec.split_once(':')
+        && let Ok(port) = port.trim().parse::<u16>()
+    {
+        let b = Arc::new(photocraft_genai::native::NativeBackend::attached(port, token.trim()).map_err(gen_err)?);
+        *g = Some(Arc::clone(&b));
+        return Ok(b);
     }
     let dirs = photocraft_genai::native::runtime_dirs(&integrations.runtime_path);
     let b = Arc::new(photocraft_genai::native::NativeBackend::this_executable(&wanted).map_err(gen_err)?.with_path_dirs(dirs));
@@ -719,6 +731,14 @@ pub(crate) fn backend_for(s: &Session, template: &str) -> Result<(Arc<dyn Genera
         }
     }
     Ok((backend(s)?, server_key(s)))
+}
+
+/// The backend for the vision-language questions a job asks (the rewriter, the judge, the
+/// presence check): the one serving the enhancer template, which stays the ComfyUI route while
+/// the native worker serves the pictures (the worker does not list `enhance/*`); when no such
+/// route is configured, the job's own backend, which then answers or declines as before.
+pub(crate) fn thinker_for(s: &Session, own: &Arc<dyn GenerativeBackend>) -> Arc<dyn GenerativeBackend> {
+    backend_for(s, ENHANCE_EDIT_TEMPLATE).map(|(b, _)| b).unwrap_or_else(|_| Arc::clone(own))
 }
 
 /// The model families `auto` sends to the native worker when it serves them: those whose native
@@ -1211,6 +1231,7 @@ pub(crate) fn generative_remove(
     let (backend, server) = backend_for(s, &template.meta.id)?;
     let purge = purge_mode(s);
     let job = FillJob {
+        thinker: thinker_for(s, &backend),
         backend,
         server,
         command: if as_edit { EDIT } else { FILL },
@@ -1271,7 +1292,7 @@ pub(crate) fn generative_remove(
                 // rewriter's own closing clauses listed the scene's neighbours and the model
                 // painted them: a rock for the boat, the table over a wrist).
                 if let Ok(Some(p)) =
-                    enhance_prompt(job.backend.as_ref(), EnhanceKind::Remove, &job.prompt, Some(&seen), Some(&place), job.seed, &JobProgress::span(ctx, 0.01, 0.04))
+                    enhance_prompt(job.thinker.as_ref(), EnhanceKind::Remove, &job.prompt, Some(&seen), Some(&place), job.seed, &JobProgress::span(ctx, 0.01, 0.04))
                     && let Some(name) = named_object(&p)
                 {
                     job.rewritten = Some(removal_prompt(&name));
@@ -1851,6 +1872,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_image(s, p)?;
     // Per template: under `auto` the native worker takes the families it serves at parity.
     let (backend, server) = backend_for(s, &plan.template.meta.id)?;
+    let thinker = thinker_for(s, &backend);
     let server_doc = server.clone();
     let purge = purge_mode(s);
     let ImagePlan {
@@ -1914,7 +1936,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
             &label,
             false,
             move |ctx| {
-                let (prompt, enhanced) = image_prompt(backend.as_ref(), ctx, enhance, &typed, req.prompt, &wrap, seed);
+                let (prompt, enhanced) = image_prompt(thinker.as_ref(), ctx, enhance, &typed, req.prompt, &wrap, seed);
                 req.prompt = prompt;
                 ctx.check()?;
                 let resps = run_variations(backend.as_ref(), &server_doc, &mut req, n, seed, purge, ctx)?;
@@ -2018,6 +2040,10 @@ fn run_variations(
 /// What a fill or expand job needs once its plan is made and the backend is in hand.
 struct FillJob {
     backend: Arc<dyn GenerativeBackend>,
+    /// The backend that answers the vision-language questions (the rewriter, the judge, the
+    /// presence check): the one serving the enhancer template, which is the ComfyUI route
+    /// while the native worker runs the fill itself ([`thinker_for`]).
+    thinker: Arc<dyn GenerativeBackend>,
     /// The server's key for [`run_switching`].
     server: String,
     /// The command the layers remember ([`GenerativeInfo::command`]).
@@ -2104,6 +2130,7 @@ fn fill_region(
     }
     let FillJob {
         backend,
+        thinker,
         server,
         command,
         template_id,
@@ -2213,7 +2240,7 @@ fn fill_region(
         let seen = seen.as_ref().unwrap_or(&image);
         // A rewriter that fails (no encoder on the server, nothing usable said) leaves the
         // prompt as typed; the run itself reports a server that is down.
-        match enhance_prompt(backend.as_ref(), kind, &prompt, Some(seen), place.as_deref(), seed, &JobProgress::span(ctx, 0.02, 0.05)) {
+        match enhance_prompt(thinker.as_ref(), kind, &prompt, Some(seen), place.as_deref(), seed, &JobProgress::span(ctx, 0.02, 0.05)) {
             Ok(Some(p)) => p,
             Ok(None) | Err(_) => prompt,
         }
@@ -2357,7 +2384,7 @@ fn fill_region(
                 let presence = match (object.as_deref().filter(|_| PRESENCE_CHECK), judged.get(best), judged.get(i)) {
                     (Some(name), Some(a), Some(b)) => {
                         let span = JobProgress::span(ctx, 0.96, 0.97);
-                        match (still_there(backend.as_ref(), a, name, seed.wrapping_add(200 + i as u64), &span), still_there(backend.as_ref(), b, name, seed.wrapping_add(300 + i as u64), &span)) {
+                        match (still_there(thinker.as_ref(), a, name, seed.wrapping_add(200 + i as u64), &span), still_there(thinker.as_ref(), b, name, seed.wrapping_add(300 + i as u64), &span)) {
                             (Some(false), Some(true)) => Some(true),
                             (Some(true), Some(false)) => Some(false),
                             _ => None,
@@ -2366,7 +2393,7 @@ fn fill_region(
                     _ => None,
                 };
                 presence.or_else(|| match (judged.get(best), judged.get(i)) {
-                    (Some(a), Some(b)) => judge_pair(backend.as_ref(), a, b, object.as_deref(), seed.wrapping_add(100 + i as u64), &JobProgress::span(ctx, 0.96, 0.97)),
+                    (Some(a), Some(b)) => judge_pair(thinker.as_ref(), a, b, object.as_deref(), seed.wrapping_add(100 + i as u64), &JobProgress::span(ctx, 0.96, 0.97)),
                     _ => None,
                 })
             };
@@ -2783,6 +2810,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let label = name.clone();
     let purge = purge_mode(s);
     let job = FillJob {
+        thinker: thinker_for(s, &backend),
         backend,
         server,
         command: FILL,
@@ -2981,6 +3009,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
     let label = name.clone();
     let purge = purge_mode(s);
     let job = FillJob {
+        thinker: thinker_for(s, &backend),
         backend,
         server,
         command: EXPAND,
@@ -3192,6 +3221,7 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
     let whole = opt_bool(EDIT, p, "wholePicture", false)?;
     let purge = purge_mode(s);
     let job = FillJob {
+        thinker: thinker_for(s, &backend),
         backend,
         server,
         command: EDIT,
@@ -3852,6 +3882,7 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
     let backend = backend(s)?;
     let purge = purge_mode(s);
     let job = FillJob {
+        thinker: thinker_for(s, &backend),
         backend,
         server: server_key(s),
         command,

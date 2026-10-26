@@ -14,7 +14,9 @@
 # -Extra adds fields to every stroke's params (e.g. ',\"prefill\":true'); -Template names the fill
 # template (research-only ones allowed for the measurement). -Purge switch|heavy|never sets
 # integrations.purgeModels for the run.
-param([string]$Tags = "", [string]$Dir = "C:\Users\5090\ComfyUI\photocraft-tests\bench", [string]$Prefix = "rb", [string]$Objects = "rb-objects.json", [string]$Quality = "balanced", [string]$Suffix = "", [string]$Kinds = "half,whole", [string]$Extra = "", [string]$Template = "", [string]$Purge = "switch")
+# -Engine comfy|auto|native sets integrations.engine (auto and native need the app's runtime
+# and model folders, given here as the owner's; the detector then runs natively too).
+param([string]$Tags = "", [string]$Dir = "C:\Users\5090\ComfyUI\photocraft-tests\bench", [string]$Prefix = "rb", [string]$Objects = "rb-objects.json", [string]$Quality = "balanced", [string]$Suffix = "", [string]$Kinds = "half,whole", [string]$Extra = "", [string]$Template = "", [string]$Purge = "switch", [string]$Engine = "comfy")
 Set-Location "C:\Users\5090\Documents\PhotoshopEX"
 $cli = (Resolve-Path "target\release\photocraft-cli.exe").Path
 $out = $Dir
@@ -22,7 +24,8 @@ $tpl = if ($Template -eq "") { "" } else { ',\"integrations.defaultFillTemplate\
 # -Extra is key=value pairs separated by semicolons ("prefill=true;grow=20"): quotes do not
 # survive the outer shell's argument passing, so they are added here.
 $Extra = (($Extra -split ';' | Where-Object { $_ -match '^\s*([A-Za-z]\w*)\s*=\s*(.+?)\s*$' } | ForEach-Object { $k = $Matches[1]; $v = $Matches[2]; if ($v -match '^(true|false|-?\d+(\.\d+)?)$') { ',\"' + $k + '\":' + $v } else { ',\"' + $k + '\":\"' + $v + '\"' } }) -join '')
-$env:CM_PREFS = '{\"values\":{\"integrations.engine\":\"comfy\",\"integrations.enhancePrompts\":false,\"integrations.quality\":\"' + $Quality + '\",\"integrations.purgeModels\":\"' + $Purge + '\"' + $tpl + '}}'
+$folders = if ($Engine -eq "comfy") { "" } else { ',\"integrations.runtimePath\":\"C:/Users/5090/Documents/_eval/onnxruntime-cuda13/onnxruntime-win-x64-gpu_cuda13-1.31.0/lib;C:/Users/5090/scoop/apps/cuda/current/bin/x64;C:/Users/5090/ComfyUI/ComfyUI_windows_portable/python_embeded/Lib/site-packages/torch/lib\",\"integrations.modelsPath\":\"C:/Users/5090/Documents/_eval/native-models\"' }
+$env:CM_PREFS = '{\"values\":{\"integrations.engine\":\"' + $Engine + '\",\"integrations.enhancePrompts\":false,\"integrations.quality\":\"' + $Quality + '\",\"integrations.purgeModels\":\"' + $Purge + '\"' + $tpl + $folders + '}}'
 # (not `$kinds`: that is the [string] parameter, case ignored, and would turn the list into "half whole")
 $kindList = @($Kinds -split ',' | Where-Object { $_ -ne "" })
 # (not `$objects`: PowerShell variable names ignore case, and the [string] parameter would
