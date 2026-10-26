@@ -785,20 +785,27 @@ pub(crate) fn backend_for(s: &Session, template: &str) -> Result<(Arc<dyn Genera
 }
 
 /// The backend for the vision-language questions a job asks (the rewriter, the judge, the
-/// presence check): the one serving the enhancer template, which stays the ComfyUI route while
-/// the native worker serves the pictures (the worker does not list `enhance/*`); when no such
-/// route is configured, the job's own backend, which then answers or declines as before.
-pub(crate) fn thinker_for(s: &Session, own: &Arc<dyn GenerativeBackend>) -> Arc<dyn GenerativeBackend> {
+/// presence check). A job on the native worker asks the worker itself when it serves the
+/// enhancer template (its Qwen-Image-2.1 text encoder answers as Qwen3-VL 8B, genai-native
+/// `Pipeline::chat`): no second model on the card. Otherwise the backend serving the enhancer
+/// template (the ComfyUI route); when no such route is configured, the job's own backend, which
+/// then answers or declines as before.
+pub(crate) fn thinker_for(s: &Session, own: &Arc<dyn GenerativeBackend>, server: &str) -> Arc<dyn GenerativeBackend> {
+    if server == NATIVE_SERVER_KEY && own.model_files("").is_ok_and(|m| m.iter().any(|t| t == ENHANCE_EDIT_TEMPLATE)) {
+        return Arc::clone(own);
+    }
     backend_for(s, ENHANCE_EDIT_TEMPLATE).map(|(b, _)| b).unwrap_or_else(|_| Arc::clone(own))
 }
 
-/// On the native route the ComfyUI server holds only the vision-language model between a job's
-/// questions (the rewriter, the judge): it leaves after each answer unless purges are off, so
-/// the worker's resident models have the card. Measured 2026-10-26: with the 5 GB model kept
-/// resident beside the worker's 2.1 set and the card's other tenants, a native stroke paged for
-/// minutes; ComfyUI loads it again in two seconds for the next question.
-fn release_thinker(server: &str, purge: &str, thinker: &dyn GenerativeBackend) {
-    if server == NATIVE_SERVER_KEY && purge != "never" {
+/// On the native route a ComfyUI server answering the job's questions (the rewriter, the
+/// judge) holds only the vision-language model: it leaves after each answer unless purges are
+/// off, so the worker's resident models have the card. Measured 2026-10-26: with the 5 GB model
+/// kept resident beside the worker's 2.1 set and the card's other tenants, a native stroke
+/// paged for minutes; ComfyUI loads it again in two seconds for the next question. A worker
+/// answering its own questions is never told to unload.
+fn release_thinker(server: &str, purge: &str, thinker: &Arc<dyn GenerativeBackend>, own: &Arc<dyn GenerativeBackend>) {
+    let same = Arc::as_ptr(thinker) as *const () == Arc::as_ptr(own) as *const ();
+    if server == NATIVE_SERVER_KEY && purge != "never" && !same {
         let _ = thinker.free();
     }
 }
@@ -1293,7 +1300,7 @@ pub(crate) fn generative_remove(
     let (backend, server) = backend_for(s, &template.meta.id)?;
     let purge = purge_mode(s);
     let job = FillJob {
-        thinker: thinker_for(s, &backend),
+        thinker: thinker_for(s, &backend, &server),
         backend,
         server,
         command: if as_edit { EDIT } else { FILL },
@@ -1377,7 +1384,7 @@ pub(crate) fn generative_remove(
                 }
                 // Named or not, the fill's prompt is settled here.
                 job.enhance = false;
-                release_thinker(&job.server, job.purge, job.thinker.as_ref());
+                release_thinker(&job.server, job.purge, &job.thinker, &job.backend);
                 ctx.check()?;
             }
             if !taken && let Some(finder) = &object {
@@ -1972,7 +1979,7 @@ fn run_image(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan_image(s, p)?;
     // Per template: under `auto` the native worker takes the families it serves at parity.
     let (backend, server) = backend_for(s, &plan.template.meta.id)?;
-    let thinker = thinker_for(s, &backend);
+    let thinker = thinker_for(s, &backend, &server);
     let server_doc = server.clone();
     let purge = purge_mode(s);
     let ImagePlan {
@@ -2354,7 +2361,7 @@ fn fill_region(
         prompt
     };
     ctx.check()?;
-    release_thinker(&server, purge, thinker.as_ref());
+    release_thinker(&server, purge, &thinker, &backend);
     // An expand template crops the model's reference to the picture: its rectangle inside the
     // request, in the request's (possibly resampled) pixels.
     let mut params = BTreeMap::new();
@@ -2518,7 +2525,7 @@ fn fill_region(
                 best = i;
             }
         }
-        release_thinker(&server, purge, thinker.as_ref());
+        release_thinker(&server, purge, &thinker, &backend);
         if best > 0 {
             let chosen = made.remove(best);
             made.insert(0, chosen);
@@ -2927,7 +2934,7 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let label = name.clone();
     let purge = purge_mode(s);
     let job = FillJob {
-        thinker: thinker_for(s, &backend),
+        thinker: thinker_for(s, &backend, &server),
         backend,
         server,
         command: FILL,
@@ -3126,7 +3133,7 @@ fn run_expand(s: &mut Session, p: &Value) -> Result<Value> {
     let label = name.clone();
     let purge = purge_mode(s);
     let job = FillJob {
-        thinker: thinker_for(s, &backend),
+        thinker: thinker_for(s, &backend, &server),
         backend,
         server,
         command: EXPAND,
@@ -3340,7 +3347,7 @@ fn run_edit(s: &mut Session, p: &Value) -> Result<Value> {
     let whole = opt_bool(EDIT, p, "wholePicture", false)?;
     let purge = purge_mode(s);
     let job = FillJob {
-        thinker: thinker_for(s, &backend),
+        thinker: thinker_for(s, &backend, &server),
         backend,
         server,
         command: EDIT,
@@ -4001,7 +4008,7 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
     let backend = backend(s)?;
     let purge = purge_mode(s);
     let job = FillJob {
-        thinker: thinker_for(s, &backend),
+        thinker: thinker_for(s, &backend, &server_key(s)),
         backend,
         server: server_key(s),
         command,

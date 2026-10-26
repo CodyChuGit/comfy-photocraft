@@ -8,8 +8,12 @@ use serde_json::json;
 use crate::Session;
 use crate::generate_cmds::{engine_mode, set_native_backend};
 
+/// The native worker slot is process-wide: these tests take turns.
+static WORKER_SLOT: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn the_engine_preference_routes_to_the_native_worker() {
+    let _turn = WORKER_SLOT.lock().unwrap_or_else(|e| e.into_inner());
     let (port, token) = photocraft_genai::native::serve_fake(
         vec![
             "krea2-turbo/image".into(),
@@ -119,4 +123,35 @@ fn the_engine_preference_routes_to_the_native_worker() {
     }
     let t = crate::generate_cmds::Tuning::from_params("x", &json!({"loras": [{"file": "a.safetensors"}, {"file": "b.safetensors", "strength": -1}]})).unwrap();
     assert_eq!(t.loras_param(), Some(json!([{"file": "a.safetensors", "strength": 1.0}, {"file": "b.safetensors", "strength": -1.0}])));
+}
+
+/// A worker that serves the enhancer template (its 2.1 text encoder answering as Qwen3-VL)
+/// answers a native job's questions itself: nothing reaches the ComfyUI server, and the
+/// worker is not told to unload after answering.
+#[test]
+fn a_worker_that_serves_the_enhancer_answers_its_own_jobs_questions() {
+    let _turn = WORKER_SLOT.lock().unwrap_or_else(|e| e.into_inner());
+    let (port, token) =
+        photocraft_genai::native::serve_fake(vec!["qwen-2.1/fill".into(), "enhance/edit".into(), "enhance/image".into(), "sam3.1/segment".into()], 1).unwrap();
+    let worker = Arc::new(photocraft_genai::native::NativeBackend::attached(port, &token).unwrap());
+    set_native_backend(Arc::clone(&worker));
+    let comfy = photocraft_genai::fake::FakeComfy::start().unwrap();
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 128, "height": 64})).unwrap();
+    s.execute("layer.new.layer", json!({})).unwrap();
+    s.edit_prefs(|p| {
+        p.integrations.engine = "auto".into();
+        p.integrations.allow_research_models = true;
+        p.integrations.runtime_path = "runtime".into();
+        p.integrations.models_path = "models".into();
+        p.integrations.comfy_server = comfy.url.clone();
+        p.integrations.default_fill_template = "qwen-2.1/fill".into();
+    });
+    s.execute("select.rect", json!({"x": 10, "y": 10, "width": 40, "height": 30})).unwrap();
+    let r = s.execute("edit.contentAwareFill", json!({"generative": true, "variations": 2})).unwrap();
+    assert_eq!(r["template"].as_str(), Some("qwen-2.1/fill"), "{r}");
+    assert!(comfy.state().prompts.is_empty(), "the rewriter and the judge stayed on the worker");
+    assert!(comfy.state().requests.iter().all(|q| q != "POST /free"), "nothing asked ComfyUI to unload");
+    // The fill ran after the questions on a worker that was never freed: still healthy, still resident.
+    assert_eq!(s.execute("generate.health", json!({"template": "qwen-2.1/fill"})).unwrap()["backend"], "native/fake");
 }
