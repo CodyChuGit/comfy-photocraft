@@ -88,11 +88,15 @@ pub(crate) struct Tuning {
     /// Consistency, Outpaint, Restore and Outfit Swap, the BFS swaps); a ComfyUI template
     /// carries its own LoRA nodes and ignores the list.
     pub loras: Vec<(String, f32)>,
+    /// A removal keeps what it removed: the object's pixels (the detector's silhouette, or
+    /// the stroke's) as their own masked layer above the fill (`keepObject`), the two the same
+    /// size, so the thing can be moved or something put behind it (AusBoss's Cut Out + Remove).
+    pub keep_object: bool,
 }
 
 impl Default for Tuning {
     fn default() -> Self {
-        Self { sampler: None, scheduler: None, max_pixels: MAX_FILL_REQUEST_PIXELS, loras: Vec::new() }
+        Self { sampler: None, scheduler: None, max_pixels: MAX_FILL_REQUEST_PIXELS, loras: Vec::new(), keep_object: false }
     }
 }
 
@@ -113,7 +117,12 @@ impl Tuning {
             }
         };
         let max_pixels = opt_num(cmd, p, "maxPixels", 65_536.0, MAX_REQUEST_PIXELS as f64)?.map_or(MAX_FILL_REQUEST_PIXELS, |v| v as u64);
-        Ok(Tuning { sampler: name("sampler")?, scheduler: name("scheduler")?, max_pixels, loras: loras_of(cmd, p)? })
+        let keep_object = match p.get("keepObject") {
+            None | Some(Value::Null) => false,
+            Some(Value::Bool(b)) => *b,
+            Some(_) => return Err(bad(cmd, "`keepObject` must be true or false")),
+        };
+        Ok(Tuning { sampler: name("sampler")?, scheduler: name("scheduler")?, max_pixels, loras: loras_of(cmd, p)?, keep_object })
     }
 
     /// The `loras` request parameter for the worker, or nothing.
@@ -1307,6 +1316,7 @@ pub(crate) fn generative_remove(
         object: None,
         purge,
     };
+    let label_kept = label.to_string();
     crate::jobs::edit_job(
         s,
         label,
@@ -1385,10 +1395,42 @@ pub(crate) fn generative_remove(
             }
             let rect = fill_rect(hole.inflate(job.grow.min(MAX_GROW) as i32).intersect(&canvas), 0.25, canvas)?;
             let rect = at_least(rect, REMOVE_MIN_REQUEST, canvas);
+            // `keepObject`: the object's pixels and silhouette as they are now, before the
+            // fill's layers go in; its layer lands above them, named after what was removed.
+            let kept = if job.tuning.keep_object {
+                let c = photocraft_compose::render(doc, hole).to_rgba8();
+                Some((Rgba8::new(c.width, c.height, c.pixels).map_err(gen_err)?, embed_coverage(area, &coverage, hole), hole, job.object.clone()))
+            } else {
+                None
+            };
             let coverage = embed_coverage(area, &coverage, rect);
-            fill_region(doc, active, ctx, job, rect, coverage, None)
+            let filled = fill_region(doc, active, ctx, job, rect, coverage, None)?;
+            let kept_layer = match kept {
+                Some((pixels, cov, hole, object)) => {
+                    let name = match object {
+                        Some(o) => format!("{label_kept}: {o}"),
+                        None => format!("{label_kept}: object"),
+                    };
+                    let mut layer = Layer::raster(name, doc.pixel_format());
+                    write_rgba8(&mut layer, &pixels, hole)?;
+                    let mut mask_surface = Surface::with_default(PixelFormat::GRAY8, &[0.0]);
+                    mask_surface.write_region(hole, &cov);
+                    layer.mask = Some(LayerMask { surface: mask_surface, enabled: true, linked: true, density: 1.0, feather: 0.0 });
+                    let nid = doc.insert_above(*active, layer);
+                    *active = Some(nid);
+                    Some(nid)
+                }
+                None => None,
+            };
+            Ok((filled, kept_layer))
         },
-        move |(made, w, h, request, template_id)| made_json(&made, w, h, request, &template_id),
+        move |((made, w, h, request, template_id), kept)| {
+            let mut v = made_json(&made, w, h, request, &template_id);
+            if let (Some(id), Some(o)) = (kept, v.as_object_mut()) {
+                o.insert("objectLayer".to_string(), json!(id.0));
+            }
+            v
+        },
     )
 }
 

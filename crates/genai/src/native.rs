@@ -297,6 +297,14 @@ fn engines_for(args: &[String]) -> Vec<Box<dyn gn_engine::Engine>> {
 /// With `--runtime` and `--models` it serves the perception engine (SAM 3.1 through ONNX
 /// Runtime) and, when built with it, the diffusion engine; otherwise the fake engine.
 pub fn engine_main(args: &[String]) -> i32 {
+    // The engines report through `tracing`; `RUST_LOG` (env_logger directives, `info` for the
+    // phase timings) turns the worker's stderr into their log. Silent otherwise.
+    if let Ok(spec) = std::env::var("RUST_LOG")
+        && !spec.trim().is_empty()
+        && let Ok(filter) = tracing_subscriber::EnvFilter::try_new(spec.trim())
+    {
+        let _ = tracing_subscriber::fmt().with_env_filter(filter).with_writer(std::io::stderr).with_ansi(false).try_init();
+    }
     let mut token = std::env::var("GN_ENGINE_TOKEN").unwrap_or_default();
     let mut step_ms = 5u64;
     let mut stay = false;

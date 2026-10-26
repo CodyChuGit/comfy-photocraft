@@ -194,13 +194,23 @@ fn the_classical_tools_go_through_the_model_when_asked_and_fall_back_without_a_s
     // The fake's rewrite ("Enhanced: …") names nothing, so the fill keeps the generic wording
     // and the layer records no rewrite (a named removal records the wording with the name).
     assert!(info.enhanced.is_empty(), "{info:?}");
+    // `keepObject`: what was removed stays as its own masked layer above the fill (AusBoss's
+    // Cut Out + Remove), named after the object or "object" when nothing was named.
+    let before = s.active().unwrap().doc.layers.len();
+    let r = s.execute("edit.contentAwareFill", json!({"generative": true, "variations": 1, "keepObject": true})).unwrap();
+    assert_eq!(s.active().unwrap().doc.layers.len(), before + 2, "the fill and the object: {r}");
+    let kept = LayerId(r["objectLayer"].as_u64().unwrap_or_else(|| panic!("{r}")));
+    let layer = s.active().unwrap().doc.layer(kept).unwrap();
+    assert_eq!(layer.name, "Content-Aware Fill: object");
+    assert!(layer.mask.as_ref().is_some_and(|m| m.enabled), "masked to the object's silhouette");
+    assert!(matches!(s.execute("edit.contentAwareFill", json!({"generative": true, "keepObject": "yes"})), Err(EngineError::BadParams { .. })));
     // The Remove tool and Spot Healing: a stroke each, a layer each; each asks the detector
     // for the object under the stroke first (the fake finds nothing: the stroke alone), then
     // the rewriter, then the fill.
     s.execute("paint.remove", json!({"points": [[20, 16], [26, 16]], "size": 6, "generative": true, "variations": 1})).unwrap();
     s.execute("paint.spotHealing", json!({"points": [[22, 18]], "size": 6, "type": "generative", "variations": 1})).unwrap();
-    assert_eq!(s.active().unwrap().doc.layers.len(), layers + 3);
-    assert_eq!(fake.state().prompts.len(), 8, "two detector asks, two rewrites, two fills more");
+    assert_eq!(s.active().unwrap().doc.layers.len(), layers + 5, "the first fill, the kept pair, a layer each for the two tools");
+    assert_eq!(fake.state().prompts.len(), 10, "two detector asks, two rewrites, two fills more");
     // No backend configured: the classical fills, in place, no layer.
     s.edit_prefs(|p| {
         p.integrations.comfy_server.clear();
@@ -213,7 +223,7 @@ fn the_classical_tools_go_through_the_model_when_asked_and_fall_back_without_a_s
     s.execute("paint.remove", json!({"points": [[20, 16], [26, 16]], "size": 6, "generative": true, "variations": 1})).unwrap();
     s.execute("paint.spotHealing", json!({"points": [[22, 18]], "size": 6, "type": "generative", "variations": 1})).unwrap();
     assert_eq!(s.active().unwrap().doc.layers.len(), n);
-    assert_eq!(fake.state().prompts.len(), 8, "nothing more was asked of the server");
+    assert_eq!(fake.state().prompts.len(), 10, "nothing more was asked of the server");
 }
 
 #[test]
