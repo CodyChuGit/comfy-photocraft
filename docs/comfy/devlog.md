@@ -67,9 +67,21 @@ can pick up.
   merged weight; both file layouts load and the fused gate-up splits as ComfyUI does; the
   worker's request parsing and path rules; the app's validation on both routes. Not yet
   measured against ComfyUI with the same file.
-- **The native 2.1 removal bench** (`native21-run.ps1`) ran three times today and was stopped
-  three times: once without the worker shared, once without the rewriter's name, once paging.
-  It runs again with all three fixed; the numbers go in `benchmarks.md` §5i when it lands.
+- **The native 2.1 removal bench** (`native21-run.ps1`) ran four times today and was stopped
+  four times: once without the worker shared, once without the rewriter's name, twice with a
+  second stroke of 8 minutes. The worker's log (a tracing subscriber under `RUST_LOG`, new)
+  named it: the card full beside ComfyUI's vision model and the other tenants, `free_vram`
+  reads 0 and the pipeline evicts the text encoder after every prompt, and **loading it again
+  took 114 s** (Q8 on load; about 60 s in bf16) of a 135 s stroke, 492 s for the whole-object
+  one. Fix: `qwen-image-rs prequantize-text` makes a Q8_0 GGUF of the encoder beside the
+  snapshot (`text_encoder.q8_0.gguf`, the owner's weights, nothing shipped) and `gn-diffusion`
+  uses it when there (genai-native `7d85a88`): a reload in seconds. Still open: keeping an
+  evicted encoder in host memory instead; and the rewriter on the resident encoder, which
+  would take ComfyUI's model off the card altogether.
+- Also taken from the catalogue today: **realign to source** (`generate_realign`, on edits and
+  every 2.1 template: the result moved back onto the picture by the translation that matches
+  it outside the mask) and **`keepObject`** on the removal commands (the removed thing as its
+  own masked layer above the fill, the result's `objectLayer`).
 
 ## 2026-10-22: the removal adapter, installed and measured
 

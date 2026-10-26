@@ -3,7 +3,10 @@
 # from its first stdout line. Prints `PHOTOCRAFT_NATIVE_ENGINE=port:token` for the caller to
 # put in the environment (dot-source this script: `. native-worker.ps1` sets $env: too).
 # -Stop ends a worker started this way (by the pid file it leaves in $env:TEMP).
-param([switch]$Stop, [string]$Log = "C:\Users\5090\ComfyUI\photocraft-tests\bench\native-worker.log")
+# -TextQuant (on): the worker's `--text-quant`, the 2.1 text encoder in Q8_0 (8 GB instead of
+# 16), so the worker's set, ComfyUI's vision-language model for the rewriter and the card's
+# other tenants fit the 32 GB together (without it the rewriter paged for minutes, 2026-10-26).
+param([switch]$Stop, [string]$Log = "C:\Users\5090\ComfyUI\photocraft-tests\bench\native-worker.log", [bool]$TextQuant = $true)
 $pidFile = Join-Path $env:TEMP "photocraft-native-worker.pid"
 if ($Stop) {
     if (Test-Path $pidFile) {
@@ -25,7 +28,9 @@ if (-not $env:RUST_LOG) { $env:RUST_LOG = "info" }
 # The worker needs the CUDA and ONNX Runtime libraries on its PATH (the app puts the runtime
 # folders there when it starts the worker itself).
 $env:PATH = ($runtime -replace "/", "\") + ";" + $env:PATH
-$p = Start-Process -FilePath $cli -ArgumentList @("--engine", "--stay", "--runtime", $runtime, "--models", $models) -RedirectStandardOutput $Log -RedirectStandardError "$Log.err" -PassThru -WindowStyle Hidden
+$flags = @("--engine", "--stay", "--runtime", $runtime, "--models", $models)
+if ($TextQuant) { $flags += "--text-quant" }
+$p = Start-Process -FilePath $cli -ArgumentList $flags -RedirectStandardOutput $Log -RedirectStandardError "$Log.err" -PassThru -WindowStyle Hidden
 $deadline = (Get-Date).AddSeconds(60)
 $port = $null
 while ((Get-Date) -lt $deadline -and -not $port) {
