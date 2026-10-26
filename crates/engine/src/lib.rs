@@ -56,6 +56,7 @@ pub mod gallery_cmds;
 pub mod generate_cmds;
 pub mod generate_engine_cmds;
 pub mod generate_jobs;
+mod generate_realign;
 mod generate_refs;
 pub mod gradient_fill_cmds;
 pub mod group_view_cmds;

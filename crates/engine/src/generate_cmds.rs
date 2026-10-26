@@ -2274,6 +2274,10 @@ fn fill_region(
     // Every variation is the adapter's when the adapter template was named; else the first.
     let adapter_named = adapter.as_ref().is_some_and(|(id, _, _)| *id == template_id);
     let image_plain = image.clone();
+    // A route that regenerates the whole picture (an edit by instruction; every Qwen-Image-2.1
+    // template, whose "fill" is an edit with the mask in view) hands it back a few pixels off:
+    // the result is realigned to the picture outside the mask (`generate_realign`).
+    let realign = outpaint.is_none() && (command == EDIT || template::find(&template_id).is_ok_and(|t| t.meta.family == "qwen-image-2.1"));
     let image = if prefill && outpaint.is_none() && !adapter_named { smooth_covered(&image, &mask) } else { image };
     // The prompt the model gets: as typed, or rewritten by the vision-language model with the
     // picture in view (an expand keeps its own wording).
@@ -2378,6 +2382,12 @@ fn fill_region(
         let resp = run_switching(backend.as_ref(), &server, &req, purge, &JobProgress::span(ctx, lo, hi)).map_err(gen_err)?;
         ctx.check()?;
         let out = resp.images.into_iter().next().ok_or_else(|| EngineError::Other("the backend returned no image".into()))?;
+        let out = if realign && (out.width, out.height) == (image_plain.width, image_plain.height) {
+            let d = crate::generate_realign::drift(&out, &image_plain, Some(run_mask), crate::generate_realign::max_shift(out.width, out.height));
+            crate::generate_realign::shifted(&out, &image_plain, d)
+        } else {
+            out
+        };
         // A removal's result is tone-matched to the picture at the hole's edge and judged.
         let (out, mismatch) = if removal && (out.width, out.height) == (image_plain.width, image_plain.height) {
             // The adapter leaving its red in the hole is a loss before any judging: the judge

@@ -20,6 +20,8 @@ $runtime = "C:/Users/5090/Documents/_eval/onnxruntime-cuda13/onnxruntime-win-x64
 $models = "C:/Users/5090/Documents/_eval/native-models"
 $token = -join ((1..48) | ForEach-Object { "{0:x}" -f (Get-Random -Maximum 16) })
 $env:GN_ENGINE_TOKEN = $token
+# The worker's phase timings (load, encode, sampling, decode) go to its stderr log.
+if (-not $env:RUST_LOG) { $env:RUST_LOG = "info" }
 # The worker needs the CUDA and ONNX Runtime libraries on its PATH (the app puts the runtime
 # folders there when it starts the worker itself).
 $env:PATH = ($runtime -replace "/", "\") + ";" + $env:PATH
