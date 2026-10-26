@@ -75,9 +75,16 @@ can pick up.
   took 114 s** (Q8 on load; about 60 s in bf16) of a 135 s stroke, 492 s for the whole-object
   one. Fix: `qwen-image-rs prequantize-text` makes a Q8_0 GGUF of the encoder beside the
   snapshot (`text_encoder.q8_0.gguf`, the owner's weights, nothing shipped) and `gn-diffusion`
-  uses it when there (genai-native `7d85a88`): a reload in seconds. Still open: keeping an
-  evicted encoder in host memory instead; and the rewriter on the resident encoder, which
-  would take ComfyUI's model off the card altogether.
+  uses it when there (genai-native `7d85a88`): a reload in seconds. Two more causes, fixed:
+  the app's purge rule counted a removal's SAM run between two 2.1 fills as a model switch
+  and freed the whole worker (the next fill reloaded everything: `run_switching` now never
+  purges the native key, `3fcb1462`); without that accidental purge the resident detector
+  beside the 2.1 working set paged for 12 minutes, so a light engine now gives the device back
+  before another engine of the worker runs (`Engine::yields`, the perception engine yields;
+  genai-native `937c149`). Result, two strokes on one worker: **25 s and 60 s** (the 2.1 fill
+  itself 10–15 s: encode 3.7–9.7, sampling 5.1, decode 0.6), against 135 s and 492 s before.
+  Still open: the rewriter on the resident encoder, which would take ComfyUI's model off the
+  card and its reload out of every stroke.
 - Also taken from the catalogue today: **realign to source** (`generate_realign`, on edits and
   every 2.1 template: the result moved back onto the picture by the translation that matches
   it outside the mask) and **`keepObject`** on the removal commands (the removed thing as its
