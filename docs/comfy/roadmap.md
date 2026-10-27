@@ -304,6 +304,12 @@ the side-by-side rewriter; learnt from AusBoss's Krea 2 clothing workflow, see
 
 ## Phase 6: Beyond ComfyUI
 
+🟡 **The Rust rebuild** (opened 2026-10-27, its own task:
+[`goals/rust-rebuild.md`](goals/rust-rebuild.md)): every generative feature in PhotoshopEX's
+own Rust code, one executable, no Python and no ONNX Runtime; the queue R0–R6 (SAM 3.1 on
+candle, the 2511 holdouts, Qwen-Image-Layered, one models folder, packaging, native by
+default) and its progress log live there.
+
 - A second `GenerativeBackend`: in-process inference for small models (candle or burn, pure
   Rust, feature-gated, native only), starting with matting (BiRefNet-class) and a small
   text-to-image model; keeps the UI identical.
