@@ -96,11 +96,11 @@ fn grow_fill_holes_and_soften_finish_the_detectors_mask() {
     }
     ring[3 * w + 3] = 0.0;
     ring[4 * w + 4] = 0.0;
-    ring[1 * w + 1] = 0.0;
+    ring[w + 1] = 0.0;
     ring[w] = 0.0;
     let filled = fill_enclosed(&ring, w, h);
     assert_eq!((filled[3 * w + 3], filled[4 * w + 4]), (1.0, 1.0), "the enclosed gaps are filled");
-    assert_eq!(filled[1 * w + 1], 0.0, "the notch reaches the edge through (0, 1): kept");
+    assert_eq!(filled[w + 1], 0.0, "the notch reaches the edge through (0, 1): kept");
     assert_eq!(filled[0], 0.0);
     assert_eq!(finish_coverage(ring.clone(), Rect::new(0, 0, 8, 8), 0.0, true, 0.0)[3 * w + 3], 1.0);
     assert_eq!(finish_coverage(ring.clone(), Rect::new(0, 0, 8, 8), 0.0, false, 0.0), ring, "nothing asked: untouched");

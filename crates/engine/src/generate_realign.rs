@@ -49,6 +49,7 @@ fn luma_down(img: &Rgba8, mask: Option<&Gray8>, f: usize) -> (Vec<f32>, Vec<f32>
 /// Mean absolute luma difference between `a` and `b` shifted by `(dx, dy)` (a pixel of `b` at
 /// `(x, y)` is compared with `a` at `(x + dx, y + dy)`), over the cells both cover, weighted by
 /// `wa`; `None` when too few cells overlap.
+#[allow(clippy::too_many_arguments)]
 fn cost(a: &[f32], wa: &[f32], b: &[f32], w: usize, h: usize, dx: i32, dy: i32, min_cells: usize) -> Option<f32> {
     let (mut sum, mut n) = (0f32, 0f32);
     let (x0, x1) = (0.max(-dx) as usize, (w as i32).min(w as i32 - dx) as usize);

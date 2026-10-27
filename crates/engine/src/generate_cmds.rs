@@ -2729,8 +2729,8 @@ fn edge_mismatch(result: &Rgba8, picture: &Rgba8, mask: &Gray8) -> f64 {
     for (i, m) in mask.data.iter().enumerate() {
         let (x, y) = (i % w, i / w);
         if *m >= TONE_MATCH_INSIDE {
-            for c in 0..3 {
-                hole[c] += f64::from(result.data[i * 4 + c]);
+            for (acc, v) in hole.iter_mut().zip(&result.data[i * 4..i * 4 + 3]) {
+                *acc += f64::from(*v);
             }
             hn += 1;
             if x + 1 < w && y + 1 < h {
@@ -2738,8 +2738,8 @@ fn edge_mismatch(result: &Rgba8, picture: &Rgba8, mask: &Gray8) -> f64 {
                 htn += 1;
             }
         } else if *m > 0 {
-            for c in 0..3 {
-                band[c] += f64::from(picture.data[i * 4 + c]);
+            for (acc, v) in band.iter_mut().zip(&picture.data[i * 4..i * 4 + 3]) {
+                *acc += f64::from(*v);
             }
             bn += 1;
             if x + 1 < w && y + 1 < h {
@@ -2819,10 +2819,10 @@ fn tone_matched(result: &Rgba8, original: &Rgba8, mask: &Gray8) -> Rgba8 {
     if !hole.iter().any(|h| *h) {
         return result.clone();
     }
-    let rgb = |img: &Rgba8| -> Vec<f32> { img.data.chunks_exact(4).flat_map(|p| [f32::from(p[0]) / 255.0, f32::from(p[1]) / 255.0, f32::from(p[2]) / 255.0]).collect() };
+    let rgb = |img: &Rgba8| -> Vec<f32> { img.data.as_chunks::<4>().0.iter().flat_map(|p| [f32::from(p[0]) / 255.0, f32::from(p[1]) / 255.0, f32::from(p[2]) / 255.0]).collect() };
     let matched = photocraft_algo::poisson::seamless_clone(w, h, 3, &rgb(result), &rgb(original), &hole);
     let mut data = Vec::with_capacity(w * h * 4);
-    for (px, src) in result.data.chunks_exact(4).zip(matched.chunks_exact(3)) {
+    for (px, src) in result.data.as_chunks::<4>().0.iter().zip(matched.as_chunks::<3>().0) {
         data.extend(src.iter().map(|v| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8));
         data.push(px[3]);
     }
@@ -2948,7 +2948,7 @@ fn smooth_covered(img: &Rgba8, mask: &Gray8) -> Rgba8 {
     if !hole.iter().any(|h| *h) {
         return img.clone();
     }
-    let rgb: Vec<f32> = img.data.chunks_exact(4).flat_map(|p| [f32::from(p[0]) / 255.0, f32::from(p[1]) / 255.0, f32::from(p[2]) / 255.0]).collect();
+    let rgb: Vec<f32> = img.data.as_chunks::<4>().0.iter().flat_map(|p| [f32::from(p[0]) / 255.0, f32::from(p[1]) / 255.0, f32::from(p[2]) / 255.0]).collect();
     let filled = photocraft_algo::poisson::membrane_fill(w, h, 3, &rgb, &hole);
     let mut data = img.data.clone();
     for (i, in_hole) in hole.iter().enumerate() {
@@ -3029,7 +3029,7 @@ fn highlight_covered(img: &Rgba8, mask: &Gray8, colour: &str) -> Rgba8 {
 /// Paint the pixels `coverage` selects (half or more) mid-grey: the request image shows a hole
 /// where the model is to paint, not the object it is to replace.
 fn erase_covered(img: &mut Rgba8, coverage: &[f32]) {
-    for (px, c) in img.data.chunks_exact_mut(4).zip(coverage) {
+    for (px, c) in img.data.as_chunks_mut::<4>().0.iter_mut().zip(coverage) {
         if *c >= 0.5 {
             px.copy_from_slice(&PREFILL);
         }
