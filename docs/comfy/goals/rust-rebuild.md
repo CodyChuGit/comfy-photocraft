@@ -48,8 +48,8 @@ progress log (newest last). The plan behind it is `docs/comfy/plan-native-engine
 | Remove Background (matte) | 2.1 matte | yes | — |
 | Select by text / subject / point, Object Selection | SAM 3.1 | **through ONNX Runtime + cuDNN**, ONNX graphs made by a Python export | SAM 3.1 on candle (R1) |
 | Prompt rewriter, judge, naming | 2.1's Qwen3-VL 8B as a chat model | yes | — |
-| Fill from a reference | 2511 fill-ref | no (ComfyUI) | on 2.1 edit with references or a Krea 2 edit LoRA (R2) |
-| Image from references | 2511 image-ref | no (ComfyUI) | the same (R2) |
+| Fill from a reference | 2.1 edit by instruction (since 2026-10-27; 2511 fill-ref without the opt-in) | yes | — |
+| Image from references | 2.1 image-ref (since 2026-10-27; 2511 image-ref without the opt-in) | yes | — |
 | Generative Angles | 2511 + Multiple Angles LoRA | no (ComfyUI) | Krea 2 + `krea2_anygles` (installed) or 2.1 (R2) |
 | Krea 2 style reference | Krea 2 + style LoRA | no (ComfyUI) | the Krea 2 reference path exists now; the style LoRA (R2) |
 | Split into layers | Qwen-Image-Layered | no (ComfyUI) | port (R3) |
@@ -127,3 +127,12 @@ step, the dev log and roadmap updated.
   Running: the native fill-from-reference and image-from-references checks; Codex on R1 step 4
   (the CLIP text encoder against ComfyUI's own features) and R3 step 2 (the RGBA Wan VAE),
   each in its own worktree.
+- 2026-10-27, late: **R1 step 4 landed** (genai-native `a810339`, Codex: SAM 3.1's CLIP text
+  encoder within 2.7e-5 of ComfyUI's on the real checkpoint) and **R3 step 2** (`4d6013d`,
+  Codex: the Wan VAE in RGBA for the Layered file, within 2.5e-6 of ComfyUI's loader; Krea 2's
+  RGB path unchanged). The R0 gap fixed (PhotoshopEX `e1fc5fda`: Improve Prompt asks the worker
+  under auto). **R2 measured**: fill from a reference natively level with 2511's (a faint
+  neckline ghost), image from references right in 11 s (`benchmarks.md`). In the §2 table that
+  leaves on ComfyUI: Generative Angles, the Krea 2 style reference, the Layered split; on ONNX
+  Runtime: SAM 3.1. Codex now on R1 step 5 (the ViT trunk and both FPNs) and step 7 (the
+  interactive point/box heads), in parallel worktrees.

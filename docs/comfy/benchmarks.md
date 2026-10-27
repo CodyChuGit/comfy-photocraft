@@ -775,6 +775,26 @@ of clean swaps (a half for a swap with a visible fault):
   picture's 4 096 tokens ride along every step: the LoRA was trained without a reference KV
   cache, so they cannot be computed once).
 
+**The edit band, then fills with the rewriter** (the same night). With `change_band` on edits
+and whole-picture fills (`bbcd240f`) the Krea 2 edit's raincoat came out whole; the 2.1 edit's
+still had its hem band until the band counted only strong changes (`EDIT_BAND_CHANGE` 0.25:
+2.1 also re-renders the jeans faintly, which ran past the reach and refused the band); after
+that the 2.1 edit's raincoat is whole (a long coat) and its suit sleeves clean, items unchanged.
+The app's own flow with the rewriter on (`fillenh`, the 2.1 fill template and its fill
+rewriter) swapped every case but the watch on both seeds, the B/W leather jacket included;
+fill by instruction (`fillnamed`) left three unchanged because the 8B named a neighbour of the
+selection ("Replace the dark car with a yellow hooded raincoat" for the denim jacket, "the
+black trash can" for the bench, "the white lifebuoy" for the jacket), so `fillAsEdit` stays off
+by default.
+
+**Fill from a reference and image from references, natively** (Rust rebuild R2, 2026-10-27):
+on the 2026-10-21 pictures (a woman in a grey cardigan, a red cable-knit sweater as the
+reference), the 2.1 edit template by instruction swapped the cardigan for the sweater as the
+reference shows it, typed ("Replace the selected part of image 1 with …") and with the rewriter
+("Replace the grey cardigan with …"), level with 2511's two results but for a faint ghost of
+the old neckline; 21–23 s through the CLI. `qwen-2.1/image-ref` made "a store mannequin
+wearing the red cable-knit sweater from image 1" with the reference's knit, 11 s at 832×1216.
+
 | Route | Items | Outfits | Total | Time a case |
 |---|---|---|---|---|
 | Krea 2 edit (General Edit V2) | **22** | 5 | **27** | 15–23 s |
