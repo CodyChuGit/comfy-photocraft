@@ -13,6 +13,11 @@
   The app finds the folder next to photocraft.exe (`runtime\`) when the preference
   Integrations › Runtime folders is empty; the portable zip of package.ps1 -Native carries it.
 
+  -Ort and -Cudnn are optional since the Rust rebuild (2026-10-28): SAM 3.1 runs on candle from
+  its checkpoint, so a folder without them (NVIDIA's CUDA libraries only, about 700 MB less)
+  serves every feature when the models come from SAM 3.1's checkpoint; ONNX Runtime and cuDNN
+  are only for the exported SAM graphs. Give both or neither.
+
   Licences (read them before publishing a build; upstream.md has the checklist):
     CUDA runtime, cuBLAS, cuBLASLt, cuRAND   NVIDIA CUDA Toolkit EULA, Attachment A (redistributable)
     cuDNN 9                                  NVIDIA cuDNN Software License Agreement (redistributable)
@@ -25,13 +30,14 @@
 #>
 param(
   [Parameter(Mandatory)] [string] $Cuda,
-  [Parameter(Mandatory)] [string] $Ort,
-  [Parameter(Mandatory)] [string] $Cudnn,
+  [string] $Ort,
+  [string] $Cudnn,
   [string] $Out
 )
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if (-not $Out) { $Out = Join-Path $Root 'dist\runtime' }
+if ([bool]$Ort -ne [bool]$Cudnn) { throw 'give both -Ort and -Cudnn (the exported SAM graphs) or neither (SAM 3.1 on candle)' }
 
 # What the worker loads. CUDA: candle's cuBLAS / cuBLASLt / cuRAND (delay-loaded by the apps'
 # build scripts) and the runtime ONNX Runtime's CUDA provider imports. cuDNN: the provider opens
@@ -46,7 +52,7 @@ $Components = @(
      Files = 'cudnn64_9.dll', 'cudnn_graph64_9.dll', 'cudnn_ops64_9.dll', 'cudnn_cnn64_9.dll', 'cudnn_adv64_9.dll',
              'cudnn_heuristic64_9.dll', 'cudnn_engines_precompiled64_9.dll', 'cudnn_engines_runtime_compiled64_9.dll',
              'cudnn_engines_tensor_ir64_9.dll', 'cudnn_ext64_9.dll' }
-)
+) | Where-Object { $_.Dir }
 
 foreach ($c in $Components) {
   foreach ($f in $c.Files) {
