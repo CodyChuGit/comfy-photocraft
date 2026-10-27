@@ -18,6 +18,18 @@ fn main() {
     // the print command checks for it first and reports an error instead.
     if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
         println!("cargo:rustc-link-arg-bins=/DELAYLOAD:windows.data.pdf.dll");
+        // Fork: the same for the CUDA libraries candle's cudarc imports when the native engine
+        // is built in (`native-diffusion`): only the `--engine` worker calls them, with the
+        // runtime folder on its PATH, so the editor starts on a PC that has none
+        // (plan-native-engine §10). cuBLAS carries the toolkit's major version
+        // (`CUDARC_CUDA_VERSION` 13030 → `cublas64_13.dll`); cuRAND stays `curand64_10.dll`.
+        println!("cargo:rerun-if-env-changed=CUDARC_CUDA_VERSION");
+        if std::env::var_os("CARGO_FEATURE_NATIVE_DIFFUSION").is_some() {
+            let major = std::env::var("CUDARC_CUDA_VERSION").ok().and_then(|v| v.trim().parse::<u32>().ok()).map_or(13, |v| v / 1000);
+            println!("cargo:rustc-link-arg-bins=/DELAYLOAD:cublas64_{major}.dll");
+            println!("cargo:rustc-link-arg-bins=/DELAYLOAD:cublasLt64_{major}.dll");
+            println!("cargo:rustc-link-arg-bins=/DELAYLOAD:curand64_10.dll");
+        }
         println!("cargo:rustc-link-arg-bins=delayimp.lib");
     }
     let mut res = winresource::WindowsResource::new();

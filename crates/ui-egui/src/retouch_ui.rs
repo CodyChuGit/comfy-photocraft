@@ -414,7 +414,7 @@ pub fn finish_object_selection(app: &mut PhotocraftApp, start: [f64; 2], end: [f
 /// is whether the worker has its runtime and model folders.
 pub fn server_configured(app: &PhotocraftApp) -> bool {
     let i = &app.session.prefs().integrations;
-    let native = !i.runtime_path.trim().is_empty() && !i.models_path.trim().is_empty();
+    let native = i.native_configured();
     match i.engine.trim() {
         "native" => native,
         "comfy" => !i.comfy_server.trim().is_empty(),
@@ -431,7 +431,7 @@ pub fn native_engine(app: &PhotocraftApp) -> bool {
     match i.engine.trim() {
         "native" => true,
         "comfy" => false,
-        _ => !i.runtime_path.trim().is_empty() && !i.models_path.trim().is_empty(),
+        _ => i.native_configured(),
     }
 }
 

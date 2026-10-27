@@ -304,10 +304,37 @@ fn engines_for(args: &[String]) -> Vec<Box<dyn gn_engine::Engine>> {
         engines.push(Box::new(p));
     }
     #[cfg(feature = "native-diffusion")]
-    if let Some(d) = gn_diffusion::from_args(args) {
-        engines.push(Box::new(d));
+    {
+        let missing = missing_cuda_libraries(&search_dirs());
+        if missing.is_empty() {
+            if let Some(d) = gn_diffusion::from_args(args) {
+                engines.push(Box::new(d));
+            }
+        } else {
+            eprintln!("--engine: the diffusion models are off: {} not found in the runtime folder or on PATH", missing.join(", "));
+        }
     }
     engines
+}
+
+/// The CUDA libraries a `native-diffusion` build loads on first use in the worker (the apps'
+/// build scripts delay-load them); Windows names, CUDA 13. Elsewhere the dynamic loader finds
+/// them and nothing is checked.
+#[cfg(feature = "native-diffusion")]
+const CUDA_LIBRARIES: &[&str] = if cfg!(windows) { &["cublas64_13.dll", "cublasLt64_13.dll", "curand64_10.dll"] } else { &[] };
+
+/// Where Windows looks for a delay-loaded DLL that matters here: the executable's folder, then
+/// `PATH` (which holds the runtime folders first, [`NativeBackend::with_path_dirs`]).
+#[cfg(feature = "native-diffusion")]
+fn search_dirs() -> Vec<PathBuf> {
+    let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from));
+    exe_dir.into_iter().chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())).collect()
+}
+
+/// The [`CUDA_LIBRARIES`] none of `dirs` holds.
+#[cfg(feature = "native-diffusion")]
+fn missing_cuda_libraries(dirs: &[PathBuf]) -> Vec<&'static str> {
+    CUDA_LIBRARIES.iter().copied().filter(|dll| !dirs.iter().any(|d| d.join(dll).is_file())).collect()
 }
 
 /// `photocraft --engine [--token T] [--step-ms N] [--runtime <dir;dir> --models <dir>] [--cpu]
@@ -412,6 +439,19 @@ mod tests {
         fn cancelled(&self) -> bool {
             self.0.load(Ordering::SeqCst)
         }
+    }
+
+    #[cfg(all(feature = "native-diffusion", windows))]
+    #[test]
+    fn the_worker_names_the_cuda_libraries_it_cannot_find() {
+        let dir = std::env::temp_dir().join(format!("pc-cuda-libs-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(missing_cuda_libraries(std::slice::from_ref(&dir)), CUDA_LIBRARIES.to_vec());
+        for dll in CUDA_LIBRARIES {
+            std::fs::write(dir.join(dll), b"").unwrap();
+        }
+        assert!(missing_cuda_libraries(&[PathBuf::from("Z:/nowhere"), dir.clone()]).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

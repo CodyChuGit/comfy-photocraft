@@ -58,7 +58,7 @@ fn tensor_names(path: &std::path::Path) -> Option<Vec<String>> {
 /// native folders set and the template's family one `auto` sends there.
 pub(crate) fn runs_native(s: &Session, template: &str) -> bool {
     let i = &s.prefs().integrations;
-    let configured = !i.runtime_path.trim().is_empty() && !i.models_path.trim().is_empty();
+    let configured = i.native_configured();
     match engine_mode(s) {
         "native" => configured,
         "auto" => configured && photocraft_genai::template::find(template).is_ok_and(|t| NATIVE_AUTO_FAMILIES.contains(&t.meta.family.as_str())),

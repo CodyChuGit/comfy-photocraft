@@ -723,7 +723,7 @@ pub(crate) fn native_backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> 
         return Ok(Arc::clone(b) as Arc<dyn GenerativeBackend>);
     }
     let integrations = &s.prefs().integrations;
-    let wanted = photocraft_genai::native::worker_args(&integrations.runtime_path, &integrations.models_path);
+    let wanted = photocraft_genai::native::worker_args(&integrations.runtime_folders(), &integrations.models_path);
     let slot = NATIVE.get_or_init(|| std::sync::Mutex::new(None));
     let mut g = slot.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(b) = g.as_ref() {
@@ -746,7 +746,7 @@ pub(crate) fn native_backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> 
         *g = Some(Arc::clone(&b));
         return Ok(b);
     }
-    let dirs = photocraft_genai::native::runtime_dirs(&integrations.runtime_path);
+    let dirs = photocraft_genai::native::runtime_dirs(&integrations.runtime_folders());
     let b = Arc::new(photocraft_genai::native::NativeBackend::this_executable(&wanted).map_err(gen_err)?.with_path_dirs(dirs));
     *g = Some(Arc::clone(&b));
     Ok(b)
@@ -867,7 +867,7 @@ pub(crate) const NATIVE_AUTO_FAMILIES: [&str; 2] = ["sam3.1", "qwen-image-2.1"];
 #[cfg(not(target_arch = "wasm32"))]
 fn native_serving(s: &Session, template: &str) -> Option<Arc<dyn GenerativeBackend>> {
     let i = &s.prefs().integrations;
-    let configured = !i.runtime_path.trim().is_empty() && !i.models_path.trim().is_empty();
+    let configured = i.native_configured();
     if !configured || !template::find(template).is_ok_and(|t| NATIVE_AUTO_FAMILIES.contains(&t.meta.family.as_str())) {
         return None;
     }
@@ -1147,7 +1147,7 @@ fn dump_views(seen: &Rgba8) {
 /// otherwise (a server that is set up but down is reported by the job instead).
 pub fn generative_configured(s: &Session) -> bool {
     let i = &s.prefs().integrations;
-    let native = !i.runtime_path.trim().is_empty() && !i.models_path.trim().is_empty();
+    let native = i.native_configured();
     match i.engine.trim() {
         "native" => native,
         "comfy" => !i.comfy_server.trim().is_empty(),

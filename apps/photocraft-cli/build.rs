@@ -18,6 +18,15 @@ fn main() -> std::io::Result<()> {
     // the print command checks for it first and reports an error instead.
     if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
         println!("cargo:rustc-link-arg-bins=/DELAYLOAD:windows.data.pdf.dll");
+        // Fork: the CUDA libraries of the native engine (`native-diffusion`) load in the
+        // `--engine` worker only, as in apps/photocraft/build.rs (which says why).
+        println!("cargo:rerun-if-env-changed=CUDARC_CUDA_VERSION");
+        if std::env::var_os("CARGO_FEATURE_NATIVE_DIFFUSION").is_some() {
+            let major = std::env::var("CUDARC_CUDA_VERSION").ok().and_then(|v| v.trim().parse::<u32>().ok()).map_or(13, |v| v / 1000);
+            println!("cargo:rustc-link-arg-bins=/DELAYLOAD:cublas64_{major}.dll");
+            println!("cargo:rustc-link-arg-bins=/DELAYLOAD:cublasLt64_{major}.dll");
+            println!("cargo:rustc-link-arg-bins=/DELAYLOAD:curand64_10.dll");
+        }
         println!("cargo:rustc-link-arg-bins=delayimp.lib");
     }
     let mut res = winresource::WindowsResource::new();

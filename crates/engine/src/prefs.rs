@@ -970,7 +970,9 @@ pub struct Integrations {
     pub engine: String,
     /// The native worker's runtime folders, `;`-separated: where ONNX Runtime
     /// (`onnxruntime.dll` / `libonnxruntime.so` and its providers) and the CUDA and cuDNN
-    /// libraries live. Nothing is read from `PATH`. Empty = the worker serves no native model.
+    /// libraries live. Nothing is read from `PATH`. Empty = the `runtime` folder beside the
+    /// executable when a package put one there ([`Integrations::runtime_folders`]), else the
+    /// worker serves no native model.
     pub runtime_path: String,
     /// The native worker's model root: one subfolder per model (`sam3.1/` holds the ONNX graphs
     /// `tools/export_sam31.py` writes). Empty = the worker serves no native model.
@@ -1009,6 +1011,36 @@ impl Default for Integrations {
             models_path: String::new(),
         }
     }
+}
+
+impl Integrations {
+    /// The runtime folders the native worker uses: [`Self::runtime_path`], or when that is empty
+    /// the `runtime` folder next to this executable, which `packaging/windows/runtime.ps1` puts
+    /// beside a packaged build. Empty when there is neither.
+    pub fn runtime_folders(&self) -> String {
+        let p = self.runtime_path.trim();
+        if p.is_empty() { bundled_runtime().unwrap_or_default() } else { p.to_string() }
+    }
+
+    /// Whether the native worker can serve models: runtime folders and a model root.
+    pub fn native_configured(&self) -> bool {
+        !self.runtime_folders().is_empty() && !self.models_path.trim().is_empty()
+    }
+}
+
+/// `<executable's folder>/runtime` when it is a folder, looked up once.
+fn bundled_runtime() -> Option<String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        static DIR: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+        DIR.get_or_init(|| {
+            let dir = std::env::current_exe().ok()?.parent()?.join("runtime");
+            dir.is_dir().then(|| dir.to_string_lossy().into_owned())
+        })
+        .clone()
+    }
+    #[cfg(target_arch = "wasm32")]
+    None
 }
 
 /// `integrations.engine`: see [`Integrations::engine`].

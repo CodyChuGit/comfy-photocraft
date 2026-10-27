@@ -15,14 +15,23 @@
   and WiX v5: dotnet tool install --global wix --version 5.0.2
              wix extension add -g WixToolset.UI.wixext/5.0.2 WixToolset.Util.wixext/5.0.2
 
+  Fork: -Native builds with the native engine (`native-diffusion`: needs nvcc and the MSVC
+  environment of docs/comfy/bench/scripts/build-native.cmd) and puts the runtime folder that
+  runtime.ps1 assembled (-Runtime, default dist\runtime) beside the exes in the portable zip as
+  runtime\, where the app looks when Integrations › Runtime folders is empty. The MSI does not
+  carry it yet. No model weights ship either way.
+
 .EXAMPLE
   pwsh packaging/windows/package.ps1 -Arch x64
   pwsh packaging/windows/package.ps1 -Arch x86 -SkipBuild
   pwsh packaging/windows/package.ps1 -Arch arm64     # cross-compiled; needs the MSVC ARM64 build tools
+  pwsh packaging/windows/package.ps1 -Arch x64 -Native
 #>
 param(
   [ValidateSet('x64', 'x86', 'arm64')] [string] $Arch = 'x64',
-  [switch] $SkipBuild
+  [switch] $SkipBuild,
+  [switch] $Native,
+  [string] $Runtime
 )
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
@@ -63,7 +72,13 @@ if (-not $SkipBuild) {
   [Environment]::SetEnvironmentVariable($flagVar, '-C target-feature=+crt-static')
   # Fail the build (rather than warn) if the icon/VERSIONINFO can't be embedded.
   $env:PHOTOCRAFT_REQUIRE_WINRES = '1'
-  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p photocraft -p photocraft-cli --features heif,photocraft/alerts --target $Target }
+  $Features = if ($Native) { 'heif,photocraft/alerts,photocraft/native-diffusion,photocraft-cli/native-diffusion' } else { 'heif,photocraft/alerts' }
+  Invoke-Native "cargo build ($Target)" { cargo build --release --locked -p photocraft -p photocraft-cli --features $Features --target $Target }
+}
+if ($Native) {
+  if ($Arch -ne 'x64') { throw '-Native is x64 only (CUDA)' }
+  if (-not $Runtime) { $Runtime = Join-Path $Root 'dist\runtime' }
+  if (-not (Test-Path (Join-Path $Runtime 'THIRD_PARTY.txt'))) { throw "no runtime folder at $($Runtime) (run packaging/windows/runtime.ps1 first)" }
 }
 
 $Bin = Join-Path $TargetDir "$Target\release"
@@ -166,7 +181,9 @@ if ($env:CRAFT_FONTS_DIR) {
 # portable.txt beside photocraft.exe switches on portable mode: settings, presets and recovery
 # files go to PhotoCraftData\ next to the exe instead of %APPDATA% (#228; see app_dirs.rs).
 Copy-Item (Join-Path $PSScriptRoot 'portable.txt') $Portable
-$Zip = Join-Path $Dist "photocraft-$Version-windows-$Arch-portable.zip"
+if ($Native) { Copy-Item -Recurse $Runtime (Join-Path $Portable 'runtime') }
+$Suffix = if ($Native) { '-native' } else { '' }
+$Zip = Join-Path $Dist "photocraft-$Version-windows-$Arch$Suffix-portable.zip"
 Remove-Item -Force $Zip -ErrorAction SilentlyContinue
 Compress-Archive -Path $Portable -DestinationPath $Zip
 
