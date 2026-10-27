@@ -8,7 +8,7 @@
 use std::f32::consts::PI;
 
 use egui::{Color32, Pos2, Rect, Sense, Stroke, pos2, vec2};
-use photocraft_engine::generate_cmds::{ANGLE_ROTATIONS, ANGLE_TILTS, ANGLE_ZOOMS, ANGLES, ANGLES_TEMPLATE, angle_prompt};
+use photocraft_engine::generate_cmds::{ANGLE_ROTATIONS, ANGLE_TILTS, ANGLE_ZOOMS, ANGLES, ANGLES_TEMPLATE, angle_prompt, angles_template};
 use serde_json::{Value, json};
 
 use crate::PhotocraftApp;
@@ -127,7 +127,8 @@ pub fn window(app: &mut PhotocraftApp, ctx: &egui::Context) {
         app.ui.angles.job = None;
     }
     let eta = estimate(app);
-    let missing = app.ui.generate.catalog.iter().find(|m| m.id == ANGLES_TEMPLATE).is_some_and(|m| m.installed == Some(false));
+    let template = angles_template(&app.session);
+    let missing = template == ANGLES_TEMPLATE && app.ui.generate.catalog.iter().find(|m| m.id == ANGLES_TEMPLATE).is_some_and(|m| m.installed == Some(false));
     let mut open = true;
     let mut generate = false;
     let mut a = app.ui.angles.clone();
@@ -190,7 +191,7 @@ pub fn window(app: &mut PhotocraftApp, ctx: &egui::Context) {
 fn estimate(app: &PhotocraftApp) -> Option<f32> {
     let d = app.session.active()?;
     let (w, h) = (d.doc.size.width, d.doc.size.height);
-    photocraft_engine::generate_cmds::estimate_seconds(ANGLES_TEMPLATE, w, h, u32::from(app.ui.angles.variations.max(1)), 0)
+    photocraft_engine::generate_cmds::estimate_seconds(angles_template(&app.session), w, h, u32::from(app.ui.angles.variations.max(1)), 0)
 }
 
 /// Generate: `generate.angles` with the window's camera (a background job in the desktop app).

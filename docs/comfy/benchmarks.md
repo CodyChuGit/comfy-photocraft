@@ -795,6 +795,19 @@ reference shows it, typed ("Replace the selected part of image 1 with …") and 
 the old neckline; 21–23 s through the CLI. `qwen-2.1/image-ref` made "a store mannequin
 wearing the red cable-knit sweater from image 1" with the reference's knit, 11 s at 832×1216.
 
+**Generative Angles natively** (Rust rebuild R2, 2026-10-27, whole-picture edits through the
+CLI, seed 7, `bench\angles\`): four pictures (the denim and t-shirt people, the CC0 bench and dog)
+on the native worker. Naming the view ("show the same scene as a right side view, eye-level
+shot") made the 2.1 edit turn the subject in place; naming the camera's move ("Rotate the camera
+90 degrees to the right around the subject", "Move the camera behind the subject", "Raise the
+camera high above…", "Move the camera closer for a close-up") orbited the bench (its side, its
+back with the bin now in front), raised the camera over the people and the dog and closed in on
+all four, 5.5–6.7 s each warm. Krea 2's General Edit V2 on the same wording barely moved the
+camera and invented content (people in a garage, a jacket on the dog), so it is not a route.
+`generate.angles` under `auto` with the opt-in and the worker now sends the 2.1 edit that
+instruction (`angle_instruction`). Not compared with 2511 + the Multiple Angles LoRA: the LoRA is
+not installed on this PC.
+
 | Route | Items | Outfits | Total | Time a case |
 |---|---|---|---|---|
 | Krea 2 edit (General Edit V2) | **22** | 5 | **27** | 15–23 s |

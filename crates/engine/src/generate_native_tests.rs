@@ -248,6 +248,21 @@ fn auto_runs_qwen_image_2_1_on_the_worker_instead_of_2511() {
     // An image from references: 2.1's image-ref template on the worker, not 2511's on ComfyUI.
     let i = s.execute("generate.image", json!({"prompt": "the sweater on a mannequin", "width": 128, "height": 128, "target": "document", "seed": 6, "enhance": false, "references": [{"layer": reference.0}]})).unwrap();
     assert_eq!(i["template"].as_str(), Some("qwen-2.1/image-ref"), "{i}");
+    // Generative Angles: the 2.1 edit by a camera instruction, not 2511 with the LoRA.
+    let a = s.execute("generate.angles", json!({"rotation": 270, "tilt": 60, "zoom": 10, "seed": 7})).unwrap();
+    assert_eq!(a["template"].as_str(), Some("qwen-2.1/edit"), "{a}");
+    assert_eq!(
+        crate::generate_cmds::angle_instruction(270, 60, 10).as_deref(),
+        Some(
+            "Rotate the camera 90 degrees to the left around the subject. Raise the camera high above the subject, looking down at it. \
+             Move the camera closer for a close-up of the subject. Keep the subject, its identity, its clothing and the setting the same."
+        )
+    );
+    assert_eq!(
+        crate::generate_cmds::angle_instruction(180, 0, 5).as_deref(),
+        Some("Move the camera behind the subject, so it is seen from the back. Keep the subject, its identity, its clothing and the setting the same.")
+    );
+    assert!(crate::generate_cmds::angle_instruction(10, 0, 5).is_none(), "the LoRA's cameras only");
     // The standalone rewriter asks the worker, which serves the enhancer, not ComfyUI.
     s.execute("generate.enhancePrompt", json!({"prompt": "a fox", "task": "image"})).unwrap();
     s.edit_prefs(|p| p.integrations.enhance_prompts = true);

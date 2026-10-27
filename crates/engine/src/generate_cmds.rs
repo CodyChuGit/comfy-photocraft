@@ -509,6 +509,45 @@ pub fn angle_prompt(rotation: u32, tilt: i32, zoom: u32) -> Option<String> {
     let z = ANGLE_ZOOMS.iter().find(|(d, _)| *d == zoom)?.1;
     Some(format!("<sks> {r} {t} {z}"))
 }
+
+/// The template `generate.angles` runs: under `auto` with the research opt-in and the native
+/// worker, the Qwen-Image-2.1 edit by instruction ([`angle_instruction`], about 6 s on the
+/// worker), else 2511 with the Multiple Angles LoRA on ComfyUI.
+pub fn angles_template(s: &Session) -> &'static str {
+    native21_auto(s, EDIT, false).unwrap_or(ANGLES_TEMPLATE)
+}
+
+/// The plain camera instruction the Qwen-Image-2.1 edit gets for a camera, which has no
+/// Multiple Angles LoRA: the camera named as moved ("Rotate the camera 90 degrees to the right
+/// around the subject", "Raise the camera high above…"), the wording that made 2.1 orbit a
+/// bench and raise or close in on people and a dog in the 2026-10-27 probe (`benchmarks.md`),
+/// where naming the view ("a right side view") mostly turned the subject. None as above.
+pub fn angle_instruction(rotation: u32, tilt: i32, zoom: u32) -> Option<String> {
+    angle_prompt(rotation, tilt, zoom)?;
+    let mut parts: Vec<String> = Vec::new();
+    match rotation {
+        0 => {}
+        180 => parts.push("Move the camera behind the subject, so it is seen from the back.".into()),
+        r if r < 180 => parts.push(format!("Rotate the camera {r} degrees to the right around the subject.")),
+        r => parts.push(format!("Rotate the camera {} degrees to the left around the subject.", 360 - r)),
+    }
+    match tilt {
+        -30 => parts.push("Lower the camera to a low angle, looking up at the subject.".into()),
+        30 => parts.push("Raise the camera a little, looking slightly down at the subject.".into()),
+        60 => parts.push("Raise the camera high above the subject, looking down at it.".into()),
+        _ => {}
+    }
+    match zoom {
+        0 => parts.push("Pull the camera back for a wide shot that shows more of the surroundings.".into()),
+        10 => parts.push("Move the camera closer for a close-up of the subject.".into()),
+        _ => {}
+    }
+    if parts.is_empty() {
+        parts.push("Show the subject from the front at eye level.".into());
+    }
+    parts.push("Keep the subject, its identity, its clothing and the setting the same.".into());
+    Some(parts.join(" "))
+}
 /// The Qwen-Image-2.1 template that `auto` runs for `command` (a removal when `removal`) instead
 /// of the Qwen-Image-Edit-2511 order, when research-only models are allowed and the native
 /// worker runs the family: the owner's choice of 2026-10-27, on the removal numbers of
@@ -3907,7 +3946,13 @@ fn run_angles(s: &mut Session, p: &Value) -> Result<Value> {
     let words = angle_prompt(rotation, tilt, zoom)
         .ok_or_else(|| bad(ANGLES, "`rotation` must be 0, 45, … 315; `tilt` -30, 0, 30 or 60; `zoom` 0 (wide), 5 (medium) or 10 (close-up)"))?;
     let camera = words.trim_start_matches("<sks> ").to_string();
-    let mut q = json!({"prompt": words, "template": ANGLES_TEMPLATE, "wholePicture": true, "name": format!("Angles: {camera}")});
+    let template = angles_template(s);
+    let mut q = json!({"prompt": words, "template": template, "wholePicture": true, "name": format!("Angles: {camera}")});
+    if template != ANGLES_TEMPLATE {
+        // The instruction is already the camera move; the rewriter would only blur it.
+        q["prompt"] = json!(angle_instruction(rotation, tilt, zoom).unwrap_or_default());
+        q["enhance"] = json!(false);
+    }
     for key in ["seed", "variations"] {
         if let Some(v) = p.get(key) {
             q[key] = v.clone();
