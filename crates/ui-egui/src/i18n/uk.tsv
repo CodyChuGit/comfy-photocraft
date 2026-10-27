@@ -4187,3 +4187,4 @@ curves	Smooth	Згладити
 	When the diffusion model changes	Коли змінюється дифузійна модель
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Адаптери з підпапки loras папки моделей, які застосовує вбудований рушій
+	Generative Upscale	Генеративне масштабування

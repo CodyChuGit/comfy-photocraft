@@ -4157,3 +4157,4 @@ curves	Smooth	スムーズ
 	When the diffusion model changes	拡散モデルが変わったとき
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	モデルフォルダーの loras サブフォルダーにあるアダプター。ネイティブエンジンが適用します
+	Generative Upscale	生成アップスケール

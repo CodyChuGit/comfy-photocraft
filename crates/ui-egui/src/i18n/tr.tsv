@@ -4207,3 +4207,4 @@ cameraData	Lens	Lens
 	When the diffusion model changes	Difüzyon modeli değiştiğinde
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Modeller klasörünün loras alt klasöründeki bağdaştırıcılar, yerel motor tarafından uygulanır
+	Generative Upscale	Üretken Büyütme

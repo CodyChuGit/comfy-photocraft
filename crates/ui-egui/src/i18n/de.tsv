@@ -3485,3 +3485,4 @@ curves	Smooth	Glätten
 	When the diffusion model changes	Wenn sich das Diffusionsmodell ändert
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adapter im Unterordner loras des Modellordners, angewendet von der nativen Engine
+	Generative Upscale	Generative Hochskalierung

@@ -4396,3 +4396,4 @@ cameraRaw	Yellow	Sárga
 	When the diffusion model changes	Ha a diffúziós modell változik
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adapterek a modellmappa loras almappájában, a natív motor alkalmazza őket
+	Generative Upscale	Generatív felskálázás

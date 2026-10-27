@@ -4528,6 +4528,17 @@ pub fn specs() -> Vec<CommandSpec> {
             run: loras::run_loras,
             journal: false,
         },
+        CommandSpec {
+            id: upscale::UPSCALE,
+            label: "Generative Upscale",
+            // Placed by the menu catalogue under Image.
+            menu: &[],
+            shortcut: None,
+            params: r#"{"scale":1..4=2,"tileMegapixels":0.25..2=1,"prompt"?:string,"template"?:string,"seed"?:int,"steps"?:int,"guidance"?:number,"loras"?:[{"file","strength"}],"restoreStrength":0..1.5=0.5,"name"?:string} → {"layer","tiles","width","height","elapsedMs","template"} (the document enlarged by scale the plain way (bicubic), then redrawn tile by tile by the edit model with a restore prompt (AusBoss's wording unless prompt is given): tiles of about tileMegapixels sharing a 128-px strip, each moved back onto its source and matched to its colours, the strips faded together; the redraw is a new layer above. Auto: Qwen-Image-2.1's edit on the native engine when it serves it (with the Restore LoRA at restoreStrength when the LoRA folder has qwen-image-2.1-restore.safetensors and no loras are given), else the edit default)"#,
+            enabled: edit_enabled,
+            run: upscale::run_upscale,
+            journal: true,
+        },
     ]
 }
 
@@ -4541,6 +4552,9 @@ mod tests;
 #[cfg(test)]
 #[path = "generate_image_tests.rs"]
 mod image_tests;
+
+#[path = "generate_upscale.rs"]
+pub(crate) mod upscale;
 
 #[cfg(test)]
 #[path = "generate_template_tests.rs"]

@@ -3095,3 +3095,4 @@ curves	Smooth	平滑
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	模型資料夾 loras 子資料夾中的適配器，由原生引擎套用
 	Strength	強度
+	Generative Upscale	生成式放大

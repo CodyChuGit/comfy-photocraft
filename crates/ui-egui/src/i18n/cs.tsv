@@ -4084,3 +4084,4 @@ navigator	Zoom	Zvětšení
 	When the diffusion model changes	Když se změní difuzní model
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptéry v podsložce loras složky modelů, použité nativním enginem
+	Generative Upscale	Generativní zvětšení

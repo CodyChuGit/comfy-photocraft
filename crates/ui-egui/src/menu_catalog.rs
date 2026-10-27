@@ -105,6 +105,7 @@ pub static CATALOG: &[(&[&str], &str, Option<&str>, &str)] = &[
     (&["Edit"], "Remove Background (Generative)…", None, "generate.removeBackground"),
     (&["Edit"], "Split into Layers (Generative)…", None, "generate.splitLayers"),
     (&["Edit"], "Generative Angles…", None, "generate.angles"),
+    (&["Edit"], "Generative Upscale", None, "generate.upscale"),
     (&["Edit"], "---", None, "---"),
     (&["Edit"], "Content-Aware Scale", Some("Cmd+Alt+Shift+C"), "edit.contentAwareScale"),
     (&["Edit"], "Puppet Warp", None, "edit.puppetWarp"),

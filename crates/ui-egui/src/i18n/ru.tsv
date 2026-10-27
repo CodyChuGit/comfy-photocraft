@@ -3461,3 +3461,4 @@ curves	Smooth	Сгладить
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Адаптеры из подпапки loras папки моделей, применяемые встроенным движком
 	Strength	Интенсивность
+	Generative Upscale	Генеративное масштабирование

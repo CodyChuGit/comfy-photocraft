@@ -4237,3 +4237,4 @@ curves	Smooth	Vloeiend maken
 	When the diffusion model changes	Als het diffusiemodel verandert
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adapters in de submap loras van de modellenmap, toegepast door de native engine
+	Generative Upscale	Generatief opschalen

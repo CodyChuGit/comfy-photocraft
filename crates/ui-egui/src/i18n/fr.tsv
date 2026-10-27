@@ -3492,3 +3492,4 @@ curves	Smooth	Lisser
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptateurs du sous-dossier loras du dossier des modèles, appliqués par le moteur natif
 	Strength	Intensité
+	Generative Upscale	Agrandissement génératif

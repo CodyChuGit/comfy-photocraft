@@ -4550,3 +4550,4 @@ shape	Appearance	Izgled
 	When the diffusion model changes	Kada se promeni difuzioni model
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adapteri u podfascikli loras fascikle modela, koje primenjuje izvorni mehanizam
+	Generative Upscale	Generativno uvećanje

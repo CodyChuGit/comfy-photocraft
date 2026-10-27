@@ -4180,3 +4180,4 @@ curves	Smooth	Εξομάλυνση
 	When the diffusion model changes	Όταν αλλάζει το μοντέλο διάχυσης
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Προσαρμογείς στον υποφάκελο loras του φακέλου μοντέλων, που εφαρμόζονται από την εγγενή μηχανή
+	Generative Upscale	Παραγωγική μεγέθυνση

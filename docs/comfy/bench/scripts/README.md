@@ -24,3 +24,4 @@ running it elsewhere. The numbers they produced are in [`../../benchmarks.md`](.
 | `enhance-edit-system.txt`, `enhance-t2i-system.txt` | ComfyUI's shipped enhancer prompts, for reference (too long for the 4B model) |
 | `build-native.cmd`, `native-env.cmd` | PhotoshopEX's CLI or app with the native engine compiled in; any command (genai-native's tests) in the same MSVC + nvcc environment |
 | `naming-probe.ps1` + `removal-system.txt` | The removal rewriter's two views asked of the worker or ComfyUI alone (`chat_probe` example); the system turn the engine sends |
+| `q1-run.ps1` … `q6-run.ps1`, `q4_lora_parity.py`, `q6_upscale.py`, `q8_fill_tone.py`, `lora_clear_repro.py` | The overnight goal of 2026-10-27 (`docs/comfy/goals/overnight-2026-10-27.md`): the wearer's candidates, the change band, the chat cache, LoRA parity on both routes, Generative Upscale against a halved picture, the fill's seam tone match; the LoRA clear's CUDA context bug |

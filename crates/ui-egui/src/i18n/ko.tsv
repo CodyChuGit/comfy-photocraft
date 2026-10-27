@@ -3664,3 +3664,4 @@ curves	Smooth	매끄럽게
 	When the diffusion model changes	확산 모델이 바뀔 때
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	모델 폴더의 loras 하위 폴더에 있는 어댑터로, 네이티브 엔진이 적용합니다
+	Generative Upscale	생성형 업스케일
