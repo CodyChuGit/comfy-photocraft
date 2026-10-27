@@ -4,6 +4,37 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-27 (evening): GPU detection and the engine page (plan Phase 5)
+
+- **GPU detection** (genai-native `182e897`): `qir::device::probe` asks the driver about the
+  card with no context made (looks for `nvcuda.dll` first: cudarc aborts the process when the
+  driver library is missing); the diffusion engine refuses a card older than the build's
+  kernels (`CUDA_COMPUTE_CAP`, 12.0 here) with a sentence, lists no templates (so `auto` stays
+  on ComfyUI) and says it in its health (`Health.detail`, new, defaulted for older peers).
+  Missing cuBLAS / cuRAND gives the same kind of sentence (`native::Refused`).
+- **The native worker in `generate.engine.status`** (`native`: state, card, total and free
+  memory, loaded model folders, reason, log), asked without waiting for a running request and
+  without starting a worker; `generate.engine.start / stop / restart {engine: "native"}` and a
+  new `generate.engine.purge {engine}`. The worker's stderr is its log
+  (`%TEMP%\photocraft-native-engine.log`, `RUST_LOG=info`: load and phase timings).
+- **UI**: the status-bar dot follows the engine the commands go to (native under `native`, and
+  under `auto` once the worker runs), its tooltip has both engines, its menu a section each;
+  Preferences › AI Integrations › Native engine shows the same lines with Start / Stop / Purge
+  models / Show log. 11 strings × 20 languages.
+- **Live** (the CLI, only the runtime folder on `PATH`): stopped → a Krea 2 picture → ready,
+  "NVIDIA GeForce RTX 5090", `qir+ort`, `krea2-turbo` loaded, 14.6 of 34.2 GB free → Purge →
+  nothing loaded, worker kept. The log shows the DiT load 6.4 s, sampling 3.5 s.
+- Also: `generate_engine_cmds.rs` was committed double-encoded (`â€º` for `›` in its error
+  sentences since `467a8ae0`); repaired.
+- **Open, the owner's question "do we need 2511?"** (answered from `benchmarks.md` 2026-10-26):
+  its value is the Apache licence (2.1 is research-only, never a shipped default) and the hard
+  removals with two candidates (14 of 20 against 2.1's 12, at 43–62 s a stroke against 10–38 s;
+  with one candidate 2.1 was level or ahead, 13–14 against 12.5). The gap was mostly the 8B
+  naming the person, since reworded but not re-run on 2.1. Proposed: no 2511 port now; re-run
+  the removal suite on 2.1 with the new wording.
+- Commits: genai-native `182e897`; PhotoshopEX `06cb0878`. Gate: the 5 known GPU-driver
+  failures; clippy, wasm, layers, parity, scorecard, native genai tests OK.
+
 ## 2026-10-27 (day): Krea 2 native under `auto`; plan Phase 5 started
 
 - **Krea 2 from ComfyUI's own fp8 files** (genai-native `6354b13`, `qir::fp8`): the worker
