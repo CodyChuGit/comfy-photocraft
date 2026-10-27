@@ -257,6 +257,28 @@ fn the_classical_tools_go_through_the_model_when_asked_and_fall_back_without_a_s
 }
 
 #[test]
+fn a_fills_denoise_reaches_the_2511_sampler_and_is_one_unless_given() {
+    let fake = FakeComfy::start().unwrap();
+    let (mut s, _, _) = session(&fake.url);
+    s.execute("file.new", json!({"width": 256, "height": 256})).unwrap();
+    s.execute("select.rect", json!({"x": 64, "y": 64, "width": 96, "height": 96})).unwrap();
+    for denoise in [None, Some(0.6)] {
+        let mut p = json!({"prompt": "a red hat", "template": "qwen-edit-2511/fill-lightning-8", "seed": 2, "enhance": false});
+        if let Some(d) = denoise {
+            p["denoise"] = json!(d);
+        }
+        s.execute("generate.fill", p).unwrap();
+        let st = fake.state();
+        let g = &st.prompts.last().unwrap().1;
+        let sampler = g.as_object().unwrap().values().find(|n| n["class_type"] == "KSampler").unwrap();
+        assert_eq!(sampler["inputs"]["denoise"].as_f64(), Some(denoise.unwrap_or(1.0)), "{sampler}");
+    }
+    assert!(crate::generate_cmds::takes_denoise("qwen-edit-2511/fill-lightning-8"));
+    assert!(!crate::generate_cmds::takes_denoise("qwen-2.1/fill"), "the 2.1 fill redraws from noise");
+    assert!(s.execute("generate.fill", json!({"prompt": "x", "denoise": 0.0})).is_err(), "0.05 to 1");
+}
+
+#[test]
 fn name_shadow_asks_a_whole_picture_removal_for_the_objects_shadow_too() {
     use photocraft_genai::fake::Options;
     let fake = FakeComfy::start_with(Options {

@@ -105,6 +105,17 @@ pub(crate) struct Tuning {
     /// A named removal on a whole-picture route asks for the object "and its shadow"
     /// (`nameShadow`).
     pub name_shadow: bool,
+    /// How much of a fill's selection the model redraws (`denoise`, 0.05 to 1; the templates
+    /// whose sampler binds it, [`takes_denoise`]): 1 replaces it; on the 2511 40-step fill 0.9 keeps
+    /// the old sheen, 0.8 changes little, the 8-step tier hardly moves below 1 (measured
+    /// 2026-10-27). `None`: the template's own (1).
+    pub denoise: Option<f64>,
+}
+
+/// Whether `template`'s sampler takes a `denoise` (the 2511 fill templates; Qwen-Image-2.1's
+/// edit-style fill and the native engine redraw from noise and ignore it).
+pub fn takes_denoise(template: &str) -> bool {
+    template::find(template).is_ok_and(|t| t.meta.placeholders.contains_key("denoise"))
 }
 
 /// [`Tuning::remove_margin`] unless given.
@@ -114,7 +125,7 @@ const NAME_SHADOW: bool = false;
 
 impl Default for Tuning {
     fn default() -> Self {
-        Self { sampler: None, scheduler: None, max_pixels: MAX_FILL_REQUEST_PIXELS, loras: Vec::new(), keep_object: false, shadow: true, remove_margin: REMOVE_MARGIN, name_shadow: NAME_SHADOW }
+        Self { sampler: None, scheduler: None, max_pixels: MAX_FILL_REQUEST_PIXELS, loras: Vec::new(), keep_object: false, shadow: true, remove_margin: REMOVE_MARGIN, name_shadow: NAME_SHADOW, denoise: None }
     }
 }
 
@@ -144,7 +155,8 @@ impl Tuning {
         };
         let (keep_object, shadow, name_shadow) = (flag("keepObject", false)?, flag("shadow", true)?, flag("nameShadow", NAME_SHADOW)?);
         let remove_margin = opt_num(cmd, p, "removeMargin", 0.0, 1.0)?.unwrap_or(REMOVE_MARGIN);
-        Ok(Tuning { sampler: name("sampler")?, scheduler: name("scheduler")?, max_pixels, loras: loras_of(cmd, p)?, keep_object, shadow, remove_margin, name_shadow })
+        let denoise = opt_num(cmd, p, "denoise", 0.05, 1.0)?;
+        Ok(Tuning { sampler: name("sampler")?, scheduler: name("scheduler")?, max_pixels, loras: loras_of(cmd, p)?, keep_object, shadow, remove_margin, name_shadow, denoise })
     }
 
     /// The `loras` request parameter for the worker, or nothing.
@@ -2504,6 +2516,9 @@ fn fill_region(
     if let Some(l) = tuning.loras_param() {
         params.insert("loras".to_string(), l);
     }
+    if let Some(d) = tuning.denoise {
+        params.insert("denoise".to_string(), json!(d));
+    }
     if let Some(o) = &outpaint {
         let (sx, sy) = (f64::from(rw) / f64::from(w.max(1)), f64::from(rh) / f64::from(h.max(1)));
         let p = o.picture;
@@ -4379,7 +4394,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Fill…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"grow":0..512=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"erase":{bool?=the template's},"sampler":{str?=euler},"scheduler":{str?=simple},"maxPixels":{int?=1048576},"loras":{[{"file":name,"strength":-4..4=1}]?},"references":{[{"layer":id} | {"path":"…"} | {"job":id,"index":0}]?},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; loras = LoRA files from the LoRA folder (the native model root's loras/), applied by the native engine as side paths on its resident model, up to 8; on the ComfyUI route each becomes a LoraLoaderModelOnly after the template's model loader, the file in that server's models/loras; enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; grow = widen the selection by that many pixels first, so a bulkier replacement has room; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; references = up to two reference images: with no template named the run switches to the fill-from-reference template, which flattens the selection to grey in the request so the model paints what the references show there (erase; `erase: true` does the same on any fill, `false` keeps the pixels); variations 1..4 = results with consecutive seeds, each a layer, only the first visible; sampler and scheduler = the KSampler's, ComfyUI names; maxPixels = the request is downscaled to at most this many pixels (the model's working size); areas over 1 megapixel are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"grow":0..512=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"erase":{bool?=the template's},"sampler":{str?=euler},"scheduler":{str?=simple},"maxPixels":{int?=1048576},"denoise":{0.05..1?} (the 2511 fill templates: how much of the selection is redrawn, 1 replaces it; measured on the 40-step template, 0.9 keeps the old sheen and 0.8 little changes, the 8-step tier hardly moves below 1),"loras":{[{"file":name,"strength":-4..4=1}]?},"references":{[{"layer":id} | {"path":"…"} | {"job":id,"index":0}]?},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; loras = LoRA files from the LoRA folder (the native model root's loras/), applied by the native engine as side paths on its resident model, up to 8; on the ComfyUI route each becomes a LoraLoaderModelOnly after the template's model loader, the file in that server's models/loras; enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; grow = widen the selection by that many pixels first, so a bulkier replacement has room; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; references = up to two reference images: with no template named the run switches to the fill-from-reference template, which flattens the selection to grey in the request so the model paints what the references show there (erase; `erase: true` does the same on any fill, `false` keeps the pixels); variations 1..4 = results with consecutive seeds, each a layer, only the first visible; sampler and scheduler = the KSampler's, ComfyUI names; maxPixels = the request is downscaled to at most this many pixels (the model's working size); areas over 1 megapixel are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: fill_enabled,
             run: run_fill,
             journal: true,

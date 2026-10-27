@@ -4181,3 +4181,5 @@ curves	Smooth	Εξομάλυνση
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Προσαρμογείς στον υποφάκελο loras του φακέλου μοντέλων, που εφαρμόζονται από την εγγενή μηχανή
 	Generative Upscale	Παραγωγική μεγέθυνση
+	Denoise	Αποθορυβοποίηση
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Πόσο από την επιλογή ξανασχεδιάζεται: το 1 την αντικαθιστά, περίπου 0,9 κρατά το παλιό σχήμα

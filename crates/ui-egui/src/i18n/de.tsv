@@ -3486,3 +3486,5 @@ curves	Smooth	Glätten
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adapter im Unterordner loras des Modellordners, angewendet von der nativen Engine
 	Generative Upscale	Generative Hochskalierung
+	Denoise	Entrauschen
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Wie viel der Auswahl neu gezeichnet wird: 1 ersetzt sie, etwa 0,9 behält die alte Form

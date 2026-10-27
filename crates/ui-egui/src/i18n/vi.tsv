@@ -3969,3 +3969,5 @@ curves	Smooth	Làm mượt
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Các bộ điều hợp trong thư mục con loras của thư mục mô hình, do engine gốc áp dụng
 	Generative Upscale	Phóng to tạo sinh
+	Denoise	Khử nhiễu
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Mức vẽ lại vùng chọn: 1 thay thế hoàn toàn, khoảng 0,9 giữ hình dạng cũ

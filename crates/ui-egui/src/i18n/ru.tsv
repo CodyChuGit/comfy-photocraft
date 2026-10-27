@@ -3462,3 +3462,5 @@ curves	Smooth	Сгладить
 	Adapters in the models folder's loras subfolder, applied by the native engine	Адаптеры из подпапки loras папки моделей, применяемые встроенным движком
 	Strength	Интенсивность
 	Generative Upscale	Генеративное масштабирование
+	Denoise	Шумоподавление
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Насколько перерисовывается выделение: 1 заменяет его, около 0,9 сохраняет прежнюю форму

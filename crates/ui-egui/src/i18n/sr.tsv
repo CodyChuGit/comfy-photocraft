@@ -4551,3 +4551,5 @@ shape	Appearance	Izgled
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adapteri u podfascikli loras fascikle modela, koje primenjuje izvorni mehanizam
 	Generative Upscale	Generativno uvećanje
+	Denoise	Uklanjanje šuma
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Koliko se izbora ponovo crta: 1 ga zamenjuje, oko 0,9 zadržava stari oblik

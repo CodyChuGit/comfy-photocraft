@@ -4082,3 +4082,5 @@ curves	Smooth	Wygładź
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptery z podfolderu loras folderu modeli, stosowane przez natywny silnik
 	Generative Upscale	Generatywne skalowanie w górę
+	Denoise	Odszumianie
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Jaka część zaznaczenia jest rysowana od nowa: 1 ją zastępuje, około 0,9 zachowuje dawny kształt

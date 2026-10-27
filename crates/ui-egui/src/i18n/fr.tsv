@@ -3493,3 +3493,5 @@ curves	Smooth	Lisser
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptateurs du sous-dossier loras du dossier des modèles, appliqués par le moteur natif
 	Strength	Intensité
 	Generative Upscale	Agrandissement génératif
+	Denoise	Débruitage
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Part de la sélection redessinée : 1 la remplace, environ 0,9 garde l'ancienne forme

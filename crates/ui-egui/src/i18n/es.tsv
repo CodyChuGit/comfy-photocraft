@@ -4440,3 +4440,5 @@ navigator	Zoom	Zoom
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptadores de la subcarpeta loras de la carpeta de modelos, aplicados por el motor nativo
 	Generative Upscale	Ampliación generativa
+	Denoise	Eliminación de ruido
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Cuánto de la selección se vuelve a dibujar: 1 la sustituye, unos 0,9 conservan la forma anterior

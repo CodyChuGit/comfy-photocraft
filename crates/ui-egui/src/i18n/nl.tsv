@@ -4238,3 +4238,5 @@ curves	Smooth	Vloeiend maken
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adapters in de submap loras van de modellenmap, toegepast door de native engine
 	Generative Upscale	Generatief opschalen
+	Denoise	Ruisonderdrukking
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Hoeveel van de selectie opnieuw wordt getekend: 1 vervangt haar, ongeveer 0,9 behoudt de oude vorm

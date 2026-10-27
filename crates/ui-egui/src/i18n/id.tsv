@@ -3480,3 +3480,5 @@ curves	Smooth	Haluskan
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptor di subfolder loras pada folder model, diterapkan oleh mesin native
 	Strength	Kekuatan
 	Generative Upscale	Peningkatan Skala Generatif
+	Denoise	Denoise
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Seberapa banyak seleksi yang digambar ulang: 1 menggantinya, sekitar 0,9 mempertahankan bentuk lama

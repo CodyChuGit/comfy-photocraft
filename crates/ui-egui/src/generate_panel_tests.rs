@@ -290,3 +290,22 @@ fn the_lora_rows_list_the_templates_family_and_a_run_sends_the_ones_switched_on(
     assert!(request(app).unwrap().1.get("loras").is_none());
     let _ = std::fs::remove_dir_all(&models);
 }
+
+#[test]
+fn denoise_goes_with_a_2511_fill_and_never_with_the_2_1_one() {
+    let fake = FakeComfy::start().unwrap();
+    let (mut a, _, _) = app(&fake.url);
+    a.session.edit_prefs(|p| p.integrations.allow_research_models = true);
+    a.session.execute("select.rect", json!({"x": 8, "y": 8, "width": 24, "height": 16})).unwrap();
+    a.ui.generate.mode = "fill".into();
+    a.ui.generate.prompt = "a red hat".into();
+    a.ui.generate.template.insert("fill".into(), "qwen-edit-2511/fill-lightning-8".into());
+    assert!(request(&a).unwrap().1.get("denoise").is_none(), "1 is the template's own");
+    a.ui.generate.denoise = 0.6;
+    assert_eq!(request(&a).unwrap().1["denoise"], json!(0.6));
+    a.ui.generate.template.insert("fill".into(), "qwen-2.1/fill".into());
+    assert!(request(&a).unwrap().1.get("denoise").is_none(), "the 2.1 fill redraws from noise");
+    let mut h = harness(a, 520.0);
+    h.run_steps(2);
+    assert!(set(h.state_mut(), &json!({"generatePanel": {"denoise": 2.0}})).is_err(), "0.05 to 1");
+}

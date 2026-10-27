@@ -3111,3 +3111,5 @@ curves	Smooth	平滑
 	Adapters in the models folder's loras subfolder, applied by the native engine	模型文件夹 loras 子文件夹中的适配器，由原生引擎应用
 	Strength	强度
 	Generative Upscale	生成式放大
+	Denoise	降噪强度
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	重绘选区的程度：1 完全替换，约 0.9 保留原有形状

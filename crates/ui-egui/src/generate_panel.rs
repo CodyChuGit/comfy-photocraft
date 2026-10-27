@@ -125,6 +125,9 @@ pub struct GeneratePanel {
     /// `generate.loras` for a template: (template, runs on the native engine, its files).
     #[serde(skip)]
     pub lora_list: Option<(String, bool, Vec<String>)>,
+    /// Fill mode on a template whose sampler takes it: how much of the selection is redrawn
+    /// (`denoise`; 1 replaces it).
+    pub denoise: f32,
 }
 
 impl Default for GeneratePanel {
@@ -157,6 +160,7 @@ impl Default for GeneratePanel {
             probed: false,
             loras: BTreeMap::new(),
             lora_list: None,
+            denoise: 1.0,
         }
     }
 }
@@ -439,6 +443,9 @@ pub fn request(app: &PhotocraftApp) -> Result<(&'static str, Value), String> {
             q["variations"] = json!(count);
             if p.grow > 0 {
                 q["grow"] = json!(p.grow.min(photocraft_engine::generate_cmds::MAX_GROW));
+            }
+            if p.denoise < 1.0 && photocraft_engine::generate_cmds::takes_denoise(&effective_template(app, mode)) {
+                q["denoise"] = json!((f64::from(p.denoise) * 100.0).round() / 100.0);
             }
         }
         "edit" => q["variations"] = json!(count),
@@ -932,6 +939,14 @@ fn options_row(app: &mut PhotocraftApp, ui: &mut egui::Ui, mode: &str, template:
             widgets::value_field(ui, &mut g, 0.0..=photocraft_engine::generate_cmds::MAX_GROW as f32, "px", 56.0)
                 .on_hover_text(tl!("Widen the selection by this many pixels before the fill, so a bulkier replacement has room"));
             app.ui.generate.grow = g.round().clamp(0.0, photocraft_engine::generate_cmds::MAX_GROW as f32) as u32;
+            // How much is redrawn, where the template's sampler takes it (the 2511 fills).
+            if photocraft_engine::generate_cmds::takes_denoise(template) {
+                ui.label(RichText::new(tl!("Denoise")).small());
+                let mut d = app.ui.generate.denoise;
+                widgets::value_field_prec(ui, &mut d, 0.05..=1.0, "", 46.0, 2)
+                    .on_hover_text(tl!("How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape"));
+                app.ui.generate.denoise = d.clamp(0.05, 1.0);
+            }
         }
     });
     if mode == "image" && app.session.active().is_some() {
@@ -979,7 +994,7 @@ fn lora_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, mode: &str, template: &
             let entry = app.ui.generate.loras.entry(f.clone()).or_insert((false, 1.0));
             ui.horizontal(|ui| {
                 ui.checkbox(&mut entry.0, f.strip_suffix(".safetensors").unwrap_or(f));
-                widgets::value_field(ui, &mut entry.1, 0.0..=1.5, "", 46.0).on_hover_text(tl!("Strength"));
+                widgets::value_field_prec(ui, &mut entry.1, 0.0..=1.5, "", 46.0, 2).on_hover_text(tl!("Strength"));
             });
         }
     });
@@ -1167,7 +1182,7 @@ pub fn inspect(app: &PhotocraftApp) -> Value {
         "mode": p.mode, "into": p.into, "prompt": p.prompt, "negative": p.negative, "references": p.references,
         "template": p.template, "effectiveTemplate": template, "aspect": p.aspect, "size": p.size,
         "width": p.width, "height": p.height, "imageSize": image_size(app), "count": p.count, "enhance": p.enhance,
-        "expand": p.expand, "grow": p.grow, "job": p.job, "compact": p.compact, "eta": estimate(app, mode), "etaLabel": estimate(app, mode).map(eta_label),
+        "expand": p.expand, "grow": p.grow, "denoise": p.denoise, "job": p.job, "compact": p.compact, "eta": estimate(app, mode), "etaLabel": estimate(app, mode).map(eta_label),
         "command": request.as_ref().ok().map(|(c, _)| *c), "params": request.as_ref().ok().map(|(_, q)| q.clone()),
         "blocked": request.err(), "referencesMax": refs_limit(app, mode),
         "loras": p.lora_list.as_ref().filter(|(t, _, _)| *t == template).map(|(_, native, files)| json!({
@@ -1179,13 +1194,13 @@ pub fn inspect(app: &PhotocraftApp) -> Value {
 }
 
 /// `ui.set {generatePanel: {mode, into, prompt, negative, template, aspect, size, width,
-/// height, count, enhance, references, expand, grow, focus, loras}}`: each field validated before any
+/// height, count, enhance, references, expand, grow, focus, loras, denoise}}`: each field validated before any
 /// is applied; `focus: true` puts the keyboard in the prompt (then `ui.key` Enter with
 /// `command` generates through the panel).
 pub fn set(app: &mut PhotocraftApp, p: &Value) -> Result<(), String> {
     let Some(v) = p.get("generatePanel") else { return Ok(()) };
     let o = v.as_object().ok_or("generatePanel must be an object")?;
-    let known = ["mode", "into", "prompt", "negative", "template", "aspect", "size", "width", "height", "count", "enhance", "references", "expand", "grow", "focus", "loras"];
+    let known = ["mode", "into", "prompt", "negative", "template", "aspect", "size", "width", "height", "count", "enhance", "references", "expand", "grow", "focus", "loras", "denoise"];
     if let Some(k) = o.keys().find(|k| !known.contains(&k.as_str())) {
         return Err(format!("generatePanel has no field `{k}`"));
     }
@@ -1267,6 +1282,9 @@ pub fn set(app: &mut PhotocraftApp, p: &Value) -> Result<(), String> {
     }
     if let Some(x) = o.get("focus") {
         next.focus = x.as_bool().ok_or("generatePanel.focus must be true or false")?;
+    }
+    if let Some(x) = o.get("denoise") {
+        next.denoise = x.as_f64().filter(|d| (0.05..=1.0).contains(d)).ok_or("generatePanel.denoise must be 0.05 to 1")? as f32;
     }
     if let Some(x) = o.get("loras") {
         // `{"file.safetensors": strength}`: those switched on at that strength, the rest off.

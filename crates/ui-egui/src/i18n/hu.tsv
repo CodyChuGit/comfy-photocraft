@@ -4397,3 +4397,5 @@ cameraRaw	Yellow	Sárga
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adapterek a modellmappa loras almappájában, a natív motor alkalmazza őket
 	Generative Upscale	Generatív felskálázás
+	Denoise	Zajmentesítés
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Mennyi rajzolódik újra a kijelölésből: az 1 lecseréli, kb. 0,9 megtartja a régi formát

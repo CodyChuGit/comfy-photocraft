@@ -89,3 +89,43 @@ uk	Generative Upscale	Генеративне масштабування
 vi	Generative Upscale	Phóng to tạo sinh
 zh-hans	Generative Upscale	生成式放大
 zh-hant	Generative Upscale	生成式放大
+cs	Denoise	Odšumění
+cs	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Kolik z výběru se překreslí: 1 jej nahradí, asi 0,9 zachová původní tvar
+de	Denoise	Entrauschen
+de	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Wie viel der Auswahl neu gezeichnet wird: 1 ersetzt sie, etwa 0,9 behält die alte Form
+el	Denoise	Αποθορυβοποίηση
+el	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Πόσο από την επιλογή ξανασχεδιάζεται: το 1 την αντικαθιστά, περίπου 0,9 κρατά το παλιό σχήμα
+es	Denoise	Eliminación de ruido
+es	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Cuánto de la selección se vuelve a dibujar: 1 la sustituye, unos 0,9 conservan la forma anterior
+fr	Denoise	Débruitage
+fr	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Part de la sélection redessinée : 1 la remplace, environ 0,9 garde l'ancienne forme
+hu	Denoise	Zajmentesítés
+hu	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Mennyi rajzolódik újra a kijelölésből: az 1 lecseréli, kb. 0,9 megtartja a régi formát
+id	Denoise	Denoise
+id	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Seberapa banyak seleksi yang digambar ulang: 1 menggantinya, sekitar 0,9 mempertahankan bentuk lama
+it	Denoise	Riduzione rumore
+it	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Quanto della selezione viene ridisegnato: 1 la sostituisce, circa 0,9 mantiene la forma precedente
+ja	Denoise	ノイズ除去強度
+ja	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	選択範囲をどれだけ描き直すか: 1 で置き換え、0.9 前後で元の形を保ちます
+ko	Denoise	디노이즈
+ko	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	선택 영역을 얼마나 다시 그릴지: 1은 대체하고, 약 0.9은 원래 형태를 유지합니다
+nl	Denoise	Ruisonderdrukking
+nl	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Hoeveel van de selectie opnieuw wordt getekend: 1 vervangt haar, ongeveer 0,9 behoudt de oude vorm
+pl	Denoise	Odszumianie
+pl	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Jaka część zaznaczenia jest rysowana od nowa: 1 ją zastępuje, około 0,9 zachowuje dawny kształt
+pt-br	Denoise	Redução de ruído
+pt-br	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Quanto da seleção é redesenhado: 1 a substitui, cerca de 0,9 mantém a forma antiga
+ru	Denoise	Шумоподавление
+ru	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Насколько перерисовывается выделение: 1 заменяет его, около 0,9 сохраняет прежнюю форму
+sr	Denoise	Uklanjanje šuma
+sr	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Koliko se izbora ponovo crta: 1 ga zamenjuje, oko 0,9 zadržava stari oblik
+tr	Denoise	Gürültü giderme
+tr	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Seçimin ne kadarının yeniden çizileceği: 1 onu değiştirir, yaklaşık 0,9 eski şekli korur
+uk	Denoise	Знешумлення
+uk	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Наскільки перемальовується виділення: 1 замінює його, близько 0,9 зберігає попередню форму
+vi	Denoise	Khử nhiễu
+vi	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Mức vẽ lại vùng chọn: 1 thay thế hoàn toàn, khoảng 0,9 giữ hình dạng cũ
+zh-hans	Denoise	降噪强度
+zh-hans	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	重绘选区的程度：1 完全替换，约 0.9 保留原有形状
+zh-hant	Denoise	降噪強度
+zh-hant	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	重繪選取範圍的程度：1 完全取代，約 0.9 保留原有形狀

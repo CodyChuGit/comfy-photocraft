@@ -4085,3 +4085,5 @@ navigator	Zoom	Zvětšení
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptéry v podsložce loras složky modelů, použité nativním enginem
 	Generative Upscale	Generativní zvětšení
+	Denoise	Odšumění
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Kolik z výběru se překreslí: 1 jej nahradí, asi 0,9 zachová původní tvar

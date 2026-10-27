@@ -4208,3 +4208,5 @@ cameraData	Lens	Lens
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Modeller klasörünün loras alt klasöründeki bağdaştırıcılar, yerel motor tarafından uygulanır
 	Generative Upscale	Üretken Büyütme
+	Denoise	Gürültü giderme
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Seçimin ne kadarının yeniden çizileceği: 1 onu değiştirir, yaklaşık 0,9 eski şekli korur

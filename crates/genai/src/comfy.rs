@@ -685,6 +685,11 @@ impl GenerativeBackend for ComfyBackend {
                 bindings.insert(key.into(), Value::String(default.into()));
             }
         }
+        // A fill template's KSampler `denoise` (the request's `denoise`): 1, the whole selection
+        // redrawn, unless asked.
+        if tpl.meta.placeholders.contains_key("denoise") && !bindings.contains_key("denoise") {
+            bindings.insert("denoise".into(), Value::from(1.0));
+        }
 
         let mut timings = Timings::default();
         if let Some(img) = &req.image {

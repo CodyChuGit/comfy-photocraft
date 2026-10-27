@@ -4158,3 +4158,5 @@ curves	Smooth	スムーズ
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	モデルフォルダーの loras サブフォルダーにあるアダプター。ネイティブエンジンが適用します
 	Generative Upscale	生成アップスケール
+	Denoise	ノイズ除去強度
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	選択範囲をどれだけ描き直すか: 1 で置き換え、0.9 前後で元の形を保ちます

@@ -609,6 +609,7 @@ mod tests {
             ("mask", json!("m.png")),
             ("sampler", json!("euler")),
             ("scheduler", json!("simple")),
+            ("denoise", json!(1.0)),
         ] {
             b.insert(k.into(), v);
         }

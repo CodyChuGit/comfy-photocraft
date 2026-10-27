@@ -4595,3 +4595,5 @@ shape	Appearance	Aspetto
 	LoRAs	LoRAs
 	Adapters in the models folder's loras subfolder, applied by the native engine	Adattatori nella sottocartella loras della cartella dei modelli, applicati dal motore nativo
 	Generative Upscale	Ingrandimento generativo
+	Denoise	Riduzione rumore
+	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Quanto della selezione viene ridisegnato: 1 la sostituisce, circa 0,9 mantiene la forma precedente
