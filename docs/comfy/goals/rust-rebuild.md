@@ -116,3 +116,14 @@ step, the dev log and roadmap updated.
   fill-ref pictures of 2026-10-21, then image from references, then R1 step 1 (a `gn-segment`
   crate: weights and ops) with Codex building the ops and their torchvision fixtures in its
   own worktree.
+- 2026-10-27, night: **R1 step 1 landed** (genai-native `3f1c9f1`, written by Codex in a
+  worktree, reviewed and landed by Claude: Codex's sandbox cannot commit to the shared git
+  metadata): `gn-segment` validates the raw SAM 3.1 checkpoint from its header (1 264 tensors,
+  none missing) and has torchvision-exact ROIAlign, the antialiased resize and the channel
+  LayerNorm, fixture-tested (< 1e-5). **R2: images from references native** (PhotoshopEX
+  `30ec008b`, genai-native `e1c0bb7`: `qwen-2.1/image-ref`, 2.1's text to image with one to
+  nine references at the asked size). Fill by instruction measured with the rewriter on and
+  turned back off by default (the 8B named the selection's neighbour on 3 of 15 swaps).
+  Running: the native fill-from-reference and image-from-references checks; Codex on R1 step 4
+  (the CLIP text encoder against ComfyUI's own features) and R3 step 2 (the RGBA Wan VAE),
+  each in its own worktree.
