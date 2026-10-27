@@ -200,7 +200,15 @@ fn the_engine_status_shows_the_native_worker_and_purge_unloads_it() {
 #[test]
 fn auto_runs_qwen_image_2_1_on_the_worker_instead_of_2511() {
     let _turn = WORKER_SLOT.lock().unwrap_or_else(|e| e.into_inner());
-    let served = vec!["qwen-2.1/fill".into(), "qwen-2.1/edit".into(), "qwen-2.1/expand".into(), "enhance/edit".into(), "enhance/image".into(), "sam3.1/segment".into()];
+    let served = vec![
+        "qwen-2.1/fill".into(),
+        "qwen-2.1/edit".into(),
+        "qwen-2.1/expand".into(),
+        "qwen-2.1/image-ref".into(),
+        "enhance/edit".into(),
+        "enhance/image".into(),
+        "sam3.1/segment".into(),
+    ];
     let (port, token) = photocraft_genai::native::serve_fake(served, 1).unwrap();
     set_native_backend(Arc::new(photocraft_genai::native::NativeBackend::attached(port, &token).unwrap()));
     let comfy = photocraft_genai::fake::FakeComfy::start().unwrap();
@@ -237,8 +245,11 @@ fn auto_runs_qwen_image_2_1_on_the_worker_instead_of_2511() {
     let reference = s.active().unwrap().active_layer.unwrap();
     let f = s.execute("generate.fill", json!({"prompt": "the red sweater", "seed": 5, "enhance": false, "references": [{"layer": reference.0}]})).unwrap();
     assert_eq!(f["template"].as_str(), Some("qwen-2.1/edit"), "{f}");
+    // An image from references: 2.1's image-ref template on the worker, not 2511's on ComfyUI.
+    let i = s.execute("generate.image", json!({"prompt": "the sweater on a mannequin", "width": 128, "height": 128, "target": "document", "seed": 6, "enhance": false, "references": [{"layer": reference.0}]})).unwrap();
+    assert_eq!(i["template"].as_str(), Some("qwen-2.1/image-ref"), "{i}");
     s.edit_prefs(|p| p.integrations.enhance_prompts = true);
     let m = s.execute("generate.models", json!({"probe": false})).unwrap();
-    assert_eq!(m["autoFill"].as_str(), Some("qwen-2.1/edit"), "with the rewriter on, fills go by instruction: {m}");
+    assert_eq!(m["autoFill"].as_str(), Some("qwen-2.1/fill"), "fills stay on the fill template unless fillAsEdit is asked: {m}");
     assert!(comfy.state().prompts.is_empty(), "nothing went to ComfyUI");
 }

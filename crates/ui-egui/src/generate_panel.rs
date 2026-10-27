@@ -320,7 +320,7 @@ pub fn default_template(app: &PhotocraftApp, mode: &str) -> String {
                 prefs.default_image_template.trim().to_string()
             };
             let takes_refs = info(app, &t).is_some_and(|m| m.refs_max > 0);
-            if !app.ui.generate.references.is_empty() && !takes_refs { g::DEFAULT_IMAGE_REF_TEMPLATE.to_string() } else { t }
+            if !app.ui.generate.references.is_empty() && !takes_refs { g::image_ref_template(&app.session).to_string() } else { t }
         }
         "fill" => {
             let t = prefs.default_fill_template.trim();
@@ -566,7 +566,7 @@ pub fn refs_limit(app: &PhotocraftApp, mode: &str) -> u32 {
         "edit" => max_of(&effective_template(app, "edit")),
         "image" => match chosen_template(app, "image") {
             Some(t) => max_of(&t),
-            None => max_of(&effective_template(app, "image")).max(max_of(photocraft_engine::generate_cmds::DEFAULT_IMAGE_REF_TEMPLATE)),
+            None => max_of(&effective_template(app, "image")).max(max_of(photocraft_engine::generate_cmds::image_ref_template(&app.session))),
         },
         "fill" => match chosen_template(app, "fill") {
             Some(t) => max_of(&t),

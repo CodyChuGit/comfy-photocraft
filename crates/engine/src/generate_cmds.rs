@@ -1708,12 +1708,14 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
     let named = p.get("template").is_some_and(|v| !v.is_null()) && !auto;
     let mut base = if auto { DEFAULT_FILL_TEMPLATE.to_string() } else { requested.clone() };
     let enhance = opt_bool(FILL, p, "enhance", s.prefs().integrations.enhance_prompts)?;
-    // With the rewriter to name what the selection holds, Qwen-Image-2.1 fills by instruction
-    // ("Replace the denim jacket with a yellow raincoat"): its edit route swapped 27 of 30 in
-    // the swap benchmark against 23.5 for its fill template (`benchmarks.md`, 2026-10-27).
+    // `fillAsEdit`: Qwen-Image-2.1 fills by instruction ("Replace the denim jacket with a yellow
+    // raincoat"), the selection's thing named by the rewriter. Off unless asked: the 8B named a
+    // neighbour of the selection ("the dark car" for a denim jacket, "the black trash can" for
+    // a bench) on 3 of 15 swaps, where the fill template with its own rewriter swapped all but
+    // the watch (`benchmarks.md`, 2026-10-27).
     let mut as_edit = false;
     if auto && ref_specs.is_empty() && let Some(t) = native21_auto(s, FILL, false) {
-        as_edit = opt_bool(FILL, p, "fillAsEdit", enhance)?;
+        as_edit = opt_bool(FILL, p, "fillAsEdit", false)?;
         base = if as_edit { native21_auto(s, EDIT, false).unwrap_or(t).to_string() } else { t.to_string() };
         auto = false;
     }
@@ -2070,6 +2072,19 @@ struct ImagePlan {
 /// The template `generate.image` switches to when references come with the default template,
 /// which takes none: permissive and runs on the edit model the fill already uses.
 pub const DEFAULT_IMAGE_REF_TEMPLATE: &str = "qwen-edit-2511/image-ref";
+/// The same on the native worker: Qwen-Image-2.1's text to image with the references in its
+/// encoder's view (the Rust rebuild R2), when research-only models are allowed and the worker
+/// runs the family.
+pub const NATIVE_IMAGE_REF_TEMPLATE: &str = "qwen-2.1/image-ref";
+
+/// The template an image from references runs when none that takes references is named.
+pub fn image_ref_template(s: &Session) -> &'static str {
+    if s.prefs().integrations.allow_research_models && loras::runs_native(s, NATIVE_IMAGE_REF_TEMPLATE) {
+        NATIVE_IMAGE_REF_TEMPLATE
+    } else {
+        DEFAULT_IMAGE_REF_TEMPLATE
+    }
+}
 
 /// Shared validation of the prompt, template, licence gate, seed, steps, guidance and model
 /// override for both generative commands.
@@ -2154,7 +2169,7 @@ fn plan_image(s: &Session, p: &Value) -> Result<ImagePlan> {
     let ref_specs = crate::generate_refs::specs(IMAGE, p)?;
     let named = p.get("template").is_some_and(|v| !v.is_null());
     let (default_template, default_model) = match template::find(&default_template) {
-        Ok(t) if !named && !ref_specs.is_empty() && t.meta.references.max == 0 => (DEFAULT_IMAGE_REF_TEMPLATE.to_string(), String::new()),
+        Ok(t) if !named && !ref_specs.is_empty() && t.meta.references.max == 0 => (image_ref_template(s).to_string(), String::new()),
         _ => (default_template, default_model),
     };
     let Common { template, prompt, negative, seed, steps, guidance, models, name } = plan_common(s, IMAGE, p, &default_template, Task::Image, &default_model)?;
@@ -4311,16 +4326,7 @@ pub fn likely_auto(command: &str, quality: &str) -> &'static str {
 /// [`likely_auto`] in this session: the Qwen-Image-2.1 template where `auto` runs it on the
 /// native worker ([`native21_auto`]), else the first of the server's order.
 pub fn likely_auto_in(s: &Session, command: &str, quality: &str) -> &'static str {
-    native21_fill_or_edit(s, command).unwrap_or_else(|| likely_auto(command, quality))
-}
-
-/// [`native21_auto`] for a prompted fill as the preferences run it: by instruction on the edit
-/// template when the rewriter is on (`fillAsEdit`'s default), else on the fill template.
-fn native21_fill_or_edit(s: &Session, command: &str) -> Option<&'static str> {
-    if command == FILL && s.prefs().integrations.enhance_prompts {
-        return native21_auto(s, FILL, false).and(native21_auto(s, EDIT, false));
-    }
-    native21_auto(s, command, false)
+    native21_auto(s, command, false).unwrap_or_else(|| likely_auto(command, quality))
 }
 
 /// Seconds a run of `template` for a `width × height` area with `count` variations and
@@ -4386,7 +4392,7 @@ fn run_models(s: &mut Session, p: &Value) -> Result<Value> {
 fn native21_picks(s: &Session) -> Vec<(&'static str, &'static str)> {
     [("autoFill", FILL, false), ("autoExpand", EXPAND, false), ("autoEdit", EDIT, false), ("autoRemove", FILL, true)]
         .into_iter()
-        .filter_map(|(key, command, removal)| if removal { native21_auto(s, command, true) } else { native21_fill_or_edit(s, command) }.map(|t| (key, t)))
+        .filter_map(|(key, command, removal)| native21_auto(s, command, removal).map(|t| (key, t)))
         .collect()
 }
 
@@ -4646,7 +4652,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Fill…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"grow":0..512=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"fillAsEdit":{bool?=enhance},"erase":{bool?=the template's},"sampler":{str?=euler},"scheduler":{str?=simple},"maxPixels":{int?=1048576},"denoise":{0.05..1?} (the 2511 fill templates: how much of the selection is redrawn, 1 replaces it; measured on the 40-step template, 0.9 keeps the old sheen and 0.8 little changes, the 8-step tier hardly moves below 1),"loras":{[{"file":name,"strength":-4..4=1}]?},"references":{[{"layer":id} | {"path":"…"} | {"job":id,"index":0}]?},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; loras = LoRA files from the LoRA folder (the native model root's loras/), applied by the native engine as side paths on its resident model, up to 8; on the ComfyUI route each becomes a LoraLoaderModelOnly after the template's model loader, the file in that server's models/loras; fillAsEdit = when auto runs Qwen-Image-2.1 on the native worker, fill by instruction on its edit template: the rewriter names what the selection holds and the description becomes "Replace the <thing> with <prompt>" (an instruction such as "replace the cup with a vase" goes as it is; nothing named: the fill template); enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; grow = widen the selection by that many pixels first, so a bulkier replacement has room; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; references = up to two reference images: with no template named the run switches to the fill-from-reference template, which flattens the selection to grey in the request so the model paints what the references show there (erase; `erase: true` does the same on any fill, `false` keeps the pixels); variations 1..4 = results with consecutive seeds, each a layer, only the first visible; sampler and scheduler = the KSampler's, ComfyUI names; maxPixels = the request is downscaled to at most this many pixels (the model's working size); areas over 1 megapixel are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"grow":0..512=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"fillAsEdit":bool=false,"erase":{bool?=the template's},"sampler":{str?=euler},"scheduler":{str?=simple},"maxPixels":{int?=1048576},"denoise":{0.05..1?} (the 2511 fill templates: how much of the selection is redrawn, 1 replaces it; measured on the 40-step template, 0.9 keeps the old sheen and 0.8 little changes, the 8-step tier hardly moves below 1),"loras":{[{"file":name,"strength":-4..4=1}]?},"references":{[{"layer":id} | {"path":"…"} | {"job":id,"index":0}]?},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; loras = LoRA files from the LoRA folder (the native model root's loras/), applied by the native engine as side paths on its resident model, up to 8; on the ComfyUI route each becomes a LoraLoaderModelOnly after the template's model loader, the file in that server's models/loras; fillAsEdit = when auto runs Qwen-Image-2.1 on the native worker, fill by instruction (measured weaker than the fill template with its rewriter: the namer can pick a neighbour) on its edit template: the rewriter names what the selection holds and the description becomes "Replace the <thing> with <prompt>" (an instruction such as "replace the cup with a vase" goes as it is; nothing named: the fill template); enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; grow = widen the selection by that many pixels first, so a bulkier replacement has room; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; references = up to two reference images: with no template named the run switches to the fill-from-reference template, which flattens the selection to grey in the request so the model paints what the references show there (erase; `erase: true` does the same on any fill, `false` keeps the pixels); variations 1..4 = results with consecutive seeds, each a layer, only the first visible; sampler and scheduler = the KSampler's, ComfyUI names; maxPixels = the request is downscaled to at most this many pixels (the model's working size); areas over 1 megapixel are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: fill_enabled,
             run: run_fill,
             journal: true,

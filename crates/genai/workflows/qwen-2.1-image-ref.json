@@ -1,0 +1,145 @@
+{
+  "meta": {
+    "id": "qwen-2.1/image-ref",
+    "name": "Image from References (Qwen-Image-2.1)",
+    "family": "qwen-image-2.1",
+    "task": "image",
+    "license": "research",
+    "licenseNote": "Qwen-Image-2.1 (Alibaba Qwen, 2026-09-20) ships under the Qwen Research License Agreement: research and evaluation use only; commercial use needs a separate agreement with Alibaba. Turn on Allow Research-Only Models in Preferences › AI Integrations to use it.",
+    "minComfyVersion": "0.37.0",
+    "saveNode": "9",
+    "needsImage": false,
+    "needsMask": false,
+    "defaults": {
+      "steps": 25,
+      "guidance": 1.0
+    },
+    "placeholders": {
+      "prompt": "string",
+      "negative": "string",
+      "seed": "int",
+      "steps": "int",
+      "cfg": "float",
+      "width": "int",
+      "height": "int",
+      "prefix": "string",
+      "unet": "string",
+      "clip": "string",
+      "vae": "string",
+      "image1": "string",
+      "image2": "string",
+      "image3": "string",
+      "image4": "string",
+      "image5": "string",
+      "image6": "string",
+      "image7": "string",
+      "image8": "string",
+      "image9": "string"
+    },
+    "models": [
+      {
+        "placeholder": "unet",
+        "folder": "diffusion_models",
+        "default": "qwen_image_2.1_int8_convrot.safetensors"
+      },
+      {
+        "placeholder": "clip",
+        "folder": "text_encoders",
+        "default": "qwen3vl_8b_int8_convrot.safetensors"
+      },
+      {
+        "placeholder": "vae",
+        "folder": "vae",
+        "default": "qwen_image_2.1_vae_bf16.safetensors"
+      }
+    ],
+    "notes": "A new picture at the asked size from one to nine reference pictures, the Qwen-Image-2.1 way: the text-to-image template (qwen-2.1/image) with the references on TextEncodeQwenImage21's images inputs and its vae, as the official edit template (image_qwen_image_2_1_edit.json) feeds them, and the empty latent at width × height instead of the first picture's size. Made for the Rust rebuild (docs/comfy/goals/rust-rebuild.md R2) so Generate Image with references stops needing 2511 on ComfyUI; the native worker (genai-native gn-diffusion qwen-2.1/image-ref) is its main route. The ComfyUI graph uses only nodes and inputs the shipped 2.1 templates use; this combination of them was not run live.",
+    "creator": "Alibaba Qwen",
+    "description": "A new picture from up to nine reference images",
+    "badges": [
+      "references"
+    ],
+    "references": {
+      "max": 9,
+      "min": 1,
+      "placeholders": ["image1", "image2", "image3", "image4", "image5", "image6", "image7", "image8", "image9"],
+      "nodes": {
+        "image1": ["20"],
+        "image2": ["21"],
+        "image3": ["22"],
+        "image4": ["23"],
+        "image5": ["24"],
+        "image6": ["25"],
+        "image7": ["26"],
+        "image8": ["27"],
+        "image9": ["28"]
+      }
+    },
+    "sizes": {
+      "aspects": ["1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"],
+      "min": 512,
+      "max": 2048,
+      "step": 16
+    },
+    "estimatedSeconds": {
+      "base": 6,
+      "perMegapixel": 10,
+      "perReference": 4
+    },
+    "pages": [
+      "image"
+    ]
+  },
+  "graph": {
+    "1": { "class_type": "UNETLoader", "inputs": { "unet_name": "{{unet}}", "weight_dtype": "default" } },
+    "2": { "class_type": "CLIPLoader", "inputs": { "clip_name": "{{clip}}", "type": "qwen_image", "device": "default" } },
+    "3": { "class_type": "VAELoader", "inputs": { "vae_name": "{{vae}}" } },
+    "4": { "class_type": "QwenImage21Cache", "inputs": { "model": ["1", 0], "device": "auto", "dtype": "default" } },
+    "20": { "class_type": "LoadImage", "inputs": { "image": "{{image1}}", "upload": "image" } },
+    "21": { "class_type": "LoadImage", "inputs": { "image": "{{image2}}", "upload": "image" } },
+    "22": { "class_type": "LoadImage", "inputs": { "image": "{{image3}}", "upload": "image" } },
+    "23": { "class_type": "LoadImage", "inputs": { "image": "{{image4}}", "upload": "image" } },
+    "24": { "class_type": "LoadImage", "inputs": { "image": "{{image5}}", "upload": "image" } },
+    "25": { "class_type": "LoadImage", "inputs": { "image": "{{image6}}", "upload": "image" } },
+    "26": { "class_type": "LoadImage", "inputs": { "image": "{{image7}}", "upload": "image" } },
+    "27": { "class_type": "LoadImage", "inputs": { "image": "{{image8}}", "upload": "image" } },
+    "28": { "class_type": "LoadImage", "inputs": { "image": "{{image9}}", "upload": "image" } },
+    "5": {
+      "class_type": "TextEncodeQwenImage21",
+      "inputs": {
+        "clip": ["2", 0],
+        "vae": ["3", 0],
+        "prompt": "{{prompt}}",
+        "negative_prompt": "{{negative}}",
+        "resolution": 1024,
+        "images.image_1": ["20", 0],
+        "images.image_2": ["21", 0],
+        "images.image_3": ["22", 0],
+        "images.image_4": ["23", 0],
+        "images.image_5": ["24", 0],
+        "images.image_6": ["25", 0],
+        "images.image_7": ["26", 0],
+        "images.image_8": ["27", 0],
+        "images.image_9": ["28", 0]
+      }
+    },
+    "6": { "class_type": "EmptyLatentImage", "inputs": { "width": "{{width}}", "height": "{{height}}", "batch_size": 1 } },
+    "7": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": ["4", 0],
+        "positive": ["5", 0],
+        "negative": ["5", 1],
+        "latent_image": ["6", 0],
+        "seed": "{{seed}}",
+        "steps": "{{steps}}",
+        "cfg": "{{cfg}}",
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1.0
+      }
+    },
+    "8": { "class_type": "VAEDecode", "inputs": { "samples": ["7", 0], "vae": ["3", 0] } },
+    "9": { "class_type": "SaveImage", "inputs": { "images": ["8", 0], "filename_prefix": "{{prefix}}" } }
+  }
+}
