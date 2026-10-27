@@ -92,11 +92,16 @@ pub(crate) struct Tuning {
     /// the stroke's) as their own masked layer above the fill (`keepObject`), the two the same
     /// size, so the thing can be moved or something put behind it (AusBoss's Cut Out + Remove).
     pub keep_object: bool,
+    /// A removal on a route that regenerates the whole request (every Qwen-Image-2.1
+    /// template) also takes what changed with the object: the shadow and the reflection the
+    /// model removed beside it, where they touch the hole (`shadow`, on by default; AusBoss's
+    /// differential composite, [`change_band`]).
+    pub shadow: bool,
 }
 
 impl Default for Tuning {
     fn default() -> Self {
-        Self { sampler: None, scheduler: None, max_pixels: MAX_FILL_REQUEST_PIXELS, loras: Vec::new(), keep_object: false }
+        Self { sampler: None, scheduler: None, max_pixels: MAX_FILL_REQUEST_PIXELS, loras: Vec::new(), keep_object: false, shadow: true }
     }
 }
 
@@ -117,12 +122,15 @@ impl Tuning {
             }
         };
         let max_pixels = opt_num(cmd, p, "maxPixels", 65_536.0, MAX_REQUEST_PIXELS as f64)?.map_or(MAX_FILL_REQUEST_PIXELS, |v| v as u64);
-        let keep_object = match p.get("keepObject") {
-            None | Some(Value::Null) => false,
-            Some(Value::Bool(b)) => *b,
-            Some(_) => return Err(bad(cmd, "`keepObject` must be true or false")),
+        let flag = |key: &str, default: bool| -> Result<bool> {
+            match p.get(key) {
+                None | Some(Value::Null) => Ok(default),
+                Some(Value::Bool(b)) => Ok(*b),
+                Some(_) => Err(bad(cmd, format!("`{key}` must be true or false"))),
+            }
         };
-        Ok(Tuning { sampler: name("sampler")?, scheduler: name("scheduler")?, max_pixels, loras: loras_of(cmd, p)?, keep_object })
+        let (keep_object, shadow) = (flag("keepObject", false)?, flag("shadow", true)?);
+        Ok(Tuning { sampler: name("sampler")?, scheduler: name("scheduler")?, max_pixels, loras: loras_of(cmd, p)?, keep_object, shadow })
     }
 
     /// The `loras` request parameter for the worker, or nothing.
@@ -2543,6 +2551,19 @@ fn fill_region(
         } else {
             out
         };
+        // `shadow`: on a whole-picture route a removal also takes what changed with the object
+        // beside the hole; that band joins the hole for the tone match (the membrane carries
+        // the result across it, so its edge meets the picture) and the layer mask.
+        let band = (removal && qwen21 && tuning.shadow && outpaint.is_none() && this_adapter.is_none()).then(|| change_band(&out, &image_plain, run_mask)).flatten();
+        let widened = band.as_ref().and_then(|b| Gray8::new(b.width, b.height, b.data.iter().zip(&run_mask.data).map(|(a, m)| (*a).max(*m)).collect()).ok());
+        let run_mask = widened.as_ref().unwrap_or(run_mask);
+        let band_coverage = match &band {
+            Some(b) => {
+                let b = if (b.width, b.height) == (w, h) { b.clone() } else { resize_gray8(b, w, h)? };
+                Some(layer_coverage.iter().zip(&b.data).map(|(c, v)| c.max(f32::from(*v) / 255.0)).collect::<Vec<f32>>())
+            }
+            None => None,
+        };
         // A removal's result is tone-matched to the picture at the hole's edge and judged.
         let (out, mismatch) = if removal && (out.width, out.height) == (image_plain.width, image_plain.height) {
             // The adapter leaving its red in the hole is a loss before any judging: the judge
@@ -2561,7 +2582,7 @@ fn fill_region(
         let mut layer = Layer::raster(layer_name, doc.pixel_format());
         write_rgba8(&mut layer, &out, rect)?;
         let mut mask_surface = Surface::with_default(PixelFormat::GRAY8, &[0.0]);
-        mask_surface.write_region(rect, &layer_coverage);
+        mask_surface.write_region(rect, band_coverage.as_deref().unwrap_or(&layer_coverage));
         layer.mask = Some(LayerMask { surface: mask_surface, enabled: true, linked: true, density: 1.0, feather: 0.0 });
         set_generative_info(
             &mut layer,
@@ -2768,6 +2789,107 @@ fn tone_matched(result: &Rgba8, original: &Rgba8, mask: &Gray8) -> Rgba8 {
 /// Mask values from here up count as the hole for [`tone_matched`] (the request's mask is
 /// 255 inside the selection and feathered outward).
 const TONE_MATCH_INSIDE: u8 = 200;
+
+/// [`change_band`]: a pixel changed when the two pictures, each box-blurred twice at this
+/// radius (texture the model redraws averages out, a shadow does not), differ by more than
+/// [`SHADOW_CHANGE`] in some channel (0..1).
+const SHADOW_BLUR: usize = 3;
+const SHADOW_CHANGE: f32 = 0.08;
+/// How far from the hole the band may reach, in the hole's longer side (at least 16 px).
+const SHADOW_REACH: f64 = 0.75;
+/// The band is taken only when it is at least this share of the hole (smaller is the model's
+/// noise) and at most that (larger: the model shifted the whole picture's tone).
+const SHADOW_MIN_SHARE: f64 = 0.03;
+const SHADOW_MAX_SHARE: f64 = 2.0;
+
+/// What changed with the object, outside the hole (`mask` at [`TONE_MATCH_INSIDE`] or more):
+/// the pixels where `result` differs from `original` ([`SHADOW_CHANGE`] after a blur),
+/// connected to the hole's feathered edge, within [`SHADOW_REACH`] of it, as a mask (255 on
+/// the band, widened by 2 px), or `None` when nothing or too much changed. A route that
+/// regenerates the whole request removes a cast shadow or a reflection with its object; the
+/// hole's mask kept it from showing (AusBoss's differential composite, catalogue §2.2).
+pub(crate) fn change_band(result: &Rgba8, original: &Rgba8, mask: &Gray8) -> Option<Gray8> {
+    let (w, h) = (result.width as usize, result.height as usize);
+    if (original.width, original.height) != (result.width, result.height) || (mask.width, mask.height) != (result.width, result.height) || w < 3 || h < 3 {
+        return None;
+    }
+    let blurred = |img: &Rgba8, c: usize| -> Vec<f32> {
+        let mut v: Vec<f32> = img.data.as_chunks::<4>().0.iter().map(|p| f32::from(p.get(c).copied().unwrap_or(0)) / 255.0).collect();
+        for _ in 0..2 {
+            v = box_blur(&v, w, h, SHADOW_BLUR, true);
+            v = box_blur(&v, w, h, SHADOW_BLUR, false);
+        }
+        v
+    };
+    let mut diff = vec![0.0f32; w * h];
+    for c in 0..3 {
+        for ((d, a), b) in diff.iter_mut().zip(blurred(result, c)).zip(blurred(original, c)) {
+            *d = d.max((a - b).abs());
+        }
+    }
+    let hole: Vec<bool> = mask.data.iter().map(|m| *m >= TONE_MATCH_INSIDE).collect();
+    let hole_px = hole.iter().filter(|h| **h).count();
+    let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0usize, 0usize);
+    for (i, _) in hole.iter().enumerate().filter(|(_, h)| **h) {
+        let (x, y) = (i % w, i / w);
+        (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x + 1), y1.max(y + 1));
+    }
+    if hole_px == 0 {
+        return None;
+    }
+    let reach = ((x1 - x0).max(y1 - y0) as f64 * SHADOW_REACH).max(16.0) as usize;
+    let (lx0, ly0, lx1, ly1) = (x0.saturating_sub(reach), y0.saturating_sub(reach), (x1 + reach).min(w), (y1 + reach).min(h));
+    let changed: Vec<f32> = diff
+        .iter()
+        .enumerate()
+        .map(|(i, d)| {
+            let (x, y) = (i % w, i / w);
+            let inside = hole.get(i).copied().unwrap_or(false);
+            f32::from(u8::from(!inside && *d > SHADOW_CHANGE && x >= lx0 && x < lx1 && y >= ly0 && y < ly1))
+        })
+        .collect();
+    // Specks out (an opening of one pixel), then the part connected to the hole's edge.
+    let inverted: Vec<f32> = changed.iter().map(|c| 1.0 - c).collect();
+    let eroded: Vec<f32> = dilate(&inverted, w, h, 1).iter().map(|c| 1.0 - c).collect();
+    let opened = dilate(&eroded, w, h, 1);
+    let open: Vec<bool> = opened.iter().zip(&changed).map(|(o, c)| *o >= 0.5 && *c >= 0.5).collect();
+    let mut band = vec![false; w * h];
+    let mut stack: Vec<usize> = (0..w * h).filter(|&i| open.get(i).copied().unwrap_or(false) && mask.data.get(i).copied().unwrap_or(0) > 0).collect();
+    for &i in &stack {
+        if let Some(b) = band.get_mut(i) {
+            *b = true;
+        }
+    }
+    while let Some(i) = stack.pop() {
+        let (x, y) = (i % w, i / w);
+        let next = [(x > 0).then(|| i - 1), (x + 1 < w).then(|| i + 1), (y > 0).then(|| i - w), (y + 1 < h).then(|| i + w)];
+        for j in next.into_iter().flatten() {
+            if open.get(j).copied().unwrap_or(false) && !band.get(j).copied().unwrap_or(true) {
+                if let Some(b) = band.get_mut(j) {
+                    *b = true;
+                }
+                stack.push(j);
+            }
+        }
+    }
+    // A band that runs into the request's edge (or the reach's) goes on outside it, where the
+    // model was not asked: taking it would cut the shadow off in a straight line (the dog's,
+    // measured 2026-10-27), so the shadow stays whole instead.
+    let on_edge = |i: usize| {
+        let (x, y) = (i % w, i / w);
+        x == lx0 || y == ly0 || x + 1 == lx1 || y + 1 == ly1
+    };
+    if band.iter().enumerate().any(|(i, b)| *b && on_edge(i) && mask.data.get(i).copied().unwrap_or(0) == 0) {
+        return None;
+    }
+    // Pixels the hole's own feather covers are the model's re-rendered rim, not a shadow.
+    let taken = band.iter().zip(&mask.data).filter(|(b, m)| **b && **m == 0).count();
+    if (taken as f64) < SHADOW_MIN_SHARE * hole_px as f64 || (taken as f64) > SHADOW_MAX_SHARE * hole_px as f64 {
+        return None;
+    }
+    let grown = dilate(&band.iter().map(|b| f32::from(u8::from(*b))).collect::<Vec<f32>>(), w, h, 2);
+    Gray8::new(result.width, result.height, grown.iter().map(|g| if *g >= 0.5 { 255 } else { 0 }).collect()).ok()
+}
 
 /// `img` with the hole (`mask` at [`SMOOTH_INSIDE`] or more) smoothed over by a membrane from
 /// its edge: the colours continue in, with no structure. An edit model copies what its

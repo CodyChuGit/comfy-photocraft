@@ -404,6 +404,47 @@ fn the_worker_names_a_removal_from_a_tighter_close_up_and_a_wide_one_keeps_its_s
 }
 
 #[test]
+fn a_removal_takes_the_shadow_that_went_with_its_object_and_nothing_else() {
+    use crate::generate_cmds::{change_band, feather_outward};
+    use photocraft_genai::{Gray8, Rgba8};
+    let (w, h) = (128u32, 96u32);
+    let paint = |f: &dyn Fn(f64, f64) -> u8| -> Rgba8 {
+        let mut d = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                let v = f(f64::from(x), f64::from(y));
+                d.extend([v, v, v, 255]);
+            }
+        }
+        Rgba8::new(w, h, d).unwrap()
+    };
+    let disc = |x: f64, y: f64| (x - 40.0).powi(2) + (y - 48.0).powi(2) <= 100.0;
+    let shadow = |x: f64, y: f64| ((x - 58.0) / 10.0).powi(2) + ((y - 50.0) / 6.0).powi(2) <= 1.0;
+    let far = |x: f64, y: f64| x >= 112.0 && y < 12.0;
+    // The photo: a dark disc and its cast shadow on grey; the model's result: the disc and the
+    // shadow gone, and (unconnected) a corner it changed for no reason.
+    let original = paint(&|x, y| if disc(x, y) { 20 } else if shadow(x, y) { 70 } else { 128 });
+    let result = paint(&|x, y| if far(x, y) { 200 } else { 128 });
+    let hole = Gray8::new(w, h, (0..w * h).map(|i| if disc(f64::from(i % w), f64::from(i / w)) || (f64::from(i % w) - 40.0).hypot(f64::from(i / w) - 48.0) <= 13.0 { 255 } else { 0 }).collect()).unwrap();
+    let mask = feather_outward(&hole, 6).unwrap();
+    let band = change_band(&result, &original, &mask).expect("the shadow changed with the disc");
+    let at = |x: u32, y: u32| band.data[(y * w + x) as usize];
+    assert_eq!(at(58, 50), 255, "the shadow's middle is taken");
+    assert_eq!(at(66, 50), 255, "and its far end");
+    assert_eq!(at(120, 4), 0, "a change not connected to the hole is not");
+    assert_eq!(at(40, 48), 0, "the hole itself is the hole's, not the band's");
+    // Nothing changed beside the hole, or everything did: no band.
+    let clean = paint(&|x, y| if shadow(x, y) { 70 } else { 128 });
+    assert!(change_band(&clean, &original, &mask).is_none(), "only the disc went");
+    let brighter = paint(&|_, _| 180);
+    assert!(change_band(&brighter, &original, &mask).is_none(), "a whole-picture tone shift is not a shadow");
+    // A shadow that runs out of the request: not cut off at its edge.
+    let long = |x: f64, y: f64| x >= 45.0 && (y - 50.0).abs() <= 5.0;
+    let original = paint(&|x, y| if disc(x, y) { 20 } else if long(x, y) { 70 } else { 128 });
+    assert!(change_band(&paint(&|_, _| 128), &original, &mask).is_none(), "the shadow goes on past the request");
+}
+
+#[test]
 fn an_image_from_a_reference_switches_template_and_variations_fill_one_document() {
     let fake = FakeComfy::start().unwrap();
     let (mut s, _, hat) = session(&fake.url);
