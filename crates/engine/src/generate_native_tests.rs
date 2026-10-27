@@ -226,5 +226,14 @@ fn auto_runs_qwen_image_2_1_on_the_worker_instead_of_2511() {
     assert_eq!(f["template"].as_str(), Some("qwen-2.1/fill"), "{f}");
     let r = s.execute("edit.contentAwareFill", json!({"generative": true, "variations": 2})).unwrap();
     assert_eq!(r["template"].as_str(), Some("qwen-2.1/edit"), "{r}");
+    // A fill by instruction (`fillAsEdit`): an instruction goes to the edit template as it is;
+    // a description nothing names (the rewriter off) falls back to the fill template.
+    let f = s.execute("generate.fill", json!({"prompt": "replace the box with a red balloon", "seed": 4, "enhance": false, "fillAsEdit": true})).unwrap();
+    assert_eq!(f["template"].as_str(), Some("qwen-2.1/edit"), "{f}");
+    let f = s.execute("generate.fill", json!({"prompt": "a red balloon", "seed": 4, "enhance": false, "fillAsEdit": true})).unwrap();
+    assert_eq!(f["template"].as_str(), Some("qwen-2.1/fill"), "nothing named: {f}");
+    s.edit_prefs(|p| p.integrations.enhance_prompts = true);
+    let m = s.execute("generate.models", json!({"probe": false})).unwrap();
+    assert_eq!(m["autoFill"].as_str(), Some("qwen-2.1/edit"), "with the rewriter on, fills go by instruction: {m}");
     assert!(comfy.state().prompts.is_empty(), "nothing went to ComfyUI");
 }

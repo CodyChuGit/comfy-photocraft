@@ -96,7 +96,9 @@ pub(crate) struct Tuning {
     /// A removal on a route that regenerates the whole request (every Qwen-Image-2.1
     /// template) also takes what changed with the object: the shadow and the reflection the
     /// model removed beside it, where they touch the hole (`shadow`, on by default; AusBoss's
-    /// differential composite, [`change_band`]).
+    /// differential composite, [`change_band`]). A fill or an edit with a selection on such a
+    /// route takes what the model drew past the selection the same way, within a smaller share
+    /// (a swapped garment longer than the old one).
     pub shadow: bool,
     /// The context a removal's request takes around the grown hole, in the hole's longer side
     /// (`removeMargin`, 0.25 unless given): a shadow longer than that runs out of the request
@@ -1705,8 +1707,14 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
     let ref_specs = crate::generate_refs::specs(FILL, p)?;
     let named = p.get("template").is_some_and(|v| !v.is_null()) && !auto;
     let mut base = if auto { DEFAULT_FILL_TEMPLATE.to_string() } else { requested.clone() };
+    let enhance = opt_bool(FILL, p, "enhance", s.prefs().integrations.enhance_prompts)?;
+    // With the rewriter to name what the selection holds, Qwen-Image-2.1 fills by instruction
+    // ("Replace the denim jacket with a yellow raincoat"): its edit route swapped 27 of 30 in
+    // the swap benchmark against 23.5 for its fill template (`benchmarks.md`, 2026-10-27).
+    let mut as_edit = false;
     if auto && ref_specs.is_empty() && let Some(t) = native21_auto(s, FILL, false) {
-        base = t.to_string();
+        as_edit = opt_bool(FILL, p, "fillAsEdit", enhance)?;
+        base = if as_edit { native21_auto(s, EDIT, false).unwrap_or(t).to_string() } else { t.to_string() };
         auto = false;
     }
     if !named && !ref_specs.is_empty() && template::find(&base).is_ok_and(|t| t.meta.references.max == 0) {
@@ -1716,7 +1724,8 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
             o.remove("template");
         }
     }
-    let Common { template, prompt, negative, seed, steps, guidance, models, name } = plan_common(s, FILL, &q, &base, Task::Fill, &default_model)?;
+    let Common { template, prompt, negative, seed, steps, guidance, models, name } =
+        plan_common(s, FILL, &q, &base, if as_edit { Task::Edit } else { Task::Fill }, &default_model)?;
     let margin = opt_num(FILL, p, "margin", 0.0, 1.0)?.unwrap_or(0.25);
     let edge = parse_edge(FILL, p)?;
     let variations = match opt_num(FILL, p, "variations", 1.0, f64::from(MAX_VARIATIONS))? {
@@ -1734,7 +1743,6 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
     }
     let rect = fill_rect(bounds, margin, canvas)?;
     let name = name.unwrap_or_else(|| format!("Generative Fill: {}", short(&prompt)));
-    let enhance = opt_bool(FILL, p, "enhance", s.prefs().integrations.enhance_prompts)?;
     // A plain fill's model sees the picture around the selection and takes no references; a
     // fill-from-reference template takes one or two.
     let refs = crate::generate_refs::plan(s, FILL, p, &template)?;
@@ -2466,6 +2474,43 @@ struct Outpaint {
 /// Regenerate the pixels `coverage` marks (one value per pixel of `rect`) through the backend
 /// and add the results as layers above the active one, each masked to `coverage` (or to the
 /// soft request mask when `outpaint` is set).
+/// What the selection holds, named by the rewriter from the removal's two views (its
+/// surroundings and a close-up, [`naming_views`]): "denim jacket". `None` when nothing usable
+/// came back or the rewriter could not run.
+fn name_selected(doc: &Document, job: &FillJob, area: Rect, coverage: &[f32], ctx: &JobCtx) -> Result<Option<String>> {
+    ctx.progress(0.0, "Naming what is selected");
+    let canvas = doc.bounds();
+    let (hole, _) = crate::select_ml_cmds::coverage_bounds(coverage, area);
+    if hole.is_empty() {
+        return Ok(None);
+    }
+    let by_worker = job.server == NATIVE_SERVER_KEY && same_backend(&job.thinker, &job.backend);
+    let (wide_rect, close_rect) = naming_views(hole, canvas, by_worker)?;
+    let crop = |r: Rect| -> Result<Rgba8> {
+        let c = photocraft_compose::render(doc, r).to_rgba8();
+        Rgba8::new(c.width, c.height, c.pixels).map_err(gen_err)
+    };
+    let seen = side_by_side(&crop(wide_rect)?, &crop(close_rect)?)?;
+    let (rw, rh) = request_size(seen.width, seen.height);
+    let seen = if (rw, rh) == (seen.width, seen.height) { seen } else { resize_rgba8(&seen, rw, rh)? };
+    let place = place_in_words(hole, wide_rect);
+    let said = enhance_prompt(job.thinker.as_ref(), EnhanceKind::Remove, REMOVE_PROMPT, Some(&seen), Some(&place), job.seed, &JobProgress::span(ctx, 0.01, 0.04));
+    Ok(said.ok().flatten().and_then(|p| named_object(&p)))
+}
+
+/// A fill's description as an edit instruction for the named thing: "Replace the denim jacket
+/// with a yellow hooded raincoat, keeping everything else unchanged." (the swap benchmark's
+/// wording, which the 2.1 and Krea 2 edit routes followed 27 times of 30).
+pub(crate) fn swap_prompt(thing: &str, description: &str) -> String {
+    let d = description.trim().trim_end_matches(['.', '!', ';', ',']).trim();
+    format!("Replace the {thing} with {d}, keeping everything else unchanged.")
+}
+
+/// The fill template a fill by instruction falls back to when nothing could be named.
+fn native21_fill_fallback() -> &'static str {
+    "qwen-2.1/fill"
+}
+
 fn fill_region(
     doc: &mut Document,
     active: &mut Option<LayerId>,
@@ -2698,7 +2743,15 @@ fn fill_region(
         // `shadow`: on a whole-picture route a removal also takes what changed with the object
         // beside the hole; that band joins the hole for the tone match (the membrane carries
         // the result across it, so its edge meets the picture) and the layer mask.
-        let band = (removal && qwen21 && tuning.shadow && outpaint.is_none() && this_adapter.is_none()).then(|| change_band(&out, &image_plain, run_mask)).flatten();
+        // The same on a swap or an edit with a selection: what the model drew past the selection,
+        // connected to it (a new coat longer than the old jacket), joins the layer mask, which
+        // otherwise cut it off in a dark band at the selection's edge (measured 2026-10-27,
+        // `benchmarks.md` swaps); held to a smaller share of the selection than a shadow.
+        let whole_picture = qwen21 || command == EDIT;
+        let (band_share, band_change) = if removal { (SHADOW_MAX_SHARE, SHADOW_CHANGE) } else { (EDIT_BAND_MAX_SHARE, EDIT_BAND_CHANGE) };
+        let band = (whole_picture && tuning.shadow && outpaint.is_none() && this_adapter.is_none() && layer_coverage.iter().any(|c| *c < 1.0))
+            .then(|| change_band(&out, &image_plain, run_mask, band_share, band_change))
+            .flatten();
         let widened = band.as_ref().and_then(|b| Gray8::new(b.width, b.height, b.data.iter().zip(&run_mask.data).map(|(a, m)| (*a).max(*m)).collect()).ok());
         let run_mask = widened.as_ref().unwrap_or(run_mask);
         let band_coverage = match &band {
@@ -2938,21 +2991,30 @@ const TONE_MATCH_INSIDE: u8 = 200;
 /// radius (texture the model redraws averages out, a shadow does not), differ by more than
 /// [`SHADOW_CHANGE`] in some channel (0..1).
 const SHADOW_BLUR: usize = 3;
-const SHADOW_CHANGE: f32 = 0.08;
+pub(crate) const SHADOW_CHANGE: f32 = 0.08;
+/// The change an edit's band counts: a swapped garment against what it replaced (a yellow coat
+/// over black jeans), not the light re-rendering a whole-picture route gives the rest (the 2.1
+/// edit's jeans, which ran past the reach and refused the band at the shadow's 0.08).
+pub(crate) const EDIT_BAND_CHANGE: f32 = 0.25;
 /// How far from the hole the band may reach, in the hole's longer side (at least 16 px).
 const SHADOW_REACH: f64 = 0.75;
 /// The band is taken only when it is at least this share of the hole (smaller is the model's
 /// noise) and at most that (larger: the model shifted the whole picture's tone).
 const SHADOW_MIN_SHARE: f64 = 0.03;
-const SHADOW_MAX_SHARE: f64 = 2.0;
+pub(crate) const SHADOW_MAX_SHARE: f64 = 2.0;
+/// The most an edit's or a fill's band may add, in the selection's area: a garment longer than
+/// the one it replaces, not a second subject.
+pub(crate) const EDIT_BAND_MAX_SHARE: f64 = 0.75;
 
 /// What changed with the object, outside the hole (`mask` at [`TONE_MATCH_INSIDE`] or more):
 /// the pixels where `result` differs from `original` ([`SHADOW_CHANGE`] after a blur),
 /// connected to the hole's feathered edge, within [`SHADOW_REACH`] of it, as a mask (255 on
 /// the band, widened by 2 px), or `None` when nothing or too much changed. A route that
 /// regenerates the whole request removes a cast shadow or a reflection with its object; the
-/// hole's mask kept it from showing (AusBoss's differential composite, catalogue §2.2).
-pub(crate) fn change_band(result: &Rgba8, original: &Rgba8, mask: &Gray8) -> Option<Gray8> {
+/// hole's mask kept it from showing (AusBoss's differential composite, catalogue §2.2). A band
+/// larger than `max_share` of the hole is refused; `threshold` is the change that counts
+/// ([`SHADOW_CHANGE`] for a shadow, [`EDIT_BAND_CHANGE`] for an edit).
+pub(crate) fn change_band(result: &Rgba8, original: &Rgba8, mask: &Gray8, max_share: f64, threshold: f32) -> Option<Gray8> {
     let (w, h) = (result.width as usize, result.height as usize);
     if (original.width, original.height) != (result.width, result.height) || (mask.width, mask.height) != (result.width, result.height) || w < 3 || h < 3 {
         return None;
@@ -2989,7 +3051,7 @@ pub(crate) fn change_band(result: &Rgba8, original: &Rgba8, mask: &Gray8) -> Opt
         .map(|(i, d)| {
             let (x, y) = (i % w, i / w);
             let inside = hole.get(i).copied().unwrap_or(false);
-            f32::from(u8::from(!inside && *d > SHADOW_CHANGE && x >= lx0 && x < lx1 && y >= ly0 && y < ly1))
+            f32::from(u8::from(!inside && *d > threshold && x >= lx0 && x < lx1 && y >= ly0 && y < ly1))
         })
         .collect();
     // Specks out (an opening of one pixel), then the part connected to the hole's edge.
@@ -3028,7 +3090,7 @@ pub(crate) fn change_band(result: &Rgba8, original: &Rgba8, mask: &Gray8) -> Opt
     }
     // Pixels the hole's own feather covers are the model's re-rendered rim, not a shadow.
     let taken = band.iter().zip(&mask.data).filter(|(b, m)| **b && **m == 0).count();
-    if (taken as f64) < SHADOW_MIN_SHARE * hole_px as f64 || (taken as f64) > SHADOW_MAX_SHARE * hole_px as f64 {
+    if (taken as f64) < SHADOW_MIN_SHARE * hole_px as f64 || (taken as f64) > max_share * hole_px as f64 {
         return None;
     }
     let grown = dilate(&band.iter().map(|b| f32::from(u8::from(*b))).collect::<Vec<f32>>(), w, h, 2);
@@ -3307,11 +3369,13 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let FillPlan { template, prompt, negative, seed, steps, guidance, name, models, rect, variations, auto, edge, enhance, refs, grow, erase, tuning } = plan;
     let label = name.clone();
     let purge = purge_mode(s);
+    // A fill planned on an edit template (`fillAsEdit`) runs as an edit by instruction.
+    let as_edit = template.meta.task == Task::Edit;
     let job = FillJob {
         thinker: thinker_for(s, &backend, &server),
         backend,
         server,
-        command: FILL,
+        command: if as_edit { EDIT } else { FILL },
         template_id: template.meta.id.clone(),
         auto,
         auto_order: auto_order(FILL, quality(s)),
@@ -3339,9 +3403,24 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
         s,
         &label,
         move |doc, active, ctx| {
+            let mut job = job;
             let sel = doc.selection.as_ref().ok_or_else(|| EngineError::Other("the selection is gone".into()))?;
             let k = sel.channels().max(1);
             let coverage: Vec<f32> = sel.read_region(rect).chunks_exact(k).map(|c| c.first().copied().unwrap_or(0.0).clamp(0.0, 1.0)).collect();
+            // A fill by instruction: a description ("a glass of red wine") becomes "Replace the
+            // <thing in the selection> with a glass of red wine." once the rewriter names the
+            // thing (the removal's two views); an instruction is left to the edit rewriter.
+            // Nothing named: the fill template after all.
+            if job.command == EDIT && !template::is_imperative(&job.prompt) {
+                let named = if job.enhance { name_selected(doc, &job, rect, &coverage, ctx)? } else { None };
+                match named {
+                    Some(thing) => job.rewritten = Some(swap_prompt(&thing, &job.prompt)),
+                    None => {
+                        job.command = FILL;
+                        job.template_id = native21_fill_fallback().to_string();
+                    }
+                }
+            }
             fill_region(doc, active, ctx, job, rect, coverage, None)
         },
         move |(made, w, h, request, template_id)| made_json(&made, w, h, request, &template_id),
@@ -4210,7 +4289,16 @@ pub fn likely_auto(command: &str, quality: &str) -> &'static str {
 /// [`likely_auto`] in this session: the Qwen-Image-2.1 template where `auto` runs it on the
 /// native worker ([`native21_auto`]), else the first of the server's order.
 pub fn likely_auto_in(s: &Session, command: &str, quality: &str) -> &'static str {
-    native21_auto(s, command, false).unwrap_or_else(|| likely_auto(command, quality))
+    native21_fill_or_edit(s, command).unwrap_or_else(|| likely_auto(command, quality))
+}
+
+/// [`native21_auto`] for a prompted fill as the preferences run it: by instruction on the edit
+/// template when the rewriter is on (`fillAsEdit`'s default), else on the fill template.
+fn native21_fill_or_edit(s: &Session, command: &str) -> Option<&'static str> {
+    if command == FILL && s.prefs().integrations.enhance_prompts {
+        return native21_auto(s, FILL, false).and(native21_auto(s, EDIT, false));
+    }
+    native21_auto(s, command, false)
 }
 
 /// Seconds a run of `template` for a `width × height` area with `count` variations and
@@ -4276,7 +4364,7 @@ fn run_models(s: &mut Session, p: &Value) -> Result<Value> {
 fn native21_picks(s: &Session) -> Vec<(&'static str, &'static str)> {
     [("autoFill", FILL, false), ("autoExpand", EXPAND, false), ("autoEdit", EDIT, false), ("autoRemove", FILL, true)]
         .into_iter()
-        .filter_map(|(key, command, removal)| native21_auto(s, command, removal).map(|t| (key, t)))
+        .filter_map(|(key, command, removal)| if removal { native21_auto(s, command, true) } else { native21_fill_or_edit(s, command) }.map(|t| (key, t)))
         .collect()
 }
 
@@ -4536,7 +4624,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Fill…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"grow":0..512=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"erase":{bool?=the template's},"sampler":{str?=euler},"scheduler":{str?=simple},"maxPixels":{int?=1048576},"denoise":{0.05..1?} (the 2511 fill templates: how much of the selection is redrawn, 1 replaces it; measured on the 40-step template, 0.9 keeps the old sheen and 0.8 little changes, the 8-step tier hardly moves below 1),"loras":{[{"file":name,"strength":-4..4=1}]?},"references":{[{"layer":id} | {"path":"…"} | {"job":id,"index":0}]?},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; loras = LoRA files from the LoRA folder (the native model root's loras/), applied by the native engine as side paths on its resident model, up to 8; on the ComfyUI route each becomes a LoraLoaderModelOnly after the template's model loader, the file in that server's models/loras; enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; grow = widen the selection by that many pixels first, so a bulkier replacement has room; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; references = up to two reference images: with no template named the run switches to the fill-from-reference template, which flattens the selection to grey in the request so the model paints what the references show there (erase; `erase: true` does the same on any fill, `false` keeps the pixels); variations 1..4 = results with consecutive seeds, each a layer, only the first visible; sampler and scheduler = the KSampler's, ComfyUI names; maxPixels = the request is downscaled to at most this many pixels (the model's working size); areas over 1 megapixel are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"grow":0..512=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"fillAsEdit":{bool?=enhance},"erase":{bool?=the template's},"sampler":{str?=euler},"scheduler":{str?=simple},"maxPixels":{int?=1048576},"denoise":{0.05..1?} (the 2511 fill templates: how much of the selection is redrawn, 1 replaces it; measured on the 40-step template, 0.9 keeps the old sheen and 0.8 little changes, the 8-step tier hardly moves below 1),"loras":{[{"file":name,"strength":-4..4=1}]?},"references":{[{"layer":id} | {"path":"…"} | {"job":id,"index":0}]?},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; loras = LoRA files from the LoRA folder (the native model root's loras/), applied by the native engine as side paths on its resident model, up to 8; on the ComfyUI route each becomes a LoraLoaderModelOnly after the template's model loader, the file in that server's models/loras; fillAsEdit = when auto runs Qwen-Image-2.1 on the native worker, fill by instruction on its edit template: the rewriter names what the selection holds and the description becomes "Replace the <thing> with <prompt>" (an instruction such as "replace the cup with a vase" goes as it is; nothing named: the fill template); enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; grow = widen the selection by that many pixels first, so a bulkier replacement has room; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; references = up to two reference images: with no template named the run switches to the fill-from-reference template, which flattens the selection to grey in the request so the model paints what the references show there (erase; `erase: true` does the same on any fill, `false` keeps the pixels); variations 1..4 = results with consecutive seeds, each a layer, only the first visible; sampler and scheduler = the KSampler's, ComfyUI names; maxPixels = the request is downscaled to at most this many pixels (the model's working size); areas over 1 megapixel are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: fill_enabled,
             run: run_fill,
             journal: true,

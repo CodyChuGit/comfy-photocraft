@@ -459,7 +459,7 @@ fn the_worker_names_a_removal_from_a_tighter_close_up_and_a_wide_one_keeps_its_s
 
 #[test]
 fn a_removal_takes_the_shadow_that_went_with_its_object_and_nothing_else() {
-    use crate::generate_cmds::{change_band, feather_outward};
+    use crate::generate_cmds::{SHADOW_CHANGE, SHADOW_MAX_SHARE, change_band, feather_outward};
     use photocraft_genai::{Gray8, Rgba8};
     let (w, h) = (128u32, 96u32);
     let paint = |f: &dyn Fn(f64, f64) -> u8| -> Rgba8 {
@@ -481,7 +481,7 @@ fn a_removal_takes_the_shadow_that_went_with_its_object_and_nothing_else() {
     let result = paint(&|x, y| if far(x, y) { 200 } else { 128 });
     let hole = Gray8::new(w, h, (0..w * h).map(|i| if disc(f64::from(i % w), f64::from(i / w)) || (f64::from(i % w) - 40.0).hypot(f64::from(i / w) - 48.0) <= 13.0 { 255 } else { 0 }).collect()).unwrap();
     let mask = feather_outward(&hole, 6).unwrap();
-    let band = change_band(&result, &original, &mask).expect("the shadow changed with the disc");
+    let band = change_band(&result, &original, &mask, SHADOW_MAX_SHARE, SHADOW_CHANGE).expect("the shadow changed with the disc");
     let at = |x: u32, y: u32| band.data[(y * w + x) as usize];
     assert_eq!(at(58, 50), 255, "the shadow's middle is taken");
     assert_eq!(at(66, 50), 255, "and its far end");
@@ -489,13 +489,45 @@ fn a_removal_takes_the_shadow_that_went_with_its_object_and_nothing_else() {
     assert_eq!(at(40, 48), 0, "the hole itself is the hole's, not the band's");
     // Nothing changed beside the hole, or everything did: no band.
     let clean = paint(&|x, y| if shadow(x, y) { 70 } else { 128 });
-    assert!(change_band(&clean, &original, &mask).is_none(), "only the disc went");
+    assert!(change_band(&clean, &original, &mask, SHADOW_MAX_SHARE, SHADOW_CHANGE).is_none(), "only the disc went");
     let brighter = paint(&|_, _| 180);
-    assert!(change_band(&brighter, &original, &mask).is_none(), "a whole-picture tone shift is not a shadow");
+    assert!(change_band(&brighter, &original, &mask, SHADOW_MAX_SHARE, SHADOW_CHANGE).is_none(), "a whole-picture tone shift is not a shadow");
     // A shadow that runs out of the request: not cut off at its edge.
     let long = |x: f64, y: f64| x >= 45.0 && (y - 50.0).abs() <= 5.0;
     let original = paint(&|x, y| if disc(x, y) { 20 } else if long(x, y) { 70 } else { 128 });
-    assert!(change_band(&paint(&|_, _| 128), &original, &mask).is_none(), "the shadow goes on past the request");
+    assert!(change_band(&paint(&|_, _| 128), &original, &mask, SHADOW_MAX_SHARE, SHADOW_CHANGE).is_none(), "the shadow goes on past the request");
+}
+
+/// An edit's swap: a coat longer than the jacket it replaces runs past the selection; that
+/// part is taken for the layer mask within the edit's share, and a change as large as the
+/// selection again is not (a second subject, not a hem).
+#[test]
+fn an_edit_takes_the_garment_that_runs_past_its_selection_within_its_share() {
+    use crate::generate_cmds::{EDIT_BAND_CHANGE, EDIT_BAND_MAX_SHARE, change_band, feather_outward};
+    use photocraft_genai::{Gray8, Rgba8};
+    let (w, h) = (96u32, 128u32);
+    let paint = |f: &dyn Fn(u32, u32) -> u8| -> Rgba8 {
+        let mut d = Vec::with_capacity((w * h * 4) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                let v = f(x, y);
+                d.extend([v, v, v, 255]);
+            }
+        }
+        Rgba8::new(w, h, d).unwrap()
+    };
+    let jacket = |x: u32, y: u32| (30..66).contains(&x) && (30..70).contains(&y);
+    let original = paint(&|x, y| if jacket(x, y) { 60 } else { 140 });
+    // The coat: the jacket's box and 12 rows further down.
+    let coat = paint(&|x, y| if (30..66).contains(&x) && (30..82).contains(&y) { 230 } else { 140 });
+    let hole = Gray8::new(w, h, (0..w * h).map(|i| if jacket(i % w, i / w) { 255 } else { 0 }).collect()).unwrap();
+    let mask = feather_outward(&hole, 4).unwrap();
+    let band = change_band(&coat, &original, &mask, EDIT_BAND_MAX_SHARE, EDIT_BAND_CHANGE).expect("the hem below the selection");
+    assert_eq!(band.data[(78 * w + 48) as usize], 255, "the coat's hem is taken");
+    assert_eq!(band.data[(110 * w + 48) as usize], 0, "below it is not");
+    // A change as large again as the selection: refused under the edit's share.
+    let big = paint(&|x, y| if (30..66).contains(&x) && (30..118).contains(&y) { 230 } else { 140 });
+    assert!(change_band(&big, &original, &mask, EDIT_BAND_MAX_SHARE, EDIT_BAND_CHANGE).is_none());
 }
 
 #[test]
