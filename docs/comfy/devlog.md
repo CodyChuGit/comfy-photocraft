@@ -4,6 +4,35 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-28 (small hours): Rust rebuild: SAM 3.1 on candle, models from ComfyUI's folder
+
+Task file `docs/comfy/goals/rust-rebuild.md` (progress log there). Codex wrote the model ports in
+its own worktrees from Claude's briefs; Claude reviewed, landed and integrated. genai-native
+commits, all local:
+- **R1, SAM 3.1 without ONNX Runtime**: the vision trunk and pyramids (`155aa14`), the
+  interactive heads (`e0538e3`), box geometry and CLS (`45d76f3`), the detector (`181f623`), each
+  against ComfyUI's own modules on the real checkpoint (1e-6 to 6e-4), then composed with one
+  checkpoint read and the worker's thresholds and refinement (`987636b`): masks at IoU
+  0.996–0.9999 against the ONNX route, same instances and order, on CPU (8× slower than ORT's
+  CPU route there; the GPU switch is next).
+- **R4, one models folder** (`58f7a15`): 2.1 and Krea 2 load from ComfyUI's `models` folder as it
+  is (`qir::comfy_files`): the fused `gate_up`, the `model.` text root, the VAE's Wan names (a
+  bijection on the real headers), the Qwen tokenizer assembled from ComfyUI's
+  `qwen25_tokenizer` (not embedded: our 11 MB `tokenizer.json` comes from a research snapshot or
+  Krea's repo; Qwen3-VL's own is a 7 MB file we do not have). Caches (prequantized DiT, Q8_0
+  text GGUF built on all cores in 16 s) in `%LOCALAPPDATA%\genai-native\qir-cache`, never in
+  ComfyUI's folder. `r4-live.ps1`: Krea 2 image, 2.1 image and a 2.1 edit pixel-identical to the
+  snapshot route; 2.1 cold load 15 s cached (129 s before the text cache).
+- **R3, Qwen-Image-Layered**: the Qwen2.5-VL 7B encoder and the files' fp8 linear (`9994e39`, ids
+  exact, 9e-4) and the 60-block DiT streamed from the fp8mixed file (`9941269`, velocity 9.2e-4,
+  1.1 GB RAM), on CPU. Codex on the noise, schedule and pipeline next.
+- **R2, Generative Angles natively** (PhotoshopEX `da4ce52b`): the 2.1 edit with a camera
+  instruction under `auto` (6 s); naming the view only turned the subject, naming the camera's
+  move orbits it. Krea 2's General Edit V2 cannot move the camera.
+- Open, the owner's calls: the Multiple Angles LoRA (to compare Angles with 2511) and Ostris's
+  Krea 2 style-reference LoRA are not installed; embedding a Qwen tokenizer file (licence).
+  ComfyUI's `int8_convrot` repacks (another Hadamard basis) are not read yet.
+
 ## 2026-10-27 (late night): swaps measured; Krea 2 edits natively
 
 - **Swap benchmark** (`swap-cases.json`, `swap-run.ps1`, `swap-sheets.ps1`): 15 item and outfit

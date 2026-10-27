@@ -1,4 +1,4 @@
-# Start the native worker by hand so a run of many CLI processes shares one resident set of
+﻿# Start the native worker by hand so a run of many CLI processes shares one resident set of
 # models: `photocraft-cli --engine --stay --runtime … --models …` with a token, its port read
 # from its first stdout line. Prints `PHOTOCRAFT_NATIVE_ENGINE=port:token` for the caller to
 # put in the environment (dot-source this script: `. native-worker.ps1` sets $env: too).
@@ -6,7 +6,8 @@
 # -TextQuant (on): the worker's `--text-quant`, the 2.1 text encoder in Q8_0 (8 GB instead of
 # 16), so the worker's set, ComfyUI's vision-language model for the rewriter and the card's
 # other tenants fit the 32 GB together (without it the rewriter paged for minutes, 2026-10-26).
-param([switch]$Stop, [string]$Log = "C:\Users\5090\ComfyUI\photocraft-tests\bench\native-worker.log", [bool]$TextQuant = $true)
+# -Models: the models root (a ComfyUI `models` folder works since R4, 2026-10-27).
+param([switch]$Stop, [string]$Log = "C:\Users\5090\ComfyUI\photocraft-tests\bench\native-worker.log", [bool]$TextQuant = $true, [string]$Models = "C:/Users/5090/Documents/_eval/native-models")
 $pidFile = Join-Path $env:TEMP "photocraft-native-worker.pid"
 if ($Stop) {
     if (Test-Path $pidFile) {
@@ -20,7 +21,6 @@ if ($Stop) {
 }
 $cli = if ($env:PHOTOCRAFT_CLI) { $env:PHOTOCRAFT_CLI } else { "C:\Users\5090\Documents\PhotoshopEX\target\release\photocraft-cli.exe" }
 $runtime = "C:/Users/5090/Documents/_eval/onnxruntime-cuda13/onnxruntime-win-x64-gpu_cuda13-1.31.0/lib;C:/Users/5090/scoop/apps/cuda/current/bin/x64;C:/Users/5090/ComfyUI/ComfyUI_windows_portable/python_embeded/Lib/site-packages/torch/lib"
-$models = "C:/Users/5090/Documents/_eval/native-models"
 $token = -join ((1..48) | ForEach-Object { "{0:x}" -f (Get-Random -Maximum 16) })
 $env:GN_ENGINE_TOKEN = $token
 # The worker's phase timings (load, encode, sampling, decode) go to its stderr log.
@@ -28,7 +28,7 @@ if (-not $env:RUST_LOG) { $env:RUST_LOG = "info" }
 # The worker needs the CUDA and ONNX Runtime libraries on its PATH (the app puts the runtime
 # folders there when it starts the worker itself).
 $env:PATH = ($runtime -replace "/", "\") + ";" + $env:PATH
-$flags = @("--engine", "--stay", "--runtime", $runtime, "--models", $models)
+$flags = @("--engine", "--stay", "--runtime", $runtime, "--models", $Models)
 if ($TextQuant) { $flags += "--text-quant" }
 $p = Start-Process -FilePath $cli -ArgumentList $flags -RedirectStandardOutput $Log -RedirectStandardError "$Log.err" -PassThru -WindowStyle Hidden
 $deadline = (Get-Date).AddSeconds(60)

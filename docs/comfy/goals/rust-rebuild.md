@@ -40,7 +40,7 @@ progress log (newest last). The plan behind it is `docs/comfy/plan-native-engine
 
 | Feature | Default model | Native today | Left to do |
 |---|---|---|---|
-| Generate Image | Krea 2 Turbo | yes (fp8, flash, fused; 4.0 s) | read ComfyUI's folder as is (R4) |
+| Generate Image | Krea 2 Turbo | yes (fp8, flash, fused; 4.0 s; from ComfyUI's folder as is since R4) | — |
 | Generative Fill (prompted) | Qwen-Image-2.1 fill / edit by instruction | yes (with the research opt-in) | the permissive default is still 2511 on ComfyUI (R6) |
 | Remove, Content-Aware Fill, Spot Healing (generative) | 2.1 edit | yes | — |
 | Generative Expand | 2.1 expand | yes | — |
@@ -50,7 +50,7 @@ progress log (newest last). The plan behind it is `docs/comfy/plan-native-engine
 | Prompt rewriter, judge, naming | 2.1's Qwen3-VL 8B as a chat model | yes | — |
 | Fill from a reference | 2.1 edit by instruction (since 2026-10-27; 2511 fill-ref without the opt-in) | yes | — |
 | Image from references | 2.1 image-ref (since 2026-10-27; 2511 image-ref without the opt-in) | yes | — |
-| Generative Angles | 2511 + Multiple Angles LoRA | no (ComfyUI) | Krea 2 + `krea2_anygles` (installed) or 2.1 (R2) |
+| Generative Angles | 2.1 edit by a camera instruction (since 2026-10-27; 2511 + Multiple Angles LoRA without the opt-in) | yes | compare with 2511 + the LoRA (not installed here) |
 | Krea 2 style reference | Krea 2 + style LoRA | no (ComfyUI) | the Krea 2 reference path exists now; the style LoRA (R2) |
 | Split into layers | Qwen-Image-Layered | no (ComfyUI) | port (R3) |
 | Generative Upscale | 2.1 edit tiles | yes | — |
@@ -95,6 +95,14 @@ step, the dev log and roadmap updated.
   ROIAlign, a 6+6-layer detector with a learned box bias, the interactive two-way mask decoder.
   4 000–6 000 lines in ten parity-gated steps; no cuDNN; F16 attention at head dims 64/32/16 is
   the speed work (our flash kernel is D=128 bf16 only).
+- R4 one models folder: [`research/notes/rust-rebuild-r4-comfy-layout.md`](../research/notes/rust-rebuild-r4-comfy-layout.md).
+  ComfyUI's bf16 2.1 files load with three adaptations: the DiT's fused `img_mlp.gate_up` (gate
+  rows first), the text encoder rooted at `model`, the VAE's Wan-style names (a bijection, with
+  76 singleton time axes). The tokenizer is Qwen's standard one: assembled at run time from
+  the vocabulary, merges and added tokens in ComfyUI's `comfy/text_encoders/qwen25_tokenizer`
+  (the 11 MB `tokenizer.json` we have is Qwen's pretty-printed; its provenance is a research
+  snapshot or Krea's repo, so it is not embedded). ComfyUI's `int8_convrot` files need signed
+  bytes, per-row scales and a reversed Hadamard basis (later).
 - R3 Qwen-Image-Layered: [`research/notes/rust-rebuild-r3-qwen-image-layered.md`](../research/notes/rust-rebuild-r3-qwen-image-layered.md).
   The older 60-block dual-stream Qwen-Image DiT (3072 wide), a Qwen2.5-VL 7B text encoder
   (needs a variant: biases, no q/k norm, final norm, legacy fp8 scales), the 4-channel Wan 2.1
@@ -136,3 +144,16 @@ step, the dev log and roadmap updated.
   leaves on ComfyUI: Generative Angles, the Krea 2 style reference, the Layered split; on ONNX
   Runtime: SAM 3.1. Codex now on R1 step 5 (the ViT trunk and both FPNs) and step 7 (the
   interactive point/box heads), in parallel worktrees.
+- 2026-10-27, small hours: **every SAM 3.1 part is on candle**, each against ComfyUI's own on
+  the real checkpoint (Codex in worktrees, landed by Claude; genai-native): the vision trunk and
+  both pyramids (`155aa14`, 1.4e-4), the interactive heads (`e0538e3`, 1.1e-4), the box
+  geometry and CLS (`45d76f3`, 2e-6), the detector (`181f623`: all 200 boxes and logits within
+  3e-5, masks 6e-4, the same top queries). Codex N now composes them (one checkpoint read, the
+  select-by-text and interactive flows, the post-processing) against the ONNX route end to end.
+  **R3**: the Qwen2.5-VL 7B encoder (Codex L; ids exact, conditioning 9e-4) and the 60-block
+  Layered DiT streamed from the fp8mixed file (Codex M; velocity 9.2e-4, 1.1 GB RAM) pass on CPU.
+  **R2**: Generative Angles natively (PhotoshopEX `da4ce52b`, 2.1 edit by a camera
+  instruction, 6 s; Krea 2's edit LoRA is no route for it). **R4**: 2.1 and Krea 2 load from
+  ComfyUI's `models` folder as it is (`comfy_files`; the prequantized-DiT cache goes to
+  `%LOCALAPPDATA%\genai-native\qir-cache`, never into ComfyUI's folder); Krea 2 from ComfyUI's
+  files is pixel-identical to the snapshot route.
