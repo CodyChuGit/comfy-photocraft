@@ -3495,3 +3495,14 @@ curves	Smooth	Lisser
 	Generative Upscale	Agrandissement génératif
 	Denoise	Débruitage
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Part de la sélection redessinée : 1 la remplace, environ 0,9 garde l'ancienne forme
+	Native engine	Moteur natif
+	Native engine: not configured	Moteur natif : non configuré
+	Native engine: starting…	Moteur natif : démarrage…
+	Native engine: working	Moteur natif : au travail
+	Native engine: ready	Moteur natif : prêt
+	Native engine: failed	Moteur natif : en échec
+	Native engine: stopped	Moteur natif : arrêté
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Indiquez les dossiers d'exécution et de modèles dans Préférences › Intégrations IA pour utiliser le moteur natif
+	{free} of {total} free	{free} libres sur {total}
+	Loaded: {models}	Chargés : {models}
+	Purge models	Décharger les modèles

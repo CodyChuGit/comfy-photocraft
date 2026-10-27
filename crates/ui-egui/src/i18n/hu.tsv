@@ -4399,3 +4399,14 @@ cameraRaw	Yellow	Sárga
 	Generative Upscale	Generatív felskálázás
 	Denoise	Zajmentesítés
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Mennyi rajzolódik újra a kijelölésből: az 1 lecseréli, kb. 0,9 megtartja a régi formát
+	Native engine	Natív motor
+	Native engine: not configured	Natív motor: nincs beállítva
+	Native engine: starting…	Natív motor: indul…
+	Native engine: working	Natív motor: dolgozik
+	Native engine: ready	Natív motor: kész
+	Native engine: failed	Natív motor: hiba
+	Native engine: stopped	Natív motor: leállítva
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	A natív motor használatához állítsa be a futtatókörnyezet és a modellek mappáját a Beállítások › AI-integrációk alatt
+	{free} of {total} free	{total}-ból {free} szabad
+	Loaded: {models}	Betöltve: {models}
+	Purge models	Modellek kiürítése

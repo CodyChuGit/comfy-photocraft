@@ -4087,3 +4087,14 @@ navigator	Zoom	Zvětšení
 	Generative Upscale	Generativní zvětšení
 	Denoise	Odšumění
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Kolik z výběru se překreslí: 1 jej nahradí, asi 0,9 zachová původní tvar
+	Native engine	Nativní engine
+	Native engine: not configured	Nativní engine: nenastaven
+	Native engine: starting…	Nativní engine: spouští se…
+	Native engine: working	Nativní engine: pracuje
+	Native engine: ready	Nativní engine: připraven
+	Native engine: failed	Nativní engine: selhal
+	Native engine: stopped	Nativní engine: zastaven
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Nastavte složky běhového prostředí a modelů v Předvolby › Integrace AI, abyste mohli používat nativní engine
+	{free} of {total} free	volno {free} z {total}
+	Loaded: {models}	Načteno: {models}
+	Purge models	Uvolnit modely

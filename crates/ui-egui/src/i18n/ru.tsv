@@ -3464,3 +3464,14 @@ curves	Smooth	Сгладить
 	Generative Upscale	Генеративное масштабирование
 	Denoise	Шумоподавление
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Насколько перерисовывается выделение: 1 заменяет его, около 0,9 сохраняет прежнюю форму
+	Native engine	Встроенный движок
+	Native engine: not configured	Встроенный движок: не настроен
+	Native engine: starting…	Встроенный движок: запускается…
+	Native engine: working	Встроенный движок: работает
+	Native engine: ready	Встроенный движок: готов
+	Native engine: failed	Встроенный движок: сбой
+	Native engine: stopped	Встроенный движок: остановлен
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Укажите папки среды выполнения и моделей в Настройки › Интеграции ИИ, чтобы использовать встроенный движок
+	{free} of {total} free	свободно {free} из {total}
+	Loaded: {models}	Загружено: {models}
+	Purge models	Выгрузить модели

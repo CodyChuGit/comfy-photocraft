@@ -247,7 +247,11 @@ ArtCraft Omni API) with the local server as the default and a fallback order.
   lands; ✅ 2026-10-27 **Krea 2 text to image under `auto`**: ComfyUI's fp8 files on its own
   fp8 recipe, exact flash attention, fused small ops (19 of 28 at the gate, ComfyUI's two routes
   agree on 20; 4.0 s a picture against 4.0–4.7); ✅ plan Phase 5 started (the CUDA libraries
-  delay-loaded, the runtime folder script, `package.ps1 -Native`); ⬜ Krea 2's style reference,
+  delay-loaded, the runtime folder script, `package.ps1 -Native`); ✅ GPU detection (a card
+  the build has no kernels for, or no NVIDIA driver, is refused with a sentence and `auto` stays
+  on ComfyUI) and the engine page (the native worker's state, card, memory and loaded models in
+  the status-bar dot and Preferences › AI Integrations; Start / Stop / Purge models / Show log);
+  ⬜ the models-folder first run, the clean-profile install; ⬜ Krea 2's style reference,
   Qwen-Image-Edit-2511 and the layered model still go to ComfyUI.
 
 **Phase 4 status after the PhotoshopEX build (2026-10-12):** ✅ capability flags the UI reads

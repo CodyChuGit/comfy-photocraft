@@ -4553,3 +4553,14 @@ shape	Appearance	Izgled
 	Generative Upscale	Generativno uvećanje
 	Denoise	Uklanjanje šuma
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Koliko se izbora ponovo crta: 1 ga zamenjuje, oko 0,9 zadržava stari oblik
+	Native engine	Izvorna mašina
+	Native engine: not configured	Izvorna mašina: nije podešena
+	Native engine: starting…	Izvorna mašina: pokreće se…
+	Native engine: working	Izvorna mašina: radi
+	Native engine: ready	Izvorna mašina: spremna
+	Native engine: failed	Izvorna mašina: neuspeh
+	Native engine: stopped	Izvorna mašina: zaustavljena
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Podesite fascikle izvršnog okruženja i modela u Podešavanja › AI integracije da biste koristili izvornu mašinu
+	{free} of {total} free	slobodno {free} od {total}
+	Loaded: {models}	Učitano: {models}
+	Purge models	Isprazni modele

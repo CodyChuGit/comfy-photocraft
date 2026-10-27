@@ -4442,3 +4442,14 @@ navigator	Zoom	Zoom
 	Generative Upscale	Ampliación generativa
 	Denoise	Eliminación de ruido
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Cuánto de la selección se vuelve a dibujar: 1 la sustituye, unos 0,9 conservan la forma anterior
+	Native engine	Motor nativo
+	Native engine: not configured	Motor nativo: sin configurar
+	Native engine: starting…	Motor nativo: iniciando…
+	Native engine: working	Motor nativo: trabajando
+	Native engine: ready	Motor nativo: listo
+	Native engine: failed	Motor nativo: error
+	Native engine: stopped	Motor nativo: detenido
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Define las carpetas del entorno de ejecución y de modelos en Preferencias › Integraciones de IA para usar el motor nativo
+	{free} of {total} free	{free} libres de {total}
+	Loaded: {models}	Cargados: {models}
+	Purge models	Descargar modelos

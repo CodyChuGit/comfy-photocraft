@@ -4190,3 +4190,14 @@ curves	Smooth	Згладити
 	Generative Upscale	Генеративне масштабування
 	Denoise	Знешумлення
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Наскільки перемальовується виділення: 1 замінює його, близько 0,9 зберігає попередню форму
+	Native engine	Вбудований рушій
+	Native engine: not configured	Вбудований рушій: не налаштовано
+	Native engine: starting…	Вбудований рушій: запускається…
+	Native engine: working	Вбудований рушій: працює
+	Native engine: ready	Вбудований рушій: готовий
+	Native engine: failed	Вбудований рушій: помилка
+	Native engine: stopped	Вбудований рушій: зупинено
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Укажіть теки середовища виконання та моделей у Параметри › Інтеграції ШІ, щоб користуватися вбудованим рушієм
+	{free} of {total} free	вільно {free} з {total}
+	Loaded: {models}	Завантажено: {models}
+	Purge models	Вивантажити моделі

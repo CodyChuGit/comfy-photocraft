@@ -1094,8 +1094,13 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
             info.extend(gpu_memory_lines(app));
             f.insert("__gpuInfo".into(), json!(info));
             f.insert("__gpuAdapters".into(), json!(app.perf.gpu_info.adapters));
+            f.insert("__engineLines".into(), json!(crate::engine_ui::native_lines(app)));
+            f.insert("__engineState".into(), json!(crate::engine_ui::native_state(app)));
             let system = system_theme(app, ui.ctx());
             prefs_body(ui, f, system);
+            if let Some(a) = f.remove("__engineAction").and_then(|v| v.as_str().map(str::to_string)) {
+                crate::engine_ui::native_action(app, &a);
+            }
         }
         "shortcuts" => shortcuts_body(app, ui, f),
         "presets" => presets_body(app, ui, f),
@@ -1280,6 +1285,7 @@ fn prefs_body(ui: &mut egui::Ui, f: &mut Map<String, Value>, system: Option<egui
     let mut search = f.get("__search").and_then(Value::as_str).unwrap_or("").to_string();
     crate::widgets::text_field(ui, ui.id().with("prefs-search"), &mut search, tl!("Search settings…"), ui.available_width(), false);
     let found = preference_sections(&values, &search);
+    let mut engine_action: Option<&'static str> = None;
     if !found.iter().any(|(id, _)| *id == section)
         && let Some((first, _)) = found.first()
     {
@@ -1353,6 +1359,9 @@ fn prefs_body(ui: &mut egui::Ui, f: &mut Map<String, Value>, system: Option<egui
                     if section == "performance" {
                         gpu_status_rows(ui, f.get("__gpuInfo"), f.get("__gpuAdapters"), obj);
                     }
+                    if section == "integrations" && filter.is_empty() {
+                        engine_action = native_engine_rows(ui, f.get("__engineLines"), f.get("__engineState"));
+                    }
                     ui.add_space(8.0);
                 }
                 if search.trim().is_empty()
@@ -1368,10 +1377,34 @@ fn prefs_body(ui: &mut egui::Ui, f: &mut Map<String, Value>, system: Option<egui
     f.insert("section".into(), json!(section));
     f.insert("__search".into(), json!(search));
     f.insert("values".into(), values);
+    if let Some(a) = engine_action {
+        f.insert("__engineAction".into(), json!(a));
+    }
     // A colour swatch was clicked: open the Color Picker on that value (#2144).
     if let Some((path, name)) = ctx_take_pick(ui) {
         crate::color_picker_ui::request_field(f, &format!("/values/{}", path.replace('.', "/")), &crate::color_picker_ui::title_for(&name));
     }
+}
+
+/// Preferences › AI Integrations › Native Engine (plan-native-engine §10, the engine page): the
+/// worker's state, card, memory, loaded models and reason, with Start / Stop / Purge models /
+/// Show log. The button pressed, for `body` to run with the app.
+fn native_engine_rows(ui: &mut egui::Ui, lines: Option<&Value>, state: Option<&Value>) -> Option<&'static str> {
+    let state = state.and_then(Value::as_str).unwrap_or("off");
+    if state == "off" {
+        return None;
+    }
+    let t = Tokens::get(ui.ctx());
+    ui.add_space(10.0);
+    ui.label(RichText::new(tl!("Native engine")).font(crate::theme::semibold(12.5)).color(t.text));
+    for line in lines.and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str) {
+        ui.label(RichText::new(line).color(t.text_dim));
+    }
+    if state == "unconfigured" {
+        return None;
+    }
+    ui.add_space(4.0);
+    ui.horizontal(|ui| crate::engine_ui::native_buttons(ui, state)).inner
 }
 
 /// Preferences › Performance: what the app renders with now, and a reset of the GPU backend

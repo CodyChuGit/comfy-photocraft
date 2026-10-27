@@ -4160,3 +4160,14 @@ curves	Smooth	スムーズ
 	Generative Upscale	生成アップスケール
 	Denoise	ノイズ除去強度
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	選択範囲をどれだけ描き直すか: 1 で置き換え、0.9 前後で元の形を保ちます
+	Native engine	ネイティブ エンジン
+	Native engine: not configured	ネイティブ エンジン: 未設定
+	Native engine: starting…	ネイティブ エンジン: 起動中…
+	Native engine: working	ネイティブ エンジン: 処理中
+	Native engine: ready	ネイティブ エンジン: 準備完了
+	Native engine: failed	ネイティブ エンジン: 失敗
+	Native engine: stopped	ネイティブ エンジン: 停止
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	ネイティブ エンジンを使うには、環境設定 › AI 連携でランタイムとモデルのフォルダーを設定します
+	{free} of {total} free	{total} 中 {free} 空き
+	Loaded: {models}	読み込み済み: {models}
+	Purge models	モデルを解放

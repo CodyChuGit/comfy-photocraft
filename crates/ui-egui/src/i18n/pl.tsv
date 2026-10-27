@@ -4084,3 +4084,14 @@ curves	Smooth	Wygładź
 	Generative Upscale	Generatywne skalowanie w górę
 	Denoise	Odszumianie
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Jaka część zaznaczenia jest rysowana od nowa: 1 ją zastępuje, około 0,9 zachowuje dawny kształt
+	Native engine	Silnik natywny
+	Native engine: not configured	Silnik natywny: nieskonfigurowany
+	Native engine: starting…	Silnik natywny: uruchamianie…
+	Native engine: working	Silnik natywny: pracuje
+	Native engine: ready	Silnik natywny: gotowy
+	Native engine: failed	Silnik natywny: błąd
+	Native engine: stopped	Silnik natywny: zatrzymany
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Ustaw foldery środowiska uruchomieniowego i modeli w Preferencje › Integracje AI, aby używać silnika natywnego
+	{free} of {total} free	wolne {free} z {total}
+	Loaded: {models}	Załadowane: {models}
+	Purge models	Zwolnij modele

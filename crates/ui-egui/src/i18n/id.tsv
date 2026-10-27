@@ -3482,3 +3482,14 @@ curves	Smooth	Haluskan
 	Generative Upscale	Peningkatan Skala Generatif
 	Denoise	Denoise
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Seberapa banyak seleksi yang digambar ulang: 1 menggantinya, sekitar 0,9 mempertahankan bentuk lama
+	Native engine	Mesin native
+	Native engine: not configured	Mesin native: belum dikonfigurasi
+	Native engine: starting…	Mesin native: memulai…
+	Native engine: working	Mesin native: bekerja
+	Native engine: ready	Mesin native: siap
+	Native engine: failed	Mesin native: gagal
+	Native engine: stopped	Mesin native: berhenti
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Atur folder runtime dan model di Preferensi › Integrasi AI untuk memakai mesin native
+	{free} of {total} free	{free} dari {total} kosong
+	Loaded: {models}	Dimuat: {models}
+	Purge models	Kosongkan model

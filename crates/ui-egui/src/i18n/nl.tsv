@@ -4240,3 +4240,14 @@ curves	Smooth	Vloeiend maken
 	Generative Upscale	Generatief opschalen
 	Denoise	Ruisonderdrukking
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Hoeveel van de selectie opnieuw wordt getekend: 1 vervangt haar, ongeveer 0,9 behoudt de oude vorm
+	Native engine	Native engine
+	Native engine: not configured	Native engine: niet geconfigureerd
+	Native engine: starting…	Native engine: wordt gestart…
+	Native engine: working	Native engine: bezig
+	Native engine: ready	Native engine: gereed
+	Native engine: failed	Native engine: mislukt
+	Native engine: stopped	Native engine: gestopt
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Stel de runtime- en modelmappen in bij Voorkeuren › AI-integraties om de native engine te gebruiken
+	{free} of {total} free	{free} van {total} vrij
+	Loaded: {models}	Geladen: {models}
+	Purge models	Modellen leegmaken

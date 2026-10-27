@@ -16,9 +16,11 @@
 
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use gn_engine::client::{ClientError, EngineClient};
 use gn_engine::protocol::{Blob, ErrorKind, RunRequest};
+use serde::Serialize;
 use serde_json::Value;
 
 use crate::{Error, GenerativeBackend, Gray8, Health, Progress, Request, Response, Result, Rgba8, Task, Timings, template};
@@ -33,6 +35,44 @@ pub struct NativeBackend {
     client: Mutex<Option<EngineClient>>,
     /// A worker we did not start (tests serve one in-process): never respawned.
     attached: bool,
+    /// The file the worker's stderr goes to ([`Self::with_log`]); `None` inherits ours.
+    log: Option<PathBuf>,
+    /// What holds the client right now ([`IDLE`], [`STARTING`], [`RUNNING`]), so a status
+    /// asked meanwhile answers without waiting for the lock.
+    busy: AtomicU8,
+    /// Why the last start failed, until one succeeds.
+    start_error: Mutex<Option<String>>,
+}
+
+const IDLE: u8 = 0;
+const STARTING: u8 = 1;
+const RUNNING: u8 = 2;
+
+/// The worker as the status bar and the engine page show it (`generate.engine.status`'s
+/// `native`): `stopped` (no worker; the next generative command starts one), `starting`,
+/// `running` (a request in flight), `ready`, `failed` (the last start failed, or the worker
+/// answered unhealthy; `detail` says why).
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeStatus {
+    pub state: String,
+    pub pid: Option<u32>,
+    /// The worker's engines (`ort+qir`) and the card it runs on.
+    pub engine: String,
+    pub device: String,
+    pub vram_total: Option<u64>,
+    pub vram_free: Option<u64>,
+    /// The model folders loaded now.
+    pub resident: Vec<String>,
+    pub detail: String,
+}
+
+/// Clears the busy mark when the holder of the client is done (also on an early return).
+struct Busy<'a>(&'a AtomicU8);
+impl Drop for Busy<'_> {
+    fn drop(&mut self) {
+        self.0.store(IDLE, Ordering::SeqCst);
+    }
 }
 
 impl std::fmt::Debug for NativeBackend {
@@ -62,7 +102,28 @@ fn retry_after_stop<T>(respawns: bool, progress: &dyn Progress, attempt: impl Fn
 impl NativeBackend {
     /// A backend that starts `program args…` as its worker when first needed.
     pub fn new(program: PathBuf, args: Vec<String>) -> Self {
-        Self { program, args, path_dirs: Vec::new(), token: gn_engine::client::new_token(), client: Mutex::new(None), attached: false }
+        Self {
+            program,
+            args,
+            path_dirs: Vec::new(),
+            token: gn_engine::client::new_token(),
+            client: Mutex::new(None),
+            attached: false,
+            log: None,
+            busy: AtomicU8::new(IDLE),
+            start_error: Mutex::new(None),
+        }
+    }
+
+    /// Write the worker's stderr to `path` (truncated at each start), with `RUST_LOG=info`
+    /// unless this process sets its own, so the engine's phase timings and refusals are there.
+    pub fn with_log(mut self, path: PathBuf) -> Self {
+        self.log = Some(path);
+        self
+    }
+
+    pub fn log_path(&self) -> Option<&std::path::Path> {
+        self.log.as_deref()
     }
 
     /// This executable with `--engine` (the editor and the CLI both answer it) and `extra` flags
@@ -93,22 +154,30 @@ impl NativeBackend {
 
     /// The worker's environment: `PATH` with the runtime folders first, when there are any.
     fn env(&self) -> Vec<(String, String)> {
+        let mut env = Vec::new();
+        if self.log.is_some() && std::env::var_os("RUST_LOG").is_none() {
+            env.push(("RUST_LOG".to_string(), "info".to_string()));
+        }
         if self.path_dirs.is_empty() {
-            return Vec::new();
+            return env;
         }
         let current = std::env::var_os("PATH").unwrap_or_default();
         let joined = std::env::join_paths(self.path_dirs.iter().cloned().chain(std::env::split_paths(&current)));
-        match joined {
-            Ok(p) => vec![("PATH".to_string(), p.to_string_lossy().into_owned())],
-            Err(_) => Vec::new(),
+        if let Ok(p) = joined {
+            env.push(("PATH".to_string(), p.to_string_lossy().into_owned()));
         }
+        env
     }
 
     /// A backend over a worker already listening (tests serve `gn_engine::fake::FakeEngine` on
     /// a thread).
     pub fn attached(port: u16, token: &str) -> Result<Self> {
         let client = EngineClient::connect(port, token).map_err(|e| Error::Unavailable(e.to_string()))?;
-        Ok(Self { program: PathBuf::new(), args: Vec::new(), path_dirs: Vec::new(), token: token.to_string(), client: Mutex::new(Some(client)), attached: true })
+        let mut b = Self::new(PathBuf::new(), Vec::new());
+        b.token = token.to_string();
+        b.client = Mutex::new(Some(client));
+        b.attached = true;
+        Ok(b)
     }
 
     /// Run `f` on a live client, starting or restarting the worker first when needed. A call
@@ -123,8 +192,21 @@ impl NativeBackend {
             if self.attached {
                 return Err(Error::Unavailable("the engine is gone".into()));
             }
-            let c = EngineClient::spawn_with_env(&self.program, &self.args, &self.token, &self.env()).map_err(|e| Error::Unavailable(e.to_string()))?;
-            *guard = Some(c);
+            let prev = self.busy.swap(STARTING, Ordering::SeqCst);
+            let log = self.log.as_ref().and_then(|p| std::fs::File::create(p).ok());
+            let spawned = EngineClient::spawn_logged(&self.program, &self.args, &self.token, &self.env(), log);
+            self.busy.store(prev, Ordering::SeqCst);
+            let mut start_error = self.start_error.lock().unwrap_or_else(|e| e.into_inner());
+            match spawned {
+                Ok(c) => {
+                    *start_error = None;
+                    *guard = Some(c);
+                }
+                Err(e) => {
+                    *start_error = Some(e.to_string());
+                    return Err(Error::Unavailable(e.to_string()));
+                }
+            }
         }
         let Some(client) = guard.as_mut() else { return Err(Error::Unavailable("no engine".into())) };
         match f(client) {
@@ -149,6 +231,68 @@ impl NativeBackend {
 
     pub fn pid(&self) -> Option<u32> {
         self.client.lock().ok().and_then(|g| g.as_ref().and_then(EngineClient::pid))
+    }
+
+    /// Start the worker now if none runs (it loads no model until a request asks).
+    pub fn start(&self) -> Result<()> {
+        self.with_client(|c| c.health()).map(|_| ())
+    }
+
+    /// Give the device back (unload every model) if a worker runs; never starts one.
+    pub fn purge(&self) -> Result<()> {
+        let mut guard = self.client.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(c) = guard.as_mut() else { return Ok(()) };
+        match c.free() {
+            Ok(()) => Ok(()),
+            Err(ClientError::Gone(_)) => {
+                *guard = None;
+                Ok(())
+            }
+            Err(e) => Err(map_err(e)),
+        }
+    }
+
+    /// The worker's state without waiting and without starting it: a request holding the
+    /// channel answers `starting` or `running` at once; otherwise the live worker is asked.
+    pub fn status(&self) -> NativeStatus {
+        let mut guard = match self.client.try_lock() {
+            Ok(g) => g,
+            Err(std::sync::TryLockError::Poisoned(p)) => p.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                let state = match self.busy.load(Ordering::SeqCst) {
+                    STARTING => "starting",
+                    _ => "running",
+                };
+                return NativeStatus { state: state.into(), ..NativeStatus::default() };
+            }
+        };
+        let dead = guard.as_mut().is_some_and(|c| !c.alive());
+        if dead {
+            *guard = None;
+        }
+        let Some(c) = guard.as_mut() else {
+            let start_error = self.start_error.lock().unwrap_or_else(|e| e.into_inner()).clone();
+            return match start_error {
+                Some(e) => NativeStatus { state: "failed".into(), detail: e, ..NativeStatus::default() },
+                None => NativeStatus { state: "stopped".into(), detail: if dead { "the engine stopped".into() } else { String::new() }, ..NativeStatus::default() },
+            };
+        };
+        match c.health() {
+            Ok(h) => NativeStatus {
+                state: if h.ok { "ready" } else { "failed" }.into(),
+                pid: c.pid(),
+                engine: h.engine,
+                device: h.device,
+                vram_total: h.vram_total,
+                vram_free: h.vram_free,
+                resident: h.resident,
+                detail: h.detail,
+            },
+            Err(e) => {
+                *guard = None;
+                NativeStatus { state: "stopped".into(), detail: format!("{STOPPED}: {e}"), ..NativeStatus::default() }
+            }
+        }
     }
 }
 
@@ -239,6 +383,8 @@ impl GenerativeBackend for NativeBackend {
             params: req.params.clone(),
         };
         let started = std::time::Instant::now();
+        self.busy.store(RUNNING, Ordering::SeqCst);
+        let _busy = Busy(&self.busy);
         let attempt = || {
             self.with_client(|c| {
                 let mut report = |f: f32, m: &str| progress.report(f, m);
@@ -300,9 +446,9 @@ pub fn runtime_dirs(runtime_path: &str) -> Vec<PathBuf> {
 /// `native-diffusion` feature) with `--models`. Empty without a model root.
 fn engines_for(args: &[String]) -> Vec<Box<dyn gn_engine::Engine>> {
     let mut engines: Vec<Box<dyn gn_engine::Engine>> = Vec::new();
-    if let Some(p) = gn_perception::engine::from_args(args) {
-        engines.push(Box::new(p));
-    }
+    // The diffusion engine first: the worker's health names the device of the first engine
+    // that names one, and this one knows the card's name (and refuses a card it has no
+    // kernels for, with a sentence in that health).
     #[cfg(feature = "native-diffusion")]
     {
         let missing = missing_cuda_libraries(&search_dirs());
@@ -310,9 +456,14 @@ fn engines_for(args: &[String]) -> Vec<Box<dyn gn_engine::Engine>> {
             if let Some(d) = gn_diffusion::from_args(args) {
                 engines.push(Box::new(d));
             }
-        } else {
-            eprintln!("--engine: the diffusion models are off: {} not found in the runtime folder or on PATH", missing.join(", "));
+        } else if args.iter().any(|a| a == "--models") {
+            let why = format!("The native diffusion models are off: {} not found in the runtime folder or on PATH.", missing.join(", "));
+            eprintln!("--engine: {why}");
+            engines.push(Box::new(Refused(why)));
         }
+    }
+    if let Some(p) = gn_perception::engine::from_args(args) {
+        engines.push(Box::new(p));
     }
     engines
 }
@@ -329,6 +480,35 @@ const CUDA_LIBRARIES: &[&str] = if cfg!(windows) { &["cublas64_13.dll", "cublasL
 fn search_dirs() -> Vec<PathBuf> {
     let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(PathBuf::from));
     exe_dir.into_iter().chain(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())).collect()
+}
+
+/// The diffusion engine's place when its runtime is missing: it serves nothing and its health
+/// carries the sentence, so the editor's engine page shows it (the editor falls back to
+/// ComfyUI under `auto` as before).
+#[cfg(feature = "native-diffusion")]
+struct Refused(String);
+
+#[cfg(feature = "native-diffusion")]
+impl gn_engine::Engine for Refused {
+    fn name(&self) -> String {
+        "qir".into()
+    }
+    fn health(&mut self) -> gn_engine::Health {
+        gn_engine::Health { engine: "qir".into(), detail: self.0.clone(), ..gn_engine::Health::default() }
+    }
+    fn run(
+        &mut self,
+        _req: &RunRequest,
+        _blobs: &[Vec<u8>],
+        _progress: &mut dyn FnMut(f32, &str),
+        _cancel: &std::sync::atomic::AtomicBool,
+    ) -> std::result::Result<(gn_engine::DoneInfo, Vec<Vec<u8>>), gn_engine::EngineError> {
+        Err(gn_engine::EngineError::new(ErrorKind::Unsupported, self.0.clone()))
+    }
+    fn free(&mut self) {}
+    fn index(&mut self, dir: &str) -> Value {
+        serde_json::json!({"dir": dir, "installed": []})
+    }
 }
 
 /// The [`CUDA_LIBRARIES`] none of `dirs` holds.
@@ -498,6 +678,41 @@ mod tests {
         assert!(matches!(b.run(&long, &*c), Err(Error::Cancelled)));
         assert_eq!(b.model_files("diffusion_models").unwrap().len(), 3);
         b.free().unwrap();
+    }
+
+    /// The status answers without starting a worker: stopped before any, failed with the reason
+    /// after a start that could not happen, ready with what is resident once one runs; Purge
+    /// never starts one.
+    #[test]
+    fn the_status_never_starts_a_worker_and_says_why_one_failed() {
+        let b = NativeBackend::new(PathBuf::from("Z:/nowhere/photocraft.exe"), vec![ENGINE_FLAG.into()]);
+        assert_eq!(b.status().state, "stopped");
+        b.purge().unwrap();
+        assert_eq!(b.status().state, "stopped", "purge started nothing");
+        assert!(b.start().is_err());
+        let st = b.status();
+        assert!(st.state == "failed" && st.detail.contains("nowhere"), "{st:?}");
+        let (port, token) = served();
+        let a = NativeBackend::attached(port, &token).unwrap();
+        let st = a.status();
+        assert!(st.state == "ready" && st.engine == "fake" && st.resident.is_empty(), "{st:?}");
+        let mut req = Request::new("krea2-turbo/image", "a fox");
+        req.size = Some((8, 8));
+        a.run(&req, &crate::NoProgress).unwrap();
+        assert_eq!(a.status().resident, vec!["krea2-turbo/image".to_string()]);
+        a.purge().unwrap();
+        assert!(a.status().resident.is_empty());
+        // A request holding the channel: the status answers at once.
+        a.busy.store(RUNNING, Ordering::SeqCst);
+        let held = a.client.lock().unwrap();
+        assert_eq!(a.status().state, "running");
+        drop(held);
+        a.busy.store(IDLE, Ordering::SeqCst);
+        // The log turns the worker's tracing on.
+        let logged = NativeBackend::new(PathBuf::from("x"), Vec::new()).with_log(std::env::temp_dir().join("w.log"));
+        if std::env::var_os("RUST_LOG").is_none() {
+            assert!(logged.env().iter().any(|(k, v)| k == "RUST_LOG" && v == "info"));
+        }
     }
 
     #[test]

@@ -741,8 +741,26 @@ own conv path would drop it). Exercised: Krea 2's 28 cases through the CLI and w
 that folder and no toolkit on `PATH`, 19 of 28 at 4.0 s a picture. ✅ The app uses a `runtime`
 folder next to the exe when Integrations › Runtime folders is empty
 (`Integrations::runtime_folders`); `package.ps1 -Native` builds with the engine and ships the
-folder in the portable zip. ⬜ The models-folder first run and "Get models" page, GPU detection
-with a sentence for non-NVIDIA cards, the engine page, the clean-profile install, the MSI.
+folder in the portable zip. ⬜ The models-folder first run and "Get models" page, the
+clean-profile install, the MSI.
+
+**Status (2026-10-27 evening): GPU detection and the engine page.** ✅ The worker asks the
+driver about the card before it touches CUDA (`qir::device::probe`: `nvcuda.dll` looked for
+first, since cudarc aborts the process when the driver library is missing; then the name, the
+compute capability and the memory, with no context made) and the diffusion engine refuses a
+card older than the kernels the build carries (`device::check` against `CUDA_COMPUTE_CAP`, 12.0
+for this build) with a sentence: it lists no templates, so `auto` keeps those models on ComfyUI,
+and the sentence is in its health (`Health.detail`, new in `gn-engine`'s protocol, defaulted so
+older workers still parse). Missing runtime libraries give the same kind of sentence. ✅
+`generate.engine.status` carries the worker's state under `native`
+(`off|unconfigured|stopped|starting|running|ready|failed`, the card's name, total and free
+memory, the loaded model folders, the reason), asked without waiting for a running request and
+without starting a worker (`NativeBackend::status`); `generate.engine.start / stop / restart`
+take `{engine: "native"}` and `generate.engine.purge` unloads the models of both engines. The
+worker's stderr is its log (`photocraft-native-engine.log` in the temp folder, `RUST_LOG=info`).
+✅ The status-bar dot follows the engine generative commands go to and its menu has a section
+per engine; Preferences › AI Integrations shows the native engine's lines with Start / Stop /
+Purge models / Show log. ⬜ The per-model engine override table.
 
 ---
 

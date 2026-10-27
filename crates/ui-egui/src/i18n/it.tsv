@@ -4597,3 +4597,14 @@ shape	Appearance	Aspetto
 	Generative Upscale	Ingrandimento generativo
 	Denoise	Riduzione rumore
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Quanto della selezione viene ridisegnato: 1 la sostituisce, circa 0,9 mantiene la forma precedente
+	Native engine	Motore nativo
+	Native engine: not configured	Motore nativo: non configurato
+	Native engine: starting…	Motore nativo: avvio…
+	Native engine: working	Motore nativo: al lavoro
+	Native engine: ready	Motore nativo: pronto
+	Native engine: failed	Motore nativo: errore
+	Native engine: stopped	Motore nativo: fermo
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Imposta le cartelle del runtime e dei modelli in Preferenze › Integrazioni IA per usare il motore nativo
+	{free} of {total} free	{free} liberi su {total}
+	Loaded: {models}	Caricati: {models}
+	Purge models	Scarica i modelli

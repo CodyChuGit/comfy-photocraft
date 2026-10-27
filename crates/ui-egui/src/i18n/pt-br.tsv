@@ -4269,3 +4269,14 @@ layerLabel	No Color	Sem cor
 	Generative Upscale	Ampliação generativa
 	Denoise	Redução de ruído
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Quanto da seleção é redesenhado: 1 a substitui, cerca de 0,9 mantém a forma antiga
+	Native engine	Motor nativo
+	Native engine: not configured	Motor nativo: não configurado
+	Native engine: starting…	Motor nativo: iniciando…
+	Native engine: working	Motor nativo: trabalhando
+	Native engine: ready	Motor nativo: pronto
+	Native engine: failed	Motor nativo: falhou
+	Native engine: stopped	Motor nativo: parado
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Defina as pastas de runtime e de modelos em Preferências › Integrações de IA para usar o motor nativo
+	{free} of {total} free	{free} livres de {total}
+	Loaded: {models}	Carregados: {models}
+	Purge models	Descarregar modelos

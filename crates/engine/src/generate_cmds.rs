@@ -747,9 +747,73 @@ pub(crate) fn native_backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> 
         return Ok(b);
     }
     let dirs = photocraft_genai::native::runtime_dirs(&integrations.runtime_folders());
-    let b = Arc::new(photocraft_genai::native::NativeBackend::this_executable(&wanted).map_err(gen_err)?.with_path_dirs(dirs));
+    let b = photocraft_genai::native::NativeBackend::this_executable(&wanted).map_err(gen_err)?.with_path_dirs(dirs);
+    let b = Arc::new(b.with_log(crate::generate_engine_cmds::native_log_path()));
     *g = Some(Arc::clone(&b));
     Ok(b)
+}
+
+/// The worker this process holds now, if any (never starts one).
+#[cfg(not(target_arch = "wasm32"))]
+fn native_current() -> Option<Arc<photocraft_genai::native::NativeBackend>> {
+    #[cfg(test)]
+    if let Some(b) = NATIVE_OVERRIDE.get_or_init(|| std::sync::Mutex::new(None)).lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        return Some(Arc::clone(b));
+    }
+    NATIVE.get().and_then(|slot| slot.lock().unwrap_or_else(|e| e.into_inner()).clone())
+}
+
+/// `generate.engine.status`'s `native`: `off` under `integrations.engine = comfy`,
+/// `unconfigured` without a runtime and a model folder, else the worker's own state
+/// (`NativeBackend::status`: stopped / starting / running / ready / failed), without waiting
+/// and without starting one.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn native_status(s: &Session) -> Value {
+    let log = crate::generate_engine_cmds::native_log_path().to_string_lossy().into_owned();
+    let mode = engine_mode(s);
+    let state = |st: &str| json!({"state": st, "mode": mode, "log": log});
+    if mode == "comfy" {
+        return state("off");
+    }
+    if !s.prefs().integrations.native_configured() && native_current().is_none_or(|b| !b.is_attached()) {
+        return state("unconfigured");
+    }
+    let st = native_current().map(|b| b.status()).unwrap_or_else(|| photocraft_genai::native::NativeStatus { state: "stopped".into(), ..Default::default() });
+    let mut v = serde_json::to_value(st).unwrap_or_else(|_| json!({"state": "failed"}));
+    v["mode"] = json!(mode);
+    v["log"] = json!(log);
+    v
+}
+
+/// Start the worker on a thread of its own (the call returns at once; the status says
+/// `starting`, then `ready`).
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn native_start(s: &Session) -> Result<()> {
+    if !s.prefs().integrations.native_configured() {
+        return Err(EngineError::Other("set the runtime and model folders in Preferences › AI Integrations first".into()));
+    }
+    let b = native_backend(s)?;
+    std::thread::spawn(move || {
+        let _ = b.health();
+    });
+    Ok(())
+}
+
+/// Stop the worker this process started (the next generative command starts a fresh one).
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn native_stop() {
+    if let Some(b) = native_current() {
+        b.stop();
+    }
+}
+
+/// Unload the worker's models, if it runs.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn native_purge() -> Result<()> {
+    match native_current() {
+        Some(b) => b.purge().map_err(gen_err),
+        None => Ok(()),
+    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]

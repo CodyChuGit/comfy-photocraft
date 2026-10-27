@@ -3971,3 +3971,14 @@ curves	Smooth	Làm mượt
 	Generative Upscale	Phóng to tạo sinh
 	Denoise	Khử nhiễu
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Mức vẽ lại vùng chọn: 1 thay thế hoàn toàn, khoảng 0,9 giữ hình dạng cũ
+	Native engine	Bộ máy gốc
+	Native engine: not configured	Bộ máy gốc: chưa cấu hình
+	Native engine: starting…	Bộ máy gốc: đang khởi động…
+	Native engine: working	Bộ máy gốc: đang chạy
+	Native engine: ready	Bộ máy gốc: sẵn sàng
+	Native engine: failed	Bộ máy gốc: lỗi
+	Native engine: stopped	Bộ máy gốc: đã dừng
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Đặt thư mục môi trường chạy và thư mục mô hình trong Tùy chọn › Tích hợp AI để dùng bộ máy gốc
+	{free} of {total} free	còn trống {free} / {total}
+	Loaded: {models}	Đã nạp: {models}
+	Purge models	Giải phóng mô hình

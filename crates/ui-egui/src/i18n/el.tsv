@@ -4183,3 +4183,14 @@ curves	Smooth	Εξομάλυνση
 	Generative Upscale	Παραγωγική μεγέθυνση
 	Denoise	Αποθορυβοποίηση
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Πόσο από την επιλογή ξανασχεδιάζεται: το 1 την αντικαθιστά, περίπου 0,9 κρατά το παλιό σχήμα
+	Native engine	Εγγενής μηχανή
+	Native engine: not configured	Εγγενής μηχανή: δεν έχει ρυθμιστεί
+	Native engine: starting…	Εγγενής μηχανή: εκκίνηση…
+	Native engine: working	Εγγενής μηχανή: σε λειτουργία
+	Native engine: ready	Εγγενής μηχανή: έτοιμη
+	Native engine: failed	Εγγενής μηχανή: απέτυχε
+	Native engine: stopped	Εγγενής μηχανή: σταμάτησε
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Ορίστε τους φακέλους χρόνου εκτέλεσης και μοντέλων στις Προτιμήσεις › Ενσωματώσεις AI για να χρησιμοποιήσετε την εγγενή μηχανή
+	{free} of {total} free	{free} ελεύθερα από {total}
+	Loaded: {models}	Φορτωμένα: {models}
+	Purge models	Εκκαθάριση μοντέλων

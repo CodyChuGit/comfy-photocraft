@@ -3488,3 +3488,14 @@ curves	Smooth	Glätten
 	Generative Upscale	Generative Hochskalierung
 	Denoise	Entrauschen
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Wie viel der Auswahl neu gezeichnet wird: 1 ersetzt sie, etwa 0,9 behält die alte Form
+	Native engine	Native Engine
+	Native engine: not configured	Native Engine: nicht eingerichtet
+	Native engine: starting…	Native Engine: startet…
+	Native engine: working	Native Engine: arbeitet
+	Native engine: ready	Native Engine: bereit
+	Native engine: failed	Native Engine: fehlgeschlagen
+	Native engine: stopped	Native Engine: gestoppt
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Legen Sie die Laufzeit- und Modellordner unter Voreinstellungen › KI-Integrationen fest, um die native Engine zu verwenden
+	{free} of {total} free	{free} von {total} frei
+	Loaded: {models}	Geladen: {models}
+	Purge models	Modelle entladen

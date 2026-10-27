@@ -4210,3 +4210,14 @@ cameraData	Lens	Lens
 	Generative Upscale	Üretken Büyütme
 	Denoise	Gürültü giderme
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	Seçimin ne kadarının yeniden çizileceği: 1 onu değiştirir, yaklaşık 0,9 eski şekli korur
+	Native engine	Yerel motor
+	Native engine: not configured	Yerel motor: yapılandırılmadı
+	Native engine: starting…	Yerel motor: başlatılıyor…
+	Native engine: working	Yerel motor: çalışıyor
+	Native engine: ready	Yerel motor: hazır
+	Native engine: failed	Yerel motor: başarısız
+	Native engine: stopped	Yerel motor: durduruldu
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	Yerel motoru kullanmak için Tercihler › Yapay Zekâ Entegrasyonları’nda çalışma zamanı ve model klasörlerini ayarlayın
+	{free} of {total} free	{total} içinde {free} boş
+	Loaded: {models}	Yüklü: {models}
+	Purge models	Modelleri boşalt

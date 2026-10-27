@@ -3113,3 +3113,14 @@ curves	Smooth	平滑
 	Generative Upscale	生成式放大
 	Denoise	降噪强度
 	How much of the selection is redrawn: 1 replaces it, about 0.9 keeps the old shape	重绘选区的程度：1 完全替换，约 0.9 保留原有形状
+	Native engine	原生引擎
+	Native engine: not configured	原生引擎：未配置
+	Native engine: starting…	原生引擎：正在启动…
+	Native engine: working	原生引擎：正在工作
+	Native engine: ready	原生引擎：就绪
+	Native engine: failed	原生引擎：失败
+	Native engine: stopped	原生引擎：已停止
+	Set the runtime and model folders in Preferences › AI Integrations to use the native engine	在 偏好设置 › AI 集成 中设置运行时文件夹和模型文件夹，即可使用原生引擎
+	{free} of {total} free	{total} 中可用 {free}
+	Loaded: {models}	已加载：{models}
+	Purge models	清除模型

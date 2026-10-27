@@ -164,3 +164,32 @@ fn a_worker_that_serves_the_enhancer_answers_its_own_jobs_questions() {
     // The fill ran after the questions on a worker that was never freed: still healthy, still resident.
     assert_eq!(s.execute("generate.health", json!({"template": "qwen-2.1/fill"})).unwrap()["backend"], "native/fake");
 }
+
+/// `generate.engine.status` carries the native worker's state, asked without starting one;
+/// Purge unloads its models and leaves it ready; Stop and Start name the engine.
+#[test]
+fn the_engine_status_shows_the_native_worker_and_purge_unloads_it() {
+    let _turn = WORKER_SLOT.lock().unwrap_or_else(|e| e.into_inner());
+    let (port, token) = photocraft_genai::native::serve_fake(vec!["krea2-turbo/image".into()], 1).unwrap();
+    set_native_backend(Arc::new(photocraft_genai::native::NativeBackend::attached(port, &token).unwrap()));
+    let mut s = Session::new();
+    s.edit_prefs(|p| p.integrations.engine = "comfy".into());
+    assert_eq!(s.execute("generate.engine.status", json!({})).unwrap()["native"]["state"], "off");
+    s.edit_prefs(|p| {
+        p.integrations.engine = "native".into();
+        p.integrations.runtime_path = "runtime".into();
+        p.integrations.models_path = "models".into();
+    });
+    let n = &s.execute("generate.engine.status", json!({})).unwrap()["native"];
+    assert_eq!((n["state"].as_str(), n["engine"].as_str(), n["mode"].as_str()), (Some("ready"), Some("fake"), Some("native")), "{n}");
+    assert!(n["log"].as_str().is_some_and(|l| l.ends_with("photocraft-native-engine.log")), "{n}");
+    s.execute("generate.image", json!({"prompt": "a fox", "template": "krea2-turbo/image", "width": 64, "height": 64, "target": "document", "seed": 1})).unwrap();
+    let n = s.execute("generate.engine.status", json!({})).unwrap()["native"].clone();
+    assert_eq!(n["resident"], json!(["krea2-turbo/image"]), "{n}");
+    let n = s.execute("generate.engine.purge", json!({"engine": "native"})).unwrap()["native"].clone();
+    assert_eq!((n["state"].as_str(), n["resident"].clone()), (Some("ready"), json!([])), "{n}");
+    assert!(s.execute("generate.engine.stop", json!({"engine": "warp"})).is_err(), "only the listed engines");
+    // Stop lets go of the worker (this one was only joined, so it is not respawned).
+    let st = s.execute("generate.engine.stop", json!({"engine": "native"})).unwrap();
+    assert_eq!(st["native"]["state"], "stopped", "{st}");
+}
