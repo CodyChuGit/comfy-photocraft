@@ -16,7 +16,8 @@ fake-server = []
 # The native worker also serves Qwen-Image-2.1 text to image (`gn-diffusion`: candle + the CUDA
 # kernels of qwen-image-rs, plan Phase 2). Off by default: it needs nvcc, CUTLASS and a CUDA
 # toolkit to build (docs/comfy/dev-environment-windows.md); the SAM 3.1 route needs none of that.
-native-diffusion = ["dep:gn-diffusion"]
+# With it, SAM 3.1 also runs on candle on the GPU from its checkpoint (no ONNX Runtime).
+native-diffusion = ["dep:gn-diffusion", "gn-perception/cuda"]
 
 [dependencies]
 photocraft-codecs = { workspace = true }
