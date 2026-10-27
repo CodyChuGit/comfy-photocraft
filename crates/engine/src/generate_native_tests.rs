@@ -232,6 +232,11 @@ fn auto_runs_qwen_image_2_1_on_the_worker_instead_of_2511() {
     assert_eq!(f["template"].as_str(), Some("qwen-2.1/edit"), "{f}");
     let f = s.execute("generate.fill", json!({"prompt": "a red balloon", "seed": 4, "enhance": false, "fillAsEdit": true})).unwrap();
     assert_eq!(f["template"].as_str(), Some("qwen-2.1/fill"), "nothing named: {f}");
+    // A fill from a reference: the 2.1 edit template on the worker (it takes nine), not 2511's
+    // fill-ref on ComfyUI.
+    let reference = s.active().unwrap().active_layer.unwrap();
+    let f = s.execute("generate.fill", json!({"prompt": "the red sweater", "seed": 5, "enhance": false, "references": [{"layer": reference.0}]})).unwrap();
+    assert_eq!(f["template"].as_str(), Some("qwen-2.1/edit"), "{f}");
     s.edit_prefs(|p| p.integrations.enhance_prompts = true);
     let m = s.execute("generate.models", json!({"probe": false})).unwrap();
     assert_eq!(m["autoFill"].as_str(), Some("qwen-2.1/edit"), "with the rewriter on, fills go by instruction: {m}");

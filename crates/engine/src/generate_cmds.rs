@@ -1717,6 +1717,14 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
         base = if as_edit { native21_auto(s, EDIT, false).unwrap_or(t).to_string() } else { t.to_string() };
         auto = false;
     }
+    // A fill from references on the native worker: the 2.1 edit template, which takes nine
+    // references beside the picture, instead of 2511's fill-ref on ComfyUI (the Rust rebuild,
+    // `goals/rust-rebuild.md` R2): "Replace the <thing> with <prompt> as image 2 shows it".
+    if auto && !ref_specs.is_empty() && native21_auto(s, FILL, false).is_some() && let Some(t) = native21_auto(s, EDIT, false) {
+        as_edit = true;
+        base = t.to_string();
+        auto = false;
+    }
     if !named && !ref_specs.is_empty() && template::find(&base).is_ok_and(|t| t.meta.references.max == 0) {
         base = fill_ref_template(quality(s)).to_string();
         auto = false;
@@ -2504,6 +2512,15 @@ fn name_selected(doc: &Document, job: &FillJob, area: Rect, coverage: &[f32], ct
 pub(crate) fn swap_prompt(thing: &str, description: &str) -> String {
     let d = description.trim().trim_end_matches(['.', '!', ';', ',']).trim();
     format!("Replace the {thing} with {d}, keeping everything else unchanged.")
+}
+
+/// [`swap_prompt`] for a fill from references (image 2 is the first reference on the 2.1 edit
+/// template): "Replace the denim jacket with the red sweater exactly as image 2 shows it,
+/// keeping everything else unchanged."; with nothing named, the selected part of the picture.
+pub(crate) fn swap_ref_prompt(thing: Option<&str>, description: &str) -> String {
+    let d = description.trim().trim_end_matches(['.', '!', ';', ',']).trim();
+    let what = thing.map_or_else(|| "the selected part of image 1".to_string(), |t| format!("the {t}"));
+    format!("Replace {what} with {d} exactly as image 2 shows it, keeping everything else unchanged.")
 }
 
 /// The fill template a fill by instruction falls back to when nothing could be named.
@@ -3413,9 +3430,14 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
             // Nothing named: the fill template after all.
             if job.command == EDIT && !template::is_imperative(&job.prompt) {
                 let named = if job.enhance { name_selected(doc, &job, rect, &coverage, ctx)? } else { None };
-                match named {
-                    Some(thing) => job.rewritten = Some(swap_prompt(&thing, &job.prompt)),
-                    None => {
+                let with_refs = !job.refs.images.is_empty();
+                match (named, with_refs) {
+                    (Some(thing), false) => job.rewritten = Some(swap_prompt(&thing, &job.prompt)),
+                    (Some(thing), true) => job.rewritten = Some(swap_ref_prompt(Some(&thing), &job.prompt)),
+                    // From references nothing else takes them on the worker: the selection's
+                    // place stands in for its name.
+                    (None, true) => job.rewritten = Some(swap_ref_prompt(None, &job.prompt)),
+                    (None, false) => {
                         job.command = FILL;
                         job.template_id = native21_fill_fallback().to_string();
                     }

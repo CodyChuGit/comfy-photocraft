@@ -83,6 +83,25 @@ FFI, tests are the gate, BYOM (no weights shipped), research-only models never a
 default, commits local, genai-native not pushed without the owner, one commit per logical
 step, the dev log and roadmap updated.
 
+## 4b. Specs (Codex, checked)
+
+- R0 inventory: [`research/notes/rust-rebuild-r0-inventory.md`](../research/notes/rust-rebuild-r0-inventory.md).
+  Adds one gap to §2: the standalone `generate.enhancePrompt` command routes through
+  `backend(s)`, so under `auto` it goes to ComfyUI although the worker answers `enhance/*`.
+- R1 SAM 3.1: [`research/notes/rust-rebuild-r1-sam31.md`](../research/notes/rust-rebuild-r1-sam31.md).
+  Read the raw `sam3.1_multiplex_fp16.safetensors` (1 590 F16 tensors) directly: ViTDet trunk
+  (32 blocks, 1024 wide, 24×24 windows with global blocks 7/15/23/31, tiled absolute positions
+  plus axial RoPE), two FPNs, CLIP text (24 blocks, QuickGELU, causal), box geometry with
+  ROIAlign, a 6+6-layer detector with a learned box bias, the interactive two-way mask decoder.
+  4 000–6 000 lines in ten parity-gated steps; no cuDNN; F16 attention at head dims 64/32/16 is
+  the speed work (our flash kernel is D=128 bf16 only).
+- R3 Qwen-Image-Layered: [`research/notes/rust-rebuild-r3-qwen-image-layered.md`](../research/notes/rust-rebuild-r3-qwen-image-layered.md).
+  The older 60-block dual-stream Qwen-Image DiT (3072 wide), a Qwen2.5-VL 7B text encoder
+  (needs a variant: biases, no q/k norm, final norm, legacy fp8 scales), the 4-channel Wan 2.1
+  VAE (our new Wan encoder plus RGBA), L+1 latent slices; the fp8mixed DiT reads with `qir::fp8`
+  as it is (all layers `full_precision_matrix_mult`, biased). 1 800–3 200 lines in seven steps;
+  28 GB of weights, so staged residency.
+
 ## 5. Progress log
 
 - 2026-10-27, evening: task opened. Native today: Krea 2 text to image and edit, every
@@ -90,3 +109,10 @@ step, the dev log and roadmap updated.
   engine page and GPU detection. ComfyUI is still needed for the four 2511 holdouts, the
   Layered split and the Krea 2 style reference; ONNX Runtime and cuDNN for SAM 3.1. Codex runs
   R0, the R1 spec and the R3 spec in parallel (read-only).
+- 2026-10-27, evening: the three Codex reports landed and are filed (§4b). R2 started: a fill
+  from references under `auto` with the native worker now runs on the 2.1 edit template (nine
+  reference slots) by instruction ("Replace the <thing> with <prompt> exactly as image 2 shows
+  it"), not 2511's fill-ref on ComfyUI; routing test added. Next: measure it against the 2511
+  fill-ref pictures of 2026-10-21, then image from references, then R1 step 1 (a `gn-segment`
+  crate: weights and ops) with Codex building the ops and their torchvision fixtures in its
+  own worktree.
