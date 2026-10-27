@@ -857,9 +857,13 @@ fn release_thinker(server: &str, purge: &str, thinker: &Arc<dyn GenerativeBacken
 /// prompt reproduced: the same seed gives the same picture, 40 dB on the fox, and the resident
 /// worker is faster than the ComfyUI route per picture; dev log), its edit and fill templates
 /// since the same day (the references through the native vision tower and VAE encoder, the
-/// fox's winter edit at 40 dB). The worker serves the family only in a build with the
-/// `native-diffusion` feature, and `native_serving` asks it template by template.
-pub(crate) const NATIVE_AUTO_FAMILIES: [&str; 2] = ["sam3.1", "qwen-image-2.1"];
+/// fox's winter edit at 40 dB); Krea 2 text to image since 2026-10-27 (ComfyUI's own fp8 files
+/// on its fp8 recipe, exact attention, fused small ops: 19 of 28 pictures at the parity gate
+/// against ComfyUI's route, whose fp8 and bf16 routes agree on 20, at 4.0 s a picture through
+/// the app against 4.0–4.7). The worker serves a family only in a build with the
+/// `native-diffusion` feature, and `native_serving` asks it template by template (Krea 2's
+/// style reference stays on ComfyUI: the worker does not list it).
+pub(crate) const NATIVE_AUTO_FAMILIES: [&str; 3] = ["sam3.1", "qwen-image-2.1", "krea2"];
 
 /// Under `auto`: the native worker, when the preferences give it its folders, the template's
 /// family is in [`NATIVE_AUTO_FAMILIES`] and the worker's index lists the template. A worker

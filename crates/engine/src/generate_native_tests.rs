@@ -65,7 +65,10 @@ fn the_engine_preference_routes_to_the_native_worker() {
     s.execute("prefs.set", json!({"path": "integrations.modelsPath", "value": "models"})).unwrap();
     assert_eq!(s.execute("generate.health", json!({})).unwrap()["backend"], "comfyui");
     assert_eq!(s.execute("generate.health", json!({"template": "sam3.1/segment"})).unwrap()["backend"], "native/fake");
-    assert_eq!(s.execute("generate.health", json!({"template": "krea2-turbo/image"})).unwrap()["backend"], "comfyui");
+    // Krea 2 text to image is in `NATIVE_AUTO_FAMILIES` too (2026-10-27); its style reference,
+    // which this worker does not list, stays on ComfyUI.
+    assert_eq!(s.execute("generate.health", json!({"template": "krea2-turbo/image"})).unwrap()["backend"], "native/fake");
+    assert_eq!(s.execute("generate.health", json!({"template": "krea2-turbo/image-style"})).unwrap()["backend"], "comfyui");
     // Qwen-Image-2.1 text to image is in `NATIVE_AUTO_FAMILIES` and the worker lists it: native,
     // and `generate.image` itself goes there (no ComfyUI server is configured in this test).
     assert_eq!(s.execute("generate.health", json!({"template": "qwen-2.1/image"})).unwrap()["backend"], "native/fake");
