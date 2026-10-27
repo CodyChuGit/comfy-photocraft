@@ -3966,3 +3966,5 @@ curves	Smooth	Làm mượt
 	Unload models between tasks	Gỡ mô hình giữa các tác vụ
 	When any model file changes	Khi bất kỳ tệp mô hình nào thay đổi
 	When the diffusion model changes	Khi mô hình khuếch tán thay đổi
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	Các bộ điều hợp trong thư mục con loras của thư mục mô hình, do engine gốc áp dụng

@@ -369,6 +369,52 @@ fn output_texts(entry: &Value, save_node: &str) -> Vec<String> {
     out
 }
 
+/// The model loaders a LoRA goes after (their output 0 is the diffusion model).
+const MODEL_LOADERS: [&str; 3] = ["UNETLoader", "UnetLoaderGGUF", "CheckpointLoaderSimple"];
+
+/// `graph` with a request's `loras` (`[{"file", "strength"}]`, the native engine's parameter)
+/// applied the ComfyUI way: a `LoraLoaderModelOnly` per file chained after each model loader,
+/// and whatever took the loader's model takes the chain's instead (a template's own LoRA
+/// nodes, the Lightning ones, stack on top). No list, or an empty one: `graph` as it is.
+pub(crate) fn with_loras(mut graph: Value, loras: Option<&Value>) -> Value {
+    let list: Vec<(String, f64)> = loras
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(|l| Some((l["file"].as_str()?.to_string(), l["strength"].as_f64().unwrap_or(1.0)))).collect())
+        .unwrap_or_default();
+    if list.is_empty() {
+        return graph;
+    }
+    if let Some(nodes) = graph.as_object_mut() {
+        add_loras(nodes, &list);
+    }
+    graph
+}
+
+fn add_loras(nodes: &mut serde_json::Map<String, Value>, list: &[(String, f64)]) {
+    let loaders: Vec<String> = nodes.iter().filter(|(_, n)| n["class_type"].as_str().is_some_and(|c| MODEL_LOADERS.contains(&c))).map(|(id, _)| id.clone()).collect();
+    for loader in loaders {
+        let mut prev = loader.clone();
+        let mut added: Vec<String> = Vec::new();
+        for (i, (file, strength)) in list.iter().enumerate() {
+            let id = format!("pcx_lora_{loader}_{i}");
+            nodes.insert(id.clone(), json!({"class_type": "LoraLoaderModelOnly", "inputs": {"model": [prev, 0], "lora_name": file, "strength_model": strength}}));
+            added.push(id.clone());
+            prev = id;
+        }
+        for (id, node) in nodes.iter_mut() {
+            if added.contains(id) {
+                continue;
+            }
+            let Some(inputs) = node.get_mut("inputs").and_then(Value::as_object_mut) else { continue };
+            for v in inputs.values_mut() {
+                if v.as_array().is_some_and(|a| a.len() == 2 && a.first().and_then(Value::as_str) == Some(loader.as_str()) && a.get(1).and_then(Value::as_u64) == Some(0)) {
+                    *v = json!([prev, 0]);
+                }
+            }
+        }
+    }
+}
+
 /// A failure recorded in a history entry's `status.messages` (`execution_error`), if any.
 fn history_error(entry: &Value) -> Option<String> {
     let status = &entry["status"];
@@ -683,7 +729,7 @@ impl GenerativeBackend for ComfyBackend {
             None => {}
         }
         progress.check_cancel()?;
-        let graph = tpl.fill(&bindings)?;
+        let graph = with_loras(tpl.fill(&bindings)?, req.params.get("loras"));
 
         // The socket opens before the prompt is queued so no progress message is missed.
         let socket = self.client.open_socket(&client_id);
@@ -738,6 +784,25 @@ pub type Image = Rgba8;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_requests_loras_chain_after_the_model_loader_on_the_comfyui_route() {
+        let graph = json!({
+            "1": {"class_type": "UNETLoader", "inputs": {"unet_name": "m.safetensors"}},
+            "2": {"class_type": "LoraLoaderModelOnly", "inputs": {"model": ["1", 0], "lora_name": "lightning.safetensors", "strength_model": 1.0}},
+            "3": {"class_type": "KSampler", "inputs": {"model": ["2", 0], "seed": 1}},
+            "4": {"class_type": "ModelSamplingAuraFlow", "inputs": {"model": ["1", 0]}},
+        });
+        assert_eq!(with_loras(graph.clone(), None), graph, "no list, no change");
+        assert_eq!(with_loras(graph.clone(), Some(&json!([]))), graph);
+        let g = with_loras(graph, Some(&json!([{"file": "a.safetensors", "strength": 0.5}, {"file": "b.safetensors"}])));
+        assert_eq!(g["pcx_lora_1_0"]["inputs"], json!({"model": ["1", 0], "lora_name": "a.safetensors", "strength_model": 0.5}));
+        assert_eq!(g["pcx_lora_1_1"]["inputs"]["model"], json!(["pcx_lora_1_0", 0]));
+        assert_eq!(g["pcx_lora_1_1"]["inputs"]["strength_model"], json!(1.0), "strength 1 unless given");
+        assert_eq!(g["2"]["inputs"]["model"], json!(["pcx_lora_1_1", 0]), "the template's own LoRA stacks on top");
+        assert_eq!(g["4"]["inputs"]["model"], json!(["pcx_lora_1_1", 0]));
+        assert_eq!(g["3"]["inputs"]["model"], json!(["2", 0]), "what did not take the loader's model is untouched");
+    }
 
     #[test]
     fn urls_are_normalised_and_checked() {

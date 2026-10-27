@@ -4394,3 +4394,5 @@ cameraRaw	Yellow	Sárga
 	Unload models between tasks	Modellek kirakása feladatok között
 	When any model file changes	Ha bármelyik modellfájl változik
 	When the diffusion model changes	Ha a diffúziós modell változik
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	Adapterek a modellmappa loras almappájában, a natív motor alkalmazza őket

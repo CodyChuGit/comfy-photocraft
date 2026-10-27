@@ -4178,3 +4178,5 @@ curves	Smooth	Εξομάλυνση
 	Unload models between tasks	Εκφόρτωση μοντέλων μεταξύ εργασιών
 	When any model file changes	Όταν αλλάζει οποιοδήποτε αρχείο μοντέλου
 	When the diffusion model changes	Όταν αλλάζει το μοντέλο διάχυσης
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	Προσαρμογείς στον υποφάκελο loras του φακέλου μοντέλων, που εφαρμόζονται από την εγγενή μηχανή

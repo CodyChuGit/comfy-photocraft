@@ -3489,3 +3489,6 @@ curves	Smooth	Lisser
 	Unload models between tasks	Décharger les modèles entre les tâches
 	When any model file changes	Quand un fichier de modèle change
 	When the diffusion model changes	Quand le modèle de diffusion change
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptateurs du sous-dossier loras du dossier des modèles, appliqués par le moteur natif
+	Strength	Intensité

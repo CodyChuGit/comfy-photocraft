@@ -119,6 +119,12 @@ pub struct GeneratePanel {
     /// The server was asked which templates it has (the picker's `not installed` badges).
     #[serde(skip)]
     pub probed: bool,
+    /// LoRA adapters by file name: switched on, and the strength (the LoRAs rows; a run sends
+    /// the ones on for the template's family as `loras`).
+    pub loras: BTreeMap<String, (bool, f32)>,
+    /// `generate.loras` for a template: (template, runs on the native engine, its files).
+    #[serde(skip)]
+    pub lora_list: Option<(String, bool, Vec<String>)>,
 }
 
 impl Default for GeneratePanel {
@@ -149,7 +155,33 @@ impl Default for GeneratePanel {
             confirm_clear: false,
             editor: false,
             probed: false,
+            loras: BTreeMap::new(),
+            lora_list: None,
         }
+    }
+}
+
+/// Ask the engine which LoRAs fit `template` (the files' headers in the models folder, no
+/// server), once per template.
+pub fn refresh_loras(app: &mut PhotocraftApp, template: &str) {
+    if app.ui.generate.lora_list.as_ref().is_some_and(|(t, _, _)| t == template) {
+        return;
+    }
+    let v = app.session.execute("generate.loras", json!({"template": template})).unwrap_or(Value::Null);
+    let files = v["loras"].as_array().map(|a| a.iter().filter_map(|l| l["file"].as_str().map(str::to_string)).collect()).unwrap_or_default();
+    app.ui.generate.lora_list = Some((template.to_string(), v["native"].as_bool().unwrap_or(false), files));
+}
+
+/// The `loras` a run of `mode` sends: the switched-on files of the template's list, when the
+/// template runs on the native engine (the route that applies them).
+fn chosen_loras(app: &PhotocraftApp, mode: &str) -> Vec<Value> {
+    let p = &app.ui.generate;
+    match &p.lora_list {
+        Some((t, true, files)) if matches!(mode, "image" | "edit" | "fill") && *t == effective_template(app, mode) => files
+            .iter()
+            .filter_map(|f| p.loras.get(f).filter(|(on, _)| *on).map(|(_, s)| json!({"file": f, "strength": s})))
+            .collect(),
+        _ => Vec::new(),
     }
 }
 
@@ -423,6 +455,10 @@ pub fn request(app: &PhotocraftApp) -> Result<(&'static str, Value), String> {
     }
     if matches!(mode, "image" | "edit" | "fill") && !p.references.is_empty() {
         q["references"] = Value::Array(p.references.clone());
+    }
+    let loras = chosen_loras(app, mode);
+    if !loras.is_empty() {
+        q["loras"] = Value::Array(loras);
     }
     Ok((command_of(mode), q))
 }
@@ -921,6 +957,32 @@ fn options_row(app: &mut PhotocraftApp, ui: &mut egui::Ui, mode: &str, template:
             }
         });
     }
+    lora_rows(app, ui, mode, template);
+}
+
+/// The LoRA rows of the template's family (`generate.loras`), when the template runs on the
+/// native engine: a switch and a strength per file, folded away under "LoRAs".
+fn lora_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, mode: &str, template: &str) {
+    if !matches!(mode, "image" | "fill" | "edit") {
+        return;
+    }
+    refresh_loras(app, template);
+    let Some((_, true, files)) = app.ui.generate.lora_list.clone() else { return };
+    if files.is_empty() {
+        return;
+    }
+    let on = files.iter().filter(|f| app.ui.generate.loras.get(*f).is_some_and(|(o, _)| *o)).count();
+    let title = if on > 0 { format!("{} ({on})", tl!("LoRAs")) } else { tl!("LoRAs").to_string() };
+    egui::CollapsingHeader::new(RichText::new(title).small()).id_salt("generate-loras").show(ui, |ui| {
+        ui.label(RichText::new(tl!("Adapters in the models folder's loras subfolder, applied by the native engine")).small().weak());
+        for f in &files {
+            let entry = app.ui.generate.loras.entry(f.clone()).or_insert((false, 1.0));
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut entry.0, f.strip_suffix(".safetensors").unwrap_or(f));
+                widgets::value_field(ui, &mut entry.1, 0.0..=1.5, "", 46.0).on_hover_text(tl!("Strength"));
+            });
+        }
+    });
 }
 
 /// The reference deck: thumbnails with × and context menus, and the + menu.
@@ -1108,17 +1170,22 @@ pub fn inspect(app: &PhotocraftApp) -> Value {
         "expand": p.expand, "grow": p.grow, "job": p.job, "compact": p.compact, "eta": estimate(app, mode), "etaLabel": estimate(app, mode).map(eta_label),
         "command": request.as_ref().ok().map(|(c, _)| *c), "params": request.as_ref().ok().map(|(_, q)| q.clone()),
         "blocked": request.err(), "referencesMax": refs_limit(app, mode),
+        "loras": p.lora_list.as_ref().filter(|(t, _, _)| *t == template).map(|(_, native, files)| json!({
+            "native": native,
+            "files": files,
+            "on": chosen_loras(app, mode),
+        })),
     })
 }
 
 /// `ui.set {generatePanel: {mode, into, prompt, negative, template, aspect, size, width,
-/// height, count, enhance, references, expand, grow, focus}}`: each field validated before any
+/// height, count, enhance, references, expand, grow, focus, loras}}`: each field validated before any
 /// is applied; `focus: true` puts the keyboard in the prompt (then `ui.key` Enter with
 /// `command` generates through the panel).
 pub fn set(app: &mut PhotocraftApp, p: &Value) -> Result<(), String> {
     let Some(v) = p.get("generatePanel") else { return Ok(()) };
     let o = v.as_object().ok_or("generatePanel must be an object")?;
-    let known = ["mode", "into", "prompt", "negative", "template", "aspect", "size", "width", "height", "count", "enhance", "references", "expand", "grow", "focus"];
+    let known = ["mode", "into", "prompt", "negative", "template", "aspect", "size", "width", "height", "count", "enhance", "references", "expand", "grow", "focus", "loras"];
     if let Some(k) = o.keys().find(|k| !known.contains(&k.as_str())) {
         return Err(format!("generatePanel has no field `{k}`"));
     }
@@ -1200,6 +1267,17 @@ pub fn set(app: &mut PhotocraftApp, p: &Value) -> Result<(), String> {
     }
     if let Some(x) = o.get("focus") {
         next.focus = x.as_bool().ok_or("generatePanel.focus must be true or false")?;
+    }
+    if let Some(x) = o.get("loras") {
+        // `{"file.safetensors": strength}`: those switched on at that strength, the rest off.
+        let m = x.as_object().ok_or("generatePanel.loras must be {\"file.safetensors\": strength}")?;
+        for entry in next.loras.values_mut() {
+            entry.0 = false;
+        }
+        for (file, s) in m {
+            let s = s.as_f64().filter(|s| (0.0..=1.5).contains(s)).ok_or(format!("generatePanel.loras.{file} must be a strength from 0 to 1.5"))?;
+            next.loras.insert(file.clone(), (true, s as f32));
+        }
     }
     if next.mode != app.ui.generate.mode && (next.mode == "fill" || next.mode == "edit") {
         app.ui.generative_bar.mode = next.mode.clone();

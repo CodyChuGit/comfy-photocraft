@@ -4082,3 +4082,5 @@ navigator	Zoom	Zvětšení
 	Unload models between tasks	Uvolnit modely mezi úlohami
 	When any model file changes	Když se změní kterýkoli soubor modelu
 	When the diffusion model changes	Když se změní difuzní model
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptéry v podsložce loras složky modelů, použité nativním enginem

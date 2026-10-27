@@ -3662,3 +3662,5 @@ curves	Smooth	매끄럽게
 	Unload models between tasks	작업 사이에 모델 해제
 	When any model file changes	모델 파일이 하나라도 바뀔 때
 	When the diffusion model changes	확산 모델이 바뀔 때
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	모델 폴더의 loras 하위 폴더에 있는 어댑터로, 네이티브 엔진이 적용합니다

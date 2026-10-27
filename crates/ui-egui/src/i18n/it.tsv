@@ -4592,3 +4592,5 @@ shape	Appearance	Aspetto
 	Unload models between tasks	Scarica i modelli tra un'attività e l'altra
 	When any model file changes	Quando cambia un file di modello qualsiasi
 	When the diffusion model changes	Quando cambia il modello di diffusione
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	Adattatori nella sottocartella loras della cartella dei modelli, applicati dal motore nativo

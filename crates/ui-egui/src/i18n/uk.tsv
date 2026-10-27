@@ -4185,3 +4185,5 @@ curves	Smooth	Згладити
 	Unload models between tasks	Вивантажувати моделі між завданнями
 	When any model file changes	Коли змінюється будь-який файл моделі
 	When the diffusion model changes	Коли змінюється дифузійна модель
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	Адаптери з підпапки loras папки моделей, які застосовує вбудований рушій

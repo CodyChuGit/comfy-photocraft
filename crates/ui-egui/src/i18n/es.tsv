@@ -4437,3 +4437,5 @@ navigator	Zoom	Zoom
 	Unload models between tasks	Descargar modelos entre tareas
 	When any model file changes	Cuando cambie cualquier archivo de modelo
 	When the diffusion model changes	Cuando cambie el modelo de difusión
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptadores de la subcarpeta loras de la carpeta de modelos, aplicados por el motor nativo

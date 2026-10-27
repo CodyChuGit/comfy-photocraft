@@ -85,8 +85,9 @@ pub(crate) struct Tuning {
     /// LoRA adapters on the model for this request, `(file name, strength)`, in order
     /// (`loras` on the fill, edit, image and removal commands). The native engine applies them
     /// as side paths on its resident model (plan-native-engine §9: AnyPaint, AusBoss's
-    /// Consistency, Outpaint, Restore and Outfit Swap, the BFS swaps); a ComfyUI template
-    /// carries its own LoRA nodes and ignores the list.
+    /// Consistency, Outpaint, Restore and Outfit Swap, the BFS swaps); the ComfyUI route chains
+    /// a `LoraLoaderModelOnly` per file after the template's model loader (`comfy::with_loras`),
+    /// so the file must be in that server's `models/loras`.
     pub loras: Vec<(String, f32)>,
     /// A removal keeps what it removed: the object's pixels (the detector's silhouette, or
     /// the stroke's) as their own masked layer above the fill (`keepObject`), the two the same
@@ -4355,7 +4356,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Generative Fill…",
             menu: &[],
             shortcut: None,
-            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"grow":0..512=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"erase":{bool?=the template's},"sampler":{str?=euler},"scheduler":{str?=simple},"maxPixels":{int?=1048576},"loras":{[{"file":name,"strength":-4..4=1}]?},"references":{[{"layer":id} | {"path":"…"} | {"job":id,"index":0}]?},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; loras = LoRA files from the LoRA folder (the native model root's loras/), applied by the native engine as side paths on its resident model, up to 8; a ComfyUI template carries its own LoRA nodes and ignores the list; enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; grow = widen the selection by that many pixels first, so a bulkier replacement has room; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; references = up to two reference images: with no template named the run switches to the fill-from-reference template, which flattens the selection to grey in the request so the model paints what the references show there (erase; `erase: true` does the same on any fill, `false` keeps the pixels); variations 1..4 = results with consecutive seeds, each a layer, only the first visible; sampler and scheduler = the KSampler's, ComfyUI names; maxPixels = the request is downscaled to at most this many pixels (the model's working size); areas over 1 megapixel are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
+            params: r#"{"prompt":text,"negative":text,"steps":0..250=0,"guidance":0..30=0,"margin":0..1=0.25,"grow":0..512=0,"edge":"soft|hard","variations":int=1,"seed":{u64?=random},"template":{id?=Preferences › Default Fill Template; "auto" = the fastest permissive tier whose files the server has},"model":{file?=Preferences},"enhance":{bool?=Preferences › Enhance prompts},"erase":{bool?=the template's},"sampler":{str?=euler},"scheduler":{str?=simple},"maxPixels":{int?=1048576},"loras":{[{"file":name,"strength":-4..4=1}]?},"references":{[{"layer":id} | {"path":"…"} | {"job":id,"index":0}]?},"name":{str?}} → {"layer","layers":[id],"seed","seeds":[u64],"template","runId","width","height","requestWidth","requestHeight","ms","timings":[{"encodeMs","uploadMs","queueMs","runMs","downloadMs"}]} (steps and guidance 0 = the template's defaults; loras = LoRA files from the LoRA folder (the native model root's loras/), applied by the native engine as side paths on its resident model, up to 8; on the ComfyUI route each becomes a LoraLoaderModelOnly after the template's model loader, the file in that server's models/loras; enhance = rewrite the prompt first with the vision-language model, the picture and the selection's place in view (generate.enhancePrompt), the layer remembering both; margin = context around the selection as a fraction of its larger side; grow = widen the selection by that many pixels first, so a bulkier replacement has room; edge soft = the result's layer mask fades across the band the model re-rendered around the selection (4 % of its size), dithered with grain so there is no visible line; hard = the mask is exactly the selection; references = up to two reference images: with no template named the run switches to the fill-from-reference template, which flattens the selection to grey in the request so the model paints what the references show there (erase; `erase: true` does the same on any fill, `false` keeps the pixels); variations 1..4 = results with consecutive seeds, each a layer, only the first visible; sampler and scheduler = the KSampler's, ComfyUI names; maxPixels = the request is downscaled to at most this many pixels (the model's working size); areas over 1 megapixel are sent downscaled and come back resampled; a background job: the result is a new layer above the active one; needs a ComfyUI server, see Preferences › AI Integrations)"#,
             enabled: fill_enabled,
             run: run_fill,
             journal: true,
@@ -4517,8 +4518,21 @@ pub fn specs() -> Vec<CommandSpec> {
             run: run_models,
             journal: false,
         },
+        CommandSpec {
+            id: loras::LORAS,
+            label: "List LoRAs",
+            menu: &[],
+            shortcut: None,
+            params: r#"{"template"?:string} → {"folder","family","native","loras":[{"file","family"}]} (the LoRA files in Preferences › AI Integrations › Models folder's loras subfolder, each with the model family its tensor names are for (krea2, qwen-image-2.1, qwen-image-edit-2511, or null), only the template's family's when a template is given; native = the template would run on the native engine, the route that applies a request's loras. Reads the files' headers, never the server)"#,
+            enabled: |_| web_unavailable(),
+            run: loras::run_loras,
+            journal: false,
+        },
     ]
 }
+
+#[path = "generate_loras.rs"]
+pub(crate) mod loras;
 
 #[cfg(test)]
 #[path = "generate_cmds_tests.rs"]

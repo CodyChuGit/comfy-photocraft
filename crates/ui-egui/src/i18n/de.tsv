@@ -3483,3 +3483,5 @@ curves	Smooth	Glätten
 	Unload models between tasks	Modelle zwischen Aufgaben entladen
 	When any model file changes	Wenn sich eine Modelldatei ändert
 	When the diffusion model changes	Wenn sich das Diffusionsmodell ändert
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	Adapter im Unterordner loras des Modellordners, angewendet von der nativen Engine

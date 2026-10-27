@@ -243,3 +243,50 @@ fn a_short_group_shows_one_row_and_drops_land_in_the_deck() {
     let app = h.state();
     assert!(visible(app));
 }
+
+/// A safetensors file with these tensor names (one f32 each), for the LoRA list.
+fn fake_lora(path: &std::path::Path, names: &[&str]) {
+    let header: serde_json::Map<String, Value> = names.iter().enumerate().map(|(i, n)| (n.to_string(), json!({"dtype": "F32", "shape": [1], "data_offsets": [i * 4, i * 4 + 4]}))).collect();
+    let h = serde_json::to_vec(&Value::Object(header)).unwrap();
+    let mut bytes = (h.len() as u64).to_le_bytes().to_vec();
+    bytes.extend(h);
+    bytes.extend(vec![0u8; names.len() * 4]);
+    std::fs::write(path, bytes).unwrap();
+}
+
+#[test]
+fn the_lora_rows_list_the_templates_family_and_a_run_sends_the_ones_switched_on() {
+    use egui_kittest::kittest::Queryable;
+    let fake = FakeComfy::start().unwrap();
+    let (mut a, _, _) = app(&fake.url);
+    let models = std::env::temp_dir().join(format!("pcx-loras-{}", std::process::id()));
+    std::fs::create_dir_all(models.join("loras")).unwrap();
+    fake_lora(&models.join("loras").join("restore.safetensors"), &["diffusion_model.transformer_blocks.0.attn.to_k.lora_A.weight", "diffusion_model.transformer_blocks.31.attn.to_k.lora_B.weight"]);
+    fake_lora(&models.join("loras").join("anypaint.safetensors"), &["diffusion_model.blocks.0.attn.gate.lora_A.weight"]);
+    a.session.edit_prefs(|p| {
+        p.integrations.engine = "native".into();
+        p.integrations.runtime_path = "C:/runtime".into();
+        p.integrations.models_path = models.to_string_lossy().into_owned();
+        p.integrations.allow_research_models = true;
+    });
+    a.ui.generate.mode = "edit".into();
+    a.ui.generate.template.insert("edit".into(), "qwen-2.1/edit".into());
+    a.ui.generate.prompt = "restore the photo".into();
+    let mut h = harness(a, 520.0);
+    h.get_by_label("LoRAs").click();
+    h.run_steps(2);
+    assert!(h.query_by_label("restore").is_some(), "the 2.1 adapter is listed");
+    assert!(h.query_by_label("anypaint").is_none(), "Krea 2's is not, for a 2.1 template");
+    h.get_by_label("restore").click();
+    h.run_steps(2);
+    let v = inspect(h.state());
+    assert_eq!(v["loras"]["files"], json!(["restore.safetensors"]));
+    assert_eq!(v["params"]["loras"], json!([{"file": "restore.safetensors", "strength": 1.0}]), "{v}");
+    // The ComfyUI route applies none: no rows, and the run sends none.
+    let app = h.state_mut();
+    app.session.edit_prefs(|p| p.integrations.engine = "comfy".into());
+    app.ui.generate.lora_list = None;
+    refresh_loras(app, "qwen-2.1/edit");
+    assert!(request(app).unwrap().1.get("loras").is_none());
+    let _ = std::fs::remove_dir_all(&models);
+}

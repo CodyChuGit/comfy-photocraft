@@ -24,3 +24,48 @@ pt-br	Native runtime folders	Pastas do runtime nativo
 pt-br	Native models folder	Pasta de modelos nativos
 ru	Native runtime folders	Папки нативной среды выполнения
 ru	Native models folder	Папка нативных моделей
+cs	LoRAs	LoRAs
+cs	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptéry v podsložce loras složky modelů, použité nativním enginem
+de	LoRAs	LoRAs
+de	Adapters in the models folder's loras subfolder, applied by the native engine	Adapter im Unterordner loras des Modellordners, angewendet von der nativen Engine
+el	LoRAs	LoRAs
+el	Adapters in the models folder's loras subfolder, applied by the native engine	Προσαρμογείς στον υποφάκελο loras του φακέλου μοντέλων, που εφαρμόζονται από την εγγενή μηχανή
+es	LoRAs	LoRAs
+es	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptadores de la subcarpeta loras de la carpeta de modelos, aplicados por el motor nativo
+fr	LoRAs	LoRAs
+fr	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptateurs du sous-dossier loras du dossier des modèles, appliqués par le moteur natif
+hu	LoRAs	LoRAs
+hu	Adapters in the models folder's loras subfolder, applied by the native engine	Adapterek a modellmappa loras almappájában, a natív motor alkalmazza őket
+id	LoRAs	LoRAs
+id	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptor di subfolder loras pada folder model, diterapkan oleh mesin native
+it	LoRAs	LoRAs
+it	Adapters in the models folder's loras subfolder, applied by the native engine	Adattatori nella sottocartella loras della cartella dei modelli, applicati dal motore nativo
+ja	LoRAs	LoRAs
+ja	Adapters in the models folder's loras subfolder, applied by the native engine	モデルフォルダーの loras サブフォルダーにあるアダプター。ネイティブエンジンが適用します
+ko	LoRAs	LoRAs
+ko	Adapters in the models folder's loras subfolder, applied by the native engine	모델 폴더의 loras 하위 폴더에 있는 어댑터로, 네이티브 엔진이 적용합니다
+nl	LoRAs	LoRAs
+nl	Adapters in the models folder's loras subfolder, applied by the native engine	Adapters in de submap loras van de modellenmap, toegepast door de native engine
+pl	LoRAs	LoRAs
+pl	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptery z podfolderu loras folderu modeli, stosowane przez natywny silnik
+pt-br	LoRAs	LoRAs
+pt-br	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptadores na subpasta loras da pasta de modelos, aplicados pelo mecanismo nativo
+ru	LoRAs	LoRAs
+ru	Adapters in the models folder's loras subfolder, applied by the native engine	Адаптеры из подпапки loras папки моделей, применяемые встроенным движком
+sr	LoRAs	LoRAs
+sr	Adapters in the models folder's loras subfolder, applied by the native engine	Adapteri u podfascikli loras fascikle modela, koje primenjuje izvorni mehanizam
+tr	LoRAs	LoRAs
+tr	Adapters in the models folder's loras subfolder, applied by the native engine	Modeller klasörünün loras alt klasöründeki bağdaştırıcılar, yerel motor tarafından uygulanır
+uk	LoRAs	LoRAs
+uk	Adapters in the models folder's loras subfolder, applied by the native engine	Адаптери з підпапки loras папки моделей, які застосовує вбудований рушій
+vi	LoRAs	LoRAs
+vi	Adapters in the models folder's loras subfolder, applied by the native engine	Các bộ điều hợp trong thư mục con loras của thư mục mô hình, do engine gốc áp dụng
+zh-hans	LoRAs	LoRAs
+zh-hans	Adapters in the models folder's loras subfolder, applied by the native engine	模型文件夹 loras 子文件夹中的适配器，由原生引擎应用
+zh-hant	LoRAs	LoRAs
+zh-hant	Adapters in the models folder's loras subfolder, applied by the native engine	模型資料夾 loras 子資料夾中的適配器，由原生引擎套用
+fr	Strength	Intensité
+id	Strength	Kekuatan
+ru	Strength	Интенсивность
+zh-hans	Strength	强度
+zh-hant	Strength	強度

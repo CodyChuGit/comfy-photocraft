@@ -4155,3 +4155,5 @@ curves	Smooth	スムーズ
 	Unload models between tasks	タスク間でモデルを解放
 	When any model file changes	いずれかのモデルファイルが変わったとき
 	When the diffusion model changes	拡散モデルが変わったとき
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	モデルフォルダーの loras サブフォルダーにあるアダプター。ネイティブエンジンが適用します

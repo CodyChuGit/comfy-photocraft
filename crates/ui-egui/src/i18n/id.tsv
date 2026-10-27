@@ -3476,3 +3476,6 @@ curves	Smooth	Haluskan
 	Unload models between tasks	Bongkar model di antara tugas
 	When any model file changes	Saat berkas model mana pun berubah
 	When the diffusion model changes	Saat model difusi berubah
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptor di subfolder loras pada folder model, diterapkan oleh mesin native
+	Strength	Kekuatan

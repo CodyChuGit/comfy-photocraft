@@ -111,12 +111,18 @@ fn the_engine_preference_routes_to_the_native_worker() {
     assert_eq!(st.prompts[0].1["3"]["class_type"], "TextGenerate", "{}", st.prompts[0].1);
     drop(st);
     // LoRAs ride along as a request parameter for the native engine (validated here, applied
-    // by the worker); the ComfyUI route ignores the list, and a malformed one is refused.
+    // by the worker); the ComfyUI route chains a LoraLoaderModelOnly per file after the model
+    // loader, and a malformed list is refused.
     s.execute("select.rect", json!({"x": 10, "y": 10, "width": 40, "height": 30})).unwrap();
     let f = s.execute("generate.fill", json!({"prompt": "a hat", "template": "qwen-2.1/fill", "seed": 4, "loras": [{"file": "qwen-image-2.1-consistency.safetensors", "strength": 0.5}]})).unwrap();
     assert_eq!(f["template"].as_str(), Some("qwen-2.1/fill"), "{f}");
     let f = s.execute("generate.fill", json!({"prompt": "a hat", "template": "qwen-edit-2511/fill", "seed": 4, "loras": [{"file": "x.safetensors"}]})).unwrap();
     assert_eq!(f["template"].as_str(), Some("qwen-edit-2511/fill"), "{f}");
+    let st = comfy.state();
+    let g = &st.prompts.last().unwrap().1;
+    let lora = g.as_object().unwrap().values().find(|n| n["class_type"] == "LoraLoaderModelOnly" && n["inputs"]["lora_name"] == "x.safetensors");
+    assert!(lora.is_some_and(|n| n["inputs"]["strength_model"] == 1.0), "{g}");
+    drop(st);
     for bad in [json!("x"), json!([{"strength": 1}]), json!([{"file": "../x.safetensors"}]), json!([{"file": "x.safetensors", "strength": 9}])] {
         let e = s.execute("generate.fill", json!({"prompt": "a hat", "template": "qwen-2.1/fill", "loras": bad})).unwrap_err();
         assert!(matches!(e, crate::EngineError::BadParams { .. }), "{e}");

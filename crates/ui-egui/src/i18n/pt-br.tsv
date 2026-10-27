@@ -4264,3 +4264,5 @@ layerLabel	No Color	Sem cor
 	Unload models between tasks	Descarregar modelos entre tarefas
 	When any model file changes	Quando qualquer arquivo de modelo mudar
 	When the diffusion model changes	Quando o modelo de difusão mudar
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	Adaptadores na subpasta loras da pasta de modelos, aplicados pelo mecanismo nativo

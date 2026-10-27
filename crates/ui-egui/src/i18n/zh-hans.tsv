@@ -3107,3 +3107,6 @@ curves	Smooth	平滑
 	Unload models between tasks	任务之间卸载模型
 	When any model file changes	任一模型文件更改时
 	When the diffusion model changes	扩散模型更改时
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	模型文件夹 loras 子文件夹中的适配器，由原生引擎应用
+	Strength	强度

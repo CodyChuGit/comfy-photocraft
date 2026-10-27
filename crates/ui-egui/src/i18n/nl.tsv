@@ -4235,3 +4235,5 @@ curves	Smooth	Vloeiend maken
 	Unload models between tasks	Modellen ontladen tussen taken
 	When any model file changes	Als een modelbestand verandert
 	When the diffusion model changes	Als het diffusiemodel verandert
+	LoRAs	LoRAs
+	Adapters in the models folder's loras subfolder, applied by the native engine	Adapters in de submap loras van de modellenmap, toegepast door de native engine
