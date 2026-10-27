@@ -22,3 +22,5 @@ running it elsewhere. The numbers they produced are in [`../../benchmarks.md`](.
 | `generations-live.ps1` | Plan Phase 1 acceptance (2026-10-11): the release GUI with its own config folder in `%TEMP%`, fill/edit/image as background jobs, Place after close, a dead server URL, a restart; screenshots in the work folder. Relative paths, runs from any checkout |
 | `append-translations.ps1` + `pref-translations.tsv` | Append `lang<TAB>source<TAB>translation` rows to the 13 TSVs |
 | `enhance-edit-system.txt`, `enhance-t2i-system.txt` | ComfyUI's shipped enhancer prompts, for reference (too long for the 4B model) |
+| `build-native.cmd`, `native-env.cmd` | PhotoshopEX's CLI or app with the native engine compiled in; any command (genai-native's tests) in the same MSVC + nvcc environment |
+| `naming-probe.ps1` + `removal-system.txt` | The removal rewriter's two views asked of the worker or ComfyUI alone (`chat_probe` example); the system turn the engine sends |
