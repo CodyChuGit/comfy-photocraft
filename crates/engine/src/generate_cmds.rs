@@ -98,11 +98,23 @@ pub(crate) struct Tuning {
     /// model removed beside it, where they touch the hole (`shadow`, on by default; AusBoss's
     /// differential composite, [`change_band`]).
     pub shadow: bool,
+    /// The context a removal's request takes around the grown hole, in the hole's longer side
+    /// (`removeMargin`, 0.25 unless given): a shadow longer than that runs out of the request
+    /// and stays (the dog's, 2026-10-27).
+    pub remove_margin: f64,
+    /// A named removal on a whole-picture route asks for the object "and its shadow"
+    /// (`nameShadow`).
+    pub name_shadow: bool,
 }
+
+/// [`Tuning::remove_margin`] unless given.
+const REMOVE_MARGIN: f64 = 0.25;
+/// [`Tuning::name_shadow`] unless given.
+const NAME_SHADOW: bool = false;
 
 impl Default for Tuning {
     fn default() -> Self {
-        Self { sampler: None, scheduler: None, max_pixels: MAX_FILL_REQUEST_PIXELS, loras: Vec::new(), keep_object: false, shadow: true }
+        Self { sampler: None, scheduler: None, max_pixels: MAX_FILL_REQUEST_PIXELS, loras: Vec::new(), keep_object: false, shadow: true, remove_margin: REMOVE_MARGIN, name_shadow: NAME_SHADOW }
     }
 }
 
@@ -130,8 +142,9 @@ impl Tuning {
                 Some(_) => Err(bad(cmd, format!("`{key}` must be true or false"))),
             }
         };
-        let (keep_object, shadow) = (flag("keepObject", false)?, flag("shadow", true)?);
-        Ok(Tuning { sampler: name("sampler")?, scheduler: name("scheduler")?, max_pixels, loras: loras_of(cmd, p)?, keep_object, shadow })
+        let (keep_object, shadow, name_shadow) = (flag("keepObject", false)?, flag("shadow", true)?, flag("nameShadow", NAME_SHADOW)?);
+        let remove_margin = opt_num(cmd, p, "removeMargin", 0.0, 1.0)?.unwrap_or(REMOVE_MARGIN);
+        Ok(Tuning { sampler: name("sampler")?, scheduler: name("scheduler")?, max_pixels, loras: loras_of(cmd, p)?, keep_object, shadow, remove_margin, name_shadow })
     }
 
     /// The `loras` request parameter for the worker, or nothing.
@@ -1488,6 +1501,16 @@ pub(crate) fn generative_remove(
                         }
                     }
                 }
+                // `nameShadow` on a whole-picture route: the prompt takes the object's shadow
+                // with it ("the golden retriever and its shadow"); the model removes both and
+                // the change band shows the shadow's part.
+                if job.tuning.name_shadow
+                    && job.tuning.shadow
+                    && template::find(&job.template_id).is_ok_and(|t| t.meta.family == "qwen-image-2.1")
+                    && let Some(o) = job.object.as_ref()
+                {
+                    job.rewritten = Some(removal_prompt(&format!("{o} and its shadow")));
+                }
                 // Named or not, the fill's prompt is settled here.
                 job.enhance = false;
                 release_thinker(&job.server, job.purge, &job.thinker, &job.backend);
@@ -1510,7 +1533,7 @@ pub(crate) fn generative_remove(
             if job.grow == 0 {
                 job.grow = remove_grow(hole);
             }
-            let rect = fill_rect(hole.inflate(job.grow.min(MAX_GROW) as i32).intersect(&canvas), 0.25, canvas)?;
+            let rect = fill_rect(hole.inflate(job.grow.min(MAX_GROW) as i32).intersect(&canvas), job.tuning.remove_margin, canvas)?;
             let rect = at_least(rect, REMOVE_MIN_REQUEST, canvas);
             // `keepObject`: the object's pixels and silhouette as they are now, before the
             // fill's layers go in; its layer lands above them, named after what was removed.

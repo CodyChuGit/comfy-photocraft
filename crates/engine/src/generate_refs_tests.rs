@@ -257,6 +257,38 @@ fn the_classical_tools_go_through_the_model_when_asked_and_fall_back_without_a_s
 }
 
 #[test]
+fn name_shadow_asks_a_whole_picture_removal_for_the_objects_shadow_too() {
+    use photocraft_genai::fake::Options;
+    let fake = FakeComfy::start_with(Options {
+        segments_for: vec![("red hat".into(), vec![[0.25, 1.0 / 3.0, 0.75, 170.0 / 300.0]])],
+        enhanced_text: Some("Remove the red hat.".into()),
+        ..Options::default()
+    })
+    .unwrap();
+    let (mut s, _, _) = session(&fake.url);
+    s.edit_prefs(|p| {
+        p.integrations.default_fill_template = "qwen-2.1/edit".into();
+        p.integrations.allow_research_models = true;
+    });
+    s.execute("file.new", json!({"width": 400, "height": 300})).unwrap();
+    let stroke = |extra: serde_json::Value| {
+        let mut p = json!({"points": [[110, 135], [210, 135]], "size": 30, "hardness": 1, "type": "generative", "variations": 1, "seed": 3});
+        if let (Some(o), Some(e)) = (p.as_object_mut(), extra.as_object()) {
+            o.extend(e.clone());
+        }
+        p
+    };
+    let mut said = Vec::new();
+    for extra in [json!({}), json!({"nameShadow": true})] {
+        let r = s.execute("paint.spotHealing", stroke(extra)).unwrap();
+        let info = generative_info(s.active().unwrap().doc.layer(LayerId(r["layer"].as_u64().unwrap())).unwrap()).unwrap();
+        said.push(info.enhanced);
+    }
+    assert!(said[0].starts_with("Remove the red hat and fill its place"), "off by default: {said:?}");
+    assert!(said[1].starts_with("Remove the red hat and its shadow and fill its place"), "{said:?}");
+}
+
+#[test]
 fn a_generative_stroke_takes_the_object_under_it_whole_when_it_covers_enough_of_it() {
     use photocraft_genai::fake::Options;
     // A 400×300 picture; the detector "finds" an object at (100, 100)–(220, 170) under the
