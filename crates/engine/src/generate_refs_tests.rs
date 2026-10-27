@@ -365,6 +365,14 @@ fn a_rewritten_removal_names_its_object() {
         Some("black silhouette of the standing person".into()),
         "\"standing\" after an article is part of the name, not where it ends"
     );
+    use crate::generate_cmds::wearer_candidates;
+    assert_eq!(
+        wearer_candidates("man wearing the cap and mask"),
+        Some(vec!["cap".to_string(), "mask".into(), "cap and mask".into(), "man".into()]),
+        "each worn thing, then all of them, then the wearer: the stroke decides"
+    );
+    assert_eq!(wearer_candidates("woman holding a red umbrella"), Some(vec!["red umbrella".to_string(), "woman".into()]));
+    assert_eq!(wearer_candidates("white face mask"), None, "a plain name keeps the plain candidates");
     use crate::generate_cmds::{name_candidates, removal_prompt};
     assert_eq!(name_candidates("white ceramic coffee cup"), vec!["white ceramic coffee cup", "coffee cup", "cup"]);
     assert_eq!(name_candidates("red boat"), vec!["red boat", "boat"]);

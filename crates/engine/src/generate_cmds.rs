@@ -1061,6 +1061,53 @@ pub(crate) fn name_candidates(name: &str) -> Vec<String> {
     out
 }
 
+/// The detector's candidates for a name that is a wearer and what it wears ("man wearing the
+/// cap and mask" → "cap", "mask", "cap and mask", "man"), or `None` for a plain name. The
+/// removal asks for each and keeps the one whose mask matches the stroke best.
+pub(crate) fn wearer_candidates(name: &str) -> Option<Vec<String>> {
+    let (wearer, worn) = [" wearing ", " holding ", " carrying "].iter().find_map(|m| name.split_once(m))?;
+    let bare = |s: &str| -> String {
+        let s = s.trim();
+        ["the ", "a ", "an ", "his ", "her ", "their ", "its "].iter().find_map(|a| s.strip_prefix(a)).unwrap_or(s).trim().to_string()
+    };
+    let mut out: Vec<String> = worn.split(" and ").flat_map(|p| p.split(", ")).map(bare).filter(|p| !p.is_empty()).collect();
+    for whole in [bare(worn), bare(wearer)] {
+        if !whole.is_empty() && !out.contains(&whole) {
+            out.push(whole);
+        }
+    }
+    Some(out)
+}
+
+/// How well an object (`obj` over the canvas, `on` pixels) matches a stroke (`stroke` over
+/// `sb`): intersection over union of the two.
+fn stroke_overlap(stroke: &[f32], sb: Rect, obj: &[f32], on: u64, canvas: Rect) -> f64 {
+    let cw = canvas.width().max(1) as usize;
+    let bw = sb.width().max(1) as usize;
+    let (mut inside, mut painted) = (0u64, 0u64);
+    for (i, c) in stroke.iter().enumerate() {
+        if *c < 0.5 {
+            continue;
+        }
+        painted += 1;
+        let (x, y) = (sb.x0 + (i % bw) as i32, sb.y0 + (i / bw) as i32);
+        if canvas.contains(x, y) && obj.get((y - canvas.y0) as usize * cw + (x - canvas.x0) as usize).copied().unwrap_or(0.0) >= 0.5 {
+            inside += 1;
+        }
+    }
+    let union = (painted + on).saturating_sub(inside).max(1);
+    inside as f64 / union as f64
+}
+
+/// `PHOTOCRAFT_DUMP_VIEWS=<folder>` (bench only): the picture a removal's rewriter is shown
+/// is saved there as `views-<n>.png`, so `naming-probe.ps1` can ask about exactly that picture.
+fn dump_views(seen: &Rgba8) {
+    let Ok(dir) = std::env::var("PHOTOCRAFT_DUMP_VIEWS") else { return };
+    let Ok(png) = photocraft_genai::png::encode_rgba8(seen) else { return };
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
+    let _ = std::fs::write(std::path::Path::new(dir.trim()).join(format!("views-{stamp}.png")), png);
+}
+
 /// Is a generative backend set up: a ComfyUI server, or the native worker's folders? The
 /// classical tools go through the model only then, and fall back to their own algorithms
 /// otherwise (a server that is set up but down is reported by the job instead).
@@ -1391,6 +1438,7 @@ pub(crate) fn generative_remove(
                 // fill's prompt is composed from them with the measured generic wording (the
                 // rewriter's own closing clauses listed the scene's neighbours and the model
                 // painted them: a rock for the boat, the table over a wrist).
+                dump_views(&seen);
                 if let Ok(Some(p)) =
                     enhance_prompt(job.thinker.as_ref(), EnhanceKind::Remove, &job.prompt, Some(&seen), Some(&place), job.seed, &JobProgress::span(ctx, 0.01, 0.04))
                     && let Some(name) = named_object(&p)
@@ -1398,16 +1446,35 @@ pub(crate) fn generative_remove(
                     job.rewritten = Some(removal_prompt(&name));
                     job.object = Some(name.clone());
                     if let Some(finder) = &object {
-                        // The name as given, then its last two words, then its last word: the
-                        // detector found nothing called "white ceramic coffee cup" (measured).
-                        for candidate in name_candidates(&name) {
+                        // "The man wearing the cap and mask": the wearer and each worn thing
+                        // are asked for, and the one whose mask matches the stroke best is
+                        // taken and named (the 8B names the wearer from a crop with a little
+                        // face in it, measured 2026-10-27). Otherwise the name as given, then
+                        // its last two words, then its last word: the detector found nothing
+                        // called "white ceramic coffee cup" (measured).
+                        let worn = wearer_candidates(&name);
+                        let pick_best = worn.is_some();
+                        let mut best: Option<(f64, String, Vec<f32>, Rect)> = None;
+                        for candidate in worn.unwrap_or_else(|| name_candidates(&name)) {
                             ctx.progress(0.04, &format!("Finding the {candidate}"));
                             if let Some((obj, ob, on)) = finder.find_by_text(&candidate, doc, *active, ctx)?
                                 && stroke_takes(&stroke.1, stroke.0, &obj, on, canvas)
                             {
-                                (area, coverage) = take_in(area, &coverage, &obj, ob, canvas, sel);
-                                taken = true;
-                                break;
+                                let score = stroke_overlap(&stroke.1, stroke.0, &obj, on, canvas);
+                                if best.as_ref().is_none_or(|b| score > b.0) {
+                                    best = Some((score, candidate, obj, ob));
+                                }
+                                if !pick_best {
+                                    break;
+                                }
+                            }
+                        }
+                        if let Some((_, candidate, obj, ob)) = best {
+                            (area, coverage) = take_in(area, &coverage, &obj, ob, canvas, sel);
+                            taken = true;
+                            if pick_best {
+                                job.rewritten = Some(removal_prompt(&candidate));
+                                job.object = Some(candidate);
                             }
                         }
                     }
