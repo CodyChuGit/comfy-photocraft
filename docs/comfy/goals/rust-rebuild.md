@@ -46,7 +46,7 @@ progress log (newest last). The plan behind it is `docs/comfy/plan-native-engine
 | Generative Expand | 2.1 expand | yes | — |
 | Generative Edit | 2.1 edit; Krea 2 edit (General Edit V2) | yes | — |
 | Remove Background (matte) | 2.1 matte | yes | — |
-| Select by text / subject / point, Object Selection | SAM 3.1 | **through ONNX Runtime + cuDNN**, ONNX graphs made by a Python export | SAM 3.1 on candle (R1) |
+| Select by text / subject / point, Object Selection | SAM 3.1 | **on candle from ComfyUI's checkpoint** when it is there (since 2026-10-28; the ONNX graphs otherwise) | speed: by text on a new picture 1.7 s against ONNX Runtime's 0.35 s (R1 step 10), then ONNX Runtime out (R5) |
 | Prompt rewriter, judge, naming | 2.1's Qwen3-VL 8B as a chat model | yes | — |
 | Fill from a reference | 2.1 edit by instruction (since 2026-10-27; 2511 fill-ref without the opt-in) | yes | — |
 | Image from references | 2.1 image-ref (since 2026-10-27; 2511 image-ref without the opt-in) | yes | — |
@@ -157,3 +157,11 @@ step, the dev log and roadmap updated.
   ComfyUI's `models` folder as it is (`comfy_files`; the prequantized-DiT cache goes to
   `%LOCALAPPDATA%\genai-native\qir-cache`, never into ComfyUI's folder); Krea 2 from ComfyUI's
   files is pixel-identical to the snapshot route.
+- 2026-10-28: R4 landed (genai-native `58f7a15`: 2.1 image and edit pixel-identical too; a Q8_0
+  text-encoder GGUF cached once, 2.1 cold load 15 s), R3 encoder (`9994e39`) and DiT (`9941269`).
+  **R1 step 9**: the worker's perception engine runs SAM 3.1 on candle on the GPU whenever the
+  checkpoint is there (`7619fd6`; PhotoshopEX `41b6d0ef` builds it with `native-diffusion`), the
+  CLIP tokenizer assembled from ComfyUI's `sd1_tokenizer`. `sam-live.ps1` through the app:
+  same bounds as the ONNX route, pixel counts within 1%, points 30 ms on both, by text on a
+  new picture 1.7–1.9 s against 0.3–0.4 s. Codex on step 10 (GPU speed: weights cast once,
+  bf16, no host round trips) and on R3 steps 5–6 (the Layered noise, schedule and pipeline).
