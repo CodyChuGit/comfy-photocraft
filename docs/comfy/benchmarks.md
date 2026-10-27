@@ -689,6 +689,34 @@ are named "glasses" (was "white beard"), the boat and the umbrella come out clea
 lost once "the thing the close-up is centred on" was dropped from the wording (it made the 4B
 say "the black bicycle seat"). The 8B still names the wearer on two scenes.
 
+**The rewriter's views per model** (the same night; `naming-probe.ps1` for the names alone,
+three seeds, then `views-run.ps1` for the removals; sheets `st-e21v-*`, `st-p21v-*`,
+`st-auto6-*` in `bench\stock`). The 8B named the wearer because for a small object the
+surroundings and the close-up were one crop. The close-up's margin, a share of the grown
+stroke's side:
+
+| Margin | Worker 8B | ComfyUI 4B |
+|---|---|---|
+| 0.25 (was both) | the mask's whole stroke: "the man wearing the cap and mask", 3 seeds of 3 | right on every scene but the boat |
+| 0.10 | the mask, the glasses, every scene but the boat's people | names parts: "the silver chain", "the black bicycle handlebar", 3 of 3 |
+| 0.15, surroundings 2.5× the close-up | right but for the boat | "the white beard" for the glasses, 2 of 2 |
+| 0.25, outside the stroke dimmed | "the selected area showing the man's face", "the floor" | (not run) |
+
+So 0.1 when the worker's 8B answers, 0.25 for the 4B (`naming_views`), and the close-up keeps
+its aspect beside its surroundings. On the removals, clean of 20:
+
+| Route | Before | Now | Time a stroke |
+|---|---|---|---|
+| 2.1 edit, worker 8B, one candidate (`-e21n` → `-e21v`) | 13 | 14 | 6–29 s |
+| 2.1 edit, worker 8B, two judged (`-p21` → `-p21v`) | 12 | **15** | 6–28 s |
+| 2511 shipped, ComfyUI 4B (`-auto4` → `-auto6`) | 13 | 16 | 33–58 s |
+
+Gained on 2.1: the glasses' whole stroke (was a blurred face), the mask's half stroke, the
+boat's whole stroke with its hull. Still lost: the mask's whole stroke (the real crop's extra
+face pixels flip the 8B to the man; the probe's near-identical crop says "mask" 16 of 16),
+the cup (2.1 continues the table's shade into a dark patch), the half strokes on the boat and
+the motorcycle. The dog's cast shadow stays on every route.
+
 **The removal adapter** (2026-10-22; `lora-run.ps1`). prithivMLmods' Object Remover v2, an
 Apache-2.0 LoRA on 2511 trained to delete what is painted red (`models.md`), as the
 `qwen-edit-2511/remove-lightning-8` template: the Lightning graph with the adapter loaded

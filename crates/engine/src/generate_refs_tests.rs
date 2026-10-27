@@ -359,11 +359,40 @@ fn a_rewritten_removal_names_its_object() {
     assert_eq!(named_object("Remove the selected region of the cup."), None);
     assert_eq!(named_object("Remove the selected object."), None);
     assert_eq!(named_object("Remove the black frame."), None, "a photograph's frame or border is never what a stroke on the picture means");
+    assert_eq!(named_object("Remove the bicycle leaning against the wall."), Some("bicycle".into()), "not the wall it leans on");
+    assert_eq!(
+        named_object("Remove the black silhouette of the standing person."),
+        Some("black silhouette of the standing person".into()),
+        "\"standing\" after an article is part of the name, not where it ends"
+    );
     use crate::generate_cmds::{name_candidates, removal_prompt};
     assert_eq!(name_candidates("white ceramic coffee cup"), vec!["white ceramic coffee cup", "coffee cup", "cup"]);
     assert_eq!(name_candidates("red boat"), vec!["red boat", "boat"]);
     assert_eq!(name_candidates("dog"), vec!["dog"]);
     assert!(removal_prompt("silver watch").starts_with("Remove the silver watch and fill its place with the surrounding scene continued seamlessly"));
+}
+
+#[test]
+fn the_worker_names_a_removal_from_a_tighter_close_up_and_a_wide_one_keeps_its_shape() {
+    use crate::generate_cmds::{naming_views, side_by_side};
+    use photocraft_geom::Rect;
+    use photocraft_genai::Rgba8;
+    // A 200×160 mask on a 2000×1500 photo: the close-up the 4B sees has a quarter of the grown
+    // stroke's side around it, the one the worker's 8B sees a tenth.
+    let canvas = Rect::new(0, 0, 2000, 1500);
+    let hole = Rect::new(900, 700, 1100, 860);
+    let (wide, close) = naming_views(hole, canvas, false).unwrap();
+    let (wide_w, close_w) = naming_views(hole, canvas, true).unwrap();
+    assert!(close_w.width() < close.width() && close_w.height() < close.height(), "{close_w:?} inside {close:?}");
+    for (w, c) in [(wide, close), (wide_w, close_w)] {
+        assert!(c.x0 <= hole.x0 && c.y0 <= hole.y0 && c.x1 >= hole.x1 && c.y1 >= hole.y1, "the close-up holds the stroke: {c:?}");
+        assert!(w.width() >= 384 && w.height() >= 384 && w.x0 <= c.x0 && w.x1 >= c.x1, "the surroundings hold the close-up: {w:?}");
+    }
+    // A close-up three times as wide as it is high beside square surroundings keeps its shape.
+    let left = Rgba8::new(40, 40, vec![0; 40 * 40 * 4]).unwrap();
+    let right = Rgba8::new(90, 30, vec![255; 90 * 30 * 4]).unwrap();
+    let seen = side_by_side(&left, &right).unwrap();
+    assert_eq!((seen.width, seen.height), (40 + 120, 40), "the right half at 120×40, not squeezed to 40×40");
 }
 
 #[test]

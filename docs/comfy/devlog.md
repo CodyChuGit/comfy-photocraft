@@ -4,6 +4,35 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-26 (night): the rewriter's views per model; 2.1 on the worker passes 2511
+
+- **A naming probe** (`naming-probe.ps1` + `crates/genai/examples/chat_probe.rs`): the two
+  views a removal's rewriter sees, made from each stock scene's half and whole stroke, asked
+  of the running worker (or of ComfyUI with `PHOTOCRAFT_COMFY_URL`) in a second each. Wording
+  and crop changes are now seconds, not a 20-minute run.
+- **The views were the cause, not the wording.** For an object under ~300 px the
+  "surroundings" (at least 384 px) and the "close-up" (a quarter of the grown stroke around
+  it) were the same crop, so the 8B named the most salient thing in it: the man. A close-up
+  with a tenth around it names the mask and the glasses; the 4B names parts from that one
+  (the dog's chain, the bicycle's handlebar), so the margin follows the model that answers
+  (`naming_views`: 0.1 when the worker's own 8B answers, 0.25 for ComfyUI's 4B). Wider
+  surroundings made the 4B name the beard; a dimmed spotlight on the stroke made the 8B talk
+  about "the selected area". Both dropped.
+- **The close-up keeps its shape**: `side_by_side` held the right half to the left's width,
+  which squeezed a wide close-up (the boat's hull at two thirds). **The name parser** cut "the
+  black silhouette of the standing person" at "standing" (a word after an article is now part
+  of the name) and cuts at "leaning".
+- **Measured** (`views-run.ps1`, the ten hard scenes, half and whole, my count of clean
+  removals of 20): 2.1 edit on the worker, one candidate 14 (was 13), two judged **15** (was
+  12); the shipped 2511 Best of two 16 (13 on its last run, random seeds). The 2.1 worker
+  route, no ComfyUI, 6–28 s a stroke, now matches or beats the shipped one on this set.
+- Open: the mask's whole stroke still names "the man wearing the cap and mask" (the real
+  crop's few extra pixels of face flip the 8B; the probe's nearly identical crop says "mask"
+  16 times of 16); the cup's dark patch on 2.1 is the table's own shade continued, so the
+  differential composite would not fix it; the dog's cast shadow stays on every route (that
+  one is the differential composite's case). The chat KV cache needs the encoder's
+  incremental pass with M-RoPE image positions: the names already take 1–2 s.
+
 ## 2026-10-26: removals stay on the Lightning tier under Quality best
 
 - The user reported Spot Healing and image generation "not working" in the app with the

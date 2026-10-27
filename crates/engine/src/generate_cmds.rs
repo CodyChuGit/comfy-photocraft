@@ -800,6 +800,11 @@ pub(crate) fn thinker_for(s: &Session, own: &Arc<dyn GenerativeBackend>, server:
     backend_for(s, ENHANCE_EDIT_TEMPLATE).map(|(b, _)| b).unwrap_or_else(|_| Arc::clone(own))
 }
 
+/// Whether two handles are the same backend (a job's questions answered by its own worker).
+fn same_backend(a: &Arc<dyn GenerativeBackend>, b: &Arc<dyn GenerativeBackend>) -> bool {
+    Arc::as_ptr(a) as *const () == Arc::as_ptr(b) as *const ()
+}
+
 /// On the native route a ComfyUI server answering the job's questions (the rewriter, the
 /// judge) holds only the vision-language model: it leaves after each answer unless purges are
 /// off, so the worker's resident models have the card. Measured 2026-10-26: with the 5 GB model
@@ -807,8 +812,7 @@ pub(crate) fn thinker_for(s: &Session, own: &Arc<dyn GenerativeBackend>, server:
 /// paged for minutes; ComfyUI loads it again in two seconds for the next question. A worker
 /// answering its own questions is never told to unload.
 fn release_thinker(server: &str, purge: &str, thinker: &Arc<dyn GenerativeBackend>, own: &Arc<dyn GenerativeBackend>) {
-    let same = Arc::as_ptr(thinker) as *const () == Arc::as_ptr(own) as *const ();
-    if server == NATIVE_SERVER_KEY && purge != "never" && !same {
+    if server == NATIVE_SERVER_KEY && purge != "never" && !same_backend(thinker, own) {
         let _ = thinker.free();
     }
 }
@@ -1129,6 +1133,26 @@ pub(crate) fn removal_variations(p: &Value) -> u32 {
 /// came back as a lighter, smoother patch of fabric (measured 2026-10-21).
 const REMOVE_MIN_REQUEST: i32 = 384;
 
+/// The margin of the close-up the rewriter names a removal's object from, a share of the grown
+/// stroke's longer side, by which model answers. ComfyUI's Qwen3-VL 4B names the whole object
+/// from a loose close-up and names a part from a tight one (the dog's chain, the bicycle's
+/// handlebar); the native worker's 8B names the most salient thing in a loose one, the wearer
+/// ("the man wearing the cap and mask" for a stroke on the mask, three seeds of three) and the
+/// worn thing from a tight one. Measured 2026-10-26 with `naming-probe.ps1` on the stock set's
+/// hard scenes, three seeds, both strokes.
+const REMOVE_CLOSE_MARGIN: f64 = 0.25;
+const REMOVE_CLOSE_MARGIN_WORKER: f64 = 0.1;
+
+/// The two views the rewriter names a removal's object from, for a stroke over `hole`: the
+/// surroundings (at least [`REMOVE_MIN_REQUEST`] on a side) and the close-up (the hole grown as
+/// the removal grows it, with the margin of the model that answers: `by_worker` when the native
+/// worker's own 8B does).
+pub(crate) fn naming_views(hole: Rect, canvas: Rect, by_worker: bool) -> Result<(Rect, Rect)> {
+    let margin = if by_worker { REMOVE_CLOSE_MARGIN_WORKER } else { REMOVE_CLOSE_MARGIN };
+    let close = fill_rect(hole.inflate(remove_grow(hole) as i32).intersect(&canvas), margin, canvas)?;
+    Ok((at_least(close, REMOVE_MIN_REQUEST, canvas), close))
+}
+
 /// `rect` widened about its centre to at least `min_side` on each side, slid inside `canvas`
 /// (clipped only where the canvas is smaller), on the request grid.
 fn at_least(rect: Rect, min_side: i32, canvas: Rect) -> Rect {
@@ -1207,10 +1231,13 @@ pub(crate) fn named_object(rewritten: &str) -> Option<String> {
     let rest = ["Remove the ", "remove the ", "Remove ", "remove "].iter().find_map(|p| t.strip_prefix(p))?;
     let cut = [
         ", ", " and replace", " and fill", " from ", " with ", " so ", ".", ";", " replacing", " completely", " entirely", " to ", " in the ", " on the ", " perched", " sitting",
-        " standing", " lying", " hanging", " taped", " mounted", " parked", " walking", " resting", " placed", " attached",
+        " standing", " lying", " hanging", " taped", " mounted", " parked", " walking", " resting", " placed", " attached", " leaning",
     ]
     .iter()
-    .filter_map(|m| rest.find(m))
+    // A word after an article describes the next thing rather than ending the name: "the
+    // black silhouette of the standing person" was cut to "black silhouette of the" (measured
+    // 2026-10-26).
+    .filter_map(|m| rest.match_indices(m).map(|(i, _)| i).find(|&i| !rest.get(..i).is_some_and(|b| [" the", " a", " an"].iter().any(|a| b.ends_with(a)))))
     .min()
     .unwrap_or(rest.len());
     let name = rest.get(..cut).unwrap_or("").trim();
@@ -1350,8 +1377,8 @@ pub(crate) fn generative_remove(
             if job.enhance {
                 ctx.progress(0.0, "Naming the object");
                 let (hole, _) = crate::select_ml_cmds::coverage_bounds(&coverage, area);
-                let close_rect = fill_rect(hole.inflate(remove_grow(hole) as i32).intersect(&canvas), 0.25, canvas)?;
-                let wide_rect = at_least(close_rect, REMOVE_MIN_REQUEST, canvas);
+                let by_worker = job.server == NATIVE_SERVER_KEY && same_backend(&job.thinker, &job.backend);
+                let (wide_rect, close_rect) = naming_views(hole, canvas, by_worker)?;
                 let crop = |r: Rect| -> Result<Rgba8> {
                     let c = photocraft_compose::render(doc, r).to_rgba8();
                     Rgba8::new(c.width, c.height, c.pixels).map_err(gen_err)
@@ -2881,11 +2908,17 @@ fn judged_rect(mask: &Gray8, level: u8) -> Rect {
     Rect::new(x0 - m, y0 - m, x1 + m, y1 + m).intersect(&Rect::new(0, 0, mask.width as i32, mask.height as i32))
 }
 
-/// `left` and `right` side by side, `right` scaled to `left`'s height (aspect kept, at most as
-/// wide as `left`): what the rewriter of a fill from a reference looks at.
+/// The widest a [`side_by_side`]'s right half is made (a sliver of a reference scaled up to a
+/// tall picture's height stays a bounded allocation; the request is shrunk to size after).
+const MAX_SIDE_BY_SIDE_WIDTH: u32 = 8192;
+
+/// `left` and `right` side by side, `right` scaled to `left`'s height with its aspect kept:
+/// what the rewriter of a fill from a reference and of a removal looks at. (It was once held to
+/// `left`'s width, which squeezed a wide close-up beside narrower surroundings: a boat's hull
+/// under its 384-px surroundings at two thirds of its width.)
 pub(crate) fn side_by_side(left: &Rgba8, right: &Rgba8) -> Result<Rgba8> {
     let h = left.height.max(1);
-    let rw = ((f64::from(right.width) * f64::from(h) / f64::from(right.height.max(1))).round() as u32).clamp(1, left.width.max(1));
+    let rw = ((f64::from(right.width) * f64::from(h) / f64::from(right.height.max(1))).round() as u32).clamp(1, MAX_SIDE_BY_SIDE_WIDTH);
     let right = if (right.width, right.height) == (rw, h) { right.clone() } else { resize_rgba8(right, rw, h)? };
     let w = left.width + rw;
     let mut data = Vec::with_capacity(w as usize * h as usize * 4);
