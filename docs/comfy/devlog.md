@@ -4,6 +4,27 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-27 (late night): swaps measured; Krea 2 edits natively
+
+- **Swap benchmark** (`swap-cases.json`, `swap-run.ps1`, `swap-sheets.ps1`): 15 item and outfit
+  swaps at two seeds, the object selected by name with SAM 3.1. Clean of 30: Krea 2 edit 27
+  (items 22 of 22), 2.1 edit 27, 2.1 fill 23.5, 2511 fill 14.5 (it keeps the old object on
+  items). Numbers and faults in `benchmarks.md`.
+- **Krea 2 edits by instruction, natively** (genai-native `f56189b`): the community krea2_edit
+  LoRAs (conradlocke's General / Identity Edit V2, 2026-10-16; downloaded on the owner's go into
+  ComfyUI's `loras`, which the native folders share; personal and non-commercial licence, BYOM)
+  condition on the picture as clean VAE tokens on RoPE frame 1 plus a picture-grounded prompt.
+  Built from the comfyui-krea2edit nodes and the trainer's GEOMETRY.md (Apache-2.0, read; the
+  repos and licence files in `_eval\krea2edit`): a Wan 2.1 VAE encoder, `Krea2Dit::forward_edit`,
+  a `ref_boost` score bias in the flash kernel (GPU-tested against f32), the 4B vision tower and
+  `forward_with_images_taps`. Template `krea2-turbo/edit` (the nodes' API graph for the ComfyUI
+  route, where the two custom nodes are reported missing; the worker serves it when
+  `krea2_general_edit_v2.safetensors` is in its loras). First run: the denim jacket to a
+  yellow raincoat, person and street kept, 1.6 s encode + 9.3 s sampling at 832×1216.
+- Open: the garment-longer-than-the-selection band on both edit routes (the result's layer mask
+  is the selection); Krea 2 edit is not in `auto` (2.1 edit is, and is faster); Identity Edit
+  V2 (person into a new scene) is downloaded but has no feature yet.
+
 ## 2026-10-27 (night): Qwen-Image-2.1 replaces 2511 under `auto`
 
 - **The owner's decision**: 2511 is "an older model, and way slower"; not used where 2.1 runs.

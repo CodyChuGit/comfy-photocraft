@@ -3,6 +3,7 @@
 # seed, into bench\swap\<case>-<route>-s<seed>.png. Routes:
 #   fill21    Generative Fill on Qwen-Image-2.1 (qwen-2.1/fill), the native worker
 #   edit21    Generative Edit on Qwen-Image-2.1 (qwen-2.1/edit), the instruction, masked to the selection
+#   editk2    Generative Edit on Krea 2 Turbo with the General Edit V2 LoRA (krea2-turbo/edit), the same
 #   fill2511  Generative Fill on Qwen-Image-Edit-2511, the 8-step tier through ComfyUI (the old default)
 # -Generate makes the outfit pictures first (Krea 2 on the worker, bench\swap\gen\). Native routes
 # want a worker started by native-worker.ps1 (PHOTOCRAFT_NATIVE_ENGINE); fill2511 a ComfyUI server
@@ -37,6 +38,7 @@ foreach ($c in $spec.cases) {
         $sel = @{ prompt = $c.select; grow = 12; fillHoles = $true }
         $gen = switch ($Route) {
             "edit21" { @("generate.edit", @{ prompt = $c.edit; template = "qwen-2.1/edit"; seed = [int]$seed; enhance = $false }) }
+            "editk2" { @("generate.edit", @{ prompt = $c.edit; template = "krea2-turbo/edit"; seed = [int]$seed; enhance = $false }) }
             "fill2511" { @("generate.fill", @{ prompt = $c.fill; template = "qwen-edit-2511/fill-lightning-8"; seed = [int]$seed; enhance = $false }) }
             default { @("generate.fill", @{ prompt = $c.fill; template = "qwen-2.1/fill"; seed = [int]$seed; enhance = $false }) }
         }

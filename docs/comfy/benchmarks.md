@@ -765,8 +765,22 @@ of clean swaps (a half for a swap with a visible fault):
   the hem (both seeds), and the suit's sleeve blurs where the mask ends (fill21 too). A wider
   selection for garments, or the result's edge softened over more pixels, is the next thing to
   try.
-- Krea 2 is not in the table: no route serves a Krea 2 edit yet (the community edit LoRAs need
-  a reference-token path; research in the dev log).
+- **Krea 2 edit** (added the same night: `krea2-turbo/edit`, native, conradlocke's General Edit
+  V2 LoRA at strength 1, `ref_boost` 4, 8 steps, genai-native `f56189b`): **22 of 22 items, 5
+  of 8 outfits, 27 of 30**, at 15–23 s a case. The only route that swapped every item (the
+  watch became a gold bracelet on both seeds, a proper mug with a handle, the postbox, the
+  scooters); misses the B/W leather jacket on both seeds (a patterned shirt instead) and shares
+  the 2.1 edit's raincoat-hem band (the app's selection mask cutting a longer garment; the same
+  edit straight through the pipeline, unmasked, is clean). Slower than the 2.1 edit (the
+  picture's 4 096 tokens ride along every step: the LoRA was trained without a reference KV
+  cache, so they cannot be computed once).
+
+| Route | Items | Outfits | Total | Time a case |
+|---|---|---|---|---|
+| Krea 2 edit (General Edit V2) | **22** | 5 | **27** | 15–23 s |
+| 2.1 edit | 21 | 6 | **27** | 13–15 s |
+| 2.1 fill | 19 | 4.5 | 23.5 | 5–19 s |
+| 2511 fill, Lightning 8 | 6.5 | **8** | 14.5 | 22–47 s |
 
 **The removal adapter** (2026-10-22; `lora-run.ps1`). prithivMLmods' Object Remover v2, an
 Apache-2.0 LoRA on 2511 trained to delete what is painted red (`models.md`), as the
