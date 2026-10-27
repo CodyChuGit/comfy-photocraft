@@ -739,6 +739,35 @@ app (`runs/2026-10-27-app-fill-qwen-21fill` against `references/2026-10-18-comfy
 At 1.6–5.8 s a case on the worker. The removal weak spots stay as listed: an object over a face
 (the mask's whole stroke) and the cup's dark patch.
 
+**Swaps** (2026-10-27, the owner's "outfit swap or item swap"; `swap-cases.json`,
+`swap-run.ps1`, `swap-sheets.ps1`; sheets `bench\swap\sheet-{item,outfit}-s{7,11}.png`). 15
+cases at seeds 7 and 11: 11 item swaps on the stock set, 4 outfit swaps (three people made with
+Krea 2 here, one stock). Each object selected by name with SAM 3.1 (`select.byText`, grown 12 px,
+holes filled), the rewriter off; the fill routes get the description ("a glass of red wine"),
+the edit route the instruction ("Replace the coffee cup with a glass of red wine."). My count
+of clean swaps (a half for a swap with a visible fault):
+
+| Route | Items (of 22) | Outfits (of 8) | Total (of 30) | Time a case (CLI, SAM included) |
+|---|---|---|---|---|
+| 2.1 fill (`qwen-2.1/fill`, native) | 19 | 4.5 | 23.5 | 5–19 s |
+| **2.1 edit** (`qwen-2.1/edit`, native, masked to the selection) | **21** | 6 | **27** | 13–15 s |
+| 2511 fill, Lightning 8 (ComfyUI, the old default) | 6.5 | **8** | 14.5 | 22–47 s |
+
+- **2511 keeps the old object** on item swaps: the cup with a wine stain, the mug inside the
+  glass, the dog, the bicycle, the hydrant, the motorcycle under a half scooter, the old bench
+  behind the new one. It sees the object under the mask and continues it (the request is not
+  greyed: `erase` is off by default; not tried here). On garments, where the old shape is the
+  new one's, it was clean every time.
+- **2.1 fill** misses the B/W leather jacket both times (the denim kept) and the second cup
+  (the latte kept); a dark smear at the raincoat's hem on one seed.
+- **2.1 edit** swaps every item but the watch (a bracelet on one seed); its faults are at the
+  selection's edge: the raincoat runs past the jacket's mask and is cut off in a dark band at
+  the hem (both seeds), and the suit's sleeve blurs where the mask ends (fill21 too). A wider
+  selection for garments, or the result's edge softened over more pixels, is the next thing to
+  try.
+- Krea 2 is not in the table: no route serves a Krea 2 edit yet (the community edit LoRAs need
+  a reference-token path; research in the dev log).
+
 **The removal adapter** (2026-10-22; `lora-run.ps1`). prithivMLmods' Object Remover v2, an
 Apache-2.0 LoRA on 2511 trained to delete what is painted red (`models.md`), as the
 `qwen-edit-2511/remove-lightning-8` template: the Lightning graph with the adapter loaded
