@@ -4,6 +4,54 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-27 (overnight goal): wearers, shadows, the chat cache, LoRAs, Generative Upscale
+
+An unattended run of `docs/comfy/goals/overnight-2026-10-27.md` (its progress log has the
+details and the numbers per task).
+
+- **The wearer's candidates** (`47dc76ed`): a removal named "the man wearing the cap and mask"
+  asks the detector for each worn thing, all of them and the wearer, and takes the mask that
+  matches the stroke best. The mask's whole stroke on 2.1 is clean. `PHOTOCRAFT_DUMP_VIEWS`
+  (bench only) saves the exact picture the rewriter sees.
+- **The change band** (`0005d577`): on 2.1 (whole-picture) removals the pixels the model
+  changed beside the hole join it, so a shadow or reflection the model removed goes too
+  (`shadow`, on by default); a band that runs into the request's edge is refused, since it would
+  cut the shadow in a straight line. Stock hard set, 2.1 two judged on the worker: **16 of 20**
+  (15 the night before); robustness set 27 of 28 with and without it. The dog's long shadow
+  runs past the request and stays.
+- **The worker's chat cache** (genai-native `2f3cd2a`): prefill once, a K/V cache per layer,
+  one row a token. A 28-token rewrite with the picture 5.6 s → 0.95 s, the removal naming
+  0.8–2.1 s → 0.3–0.8 s.
+- **LoRAs** (`6e6e1d6a`): `generate.loras` (files and their family from the tensor names), the
+  Generate panel's LoRAs rows (native route), and the ComfyUI route applies `loras` too
+  (`LoraLoaderModelOnly` after the model loader). Parity through the app: edits with
+  Consistency and Restore agree as closely as without (38.5–44.7 dB); BFS head on text to
+  image 22.6 dB (same person and framing, the 8B-scale text-to-image drift). The parity run
+  found a worker bug, fixed in genai-native `53256a7`: a request without LoRAs after one with
+  them failed (`CUDA_ERROR_INVALID_CONTEXT`: the adapters were freed on a client thread before
+  the context was bound to it).
+- **Generative Upscale** (`9994874a`, Edit › Generative Upscale): bicubic, then the 2.1 edit
+  per ~1 MP tile with AusBoss's restore wording and the Restore LoRA, tiles realigned and
+  colour-matched, strips faded. An old print halved and enlarged back: crisper than bicubic,
+  the face kept, no seams; 89 s for six tiles on the worker.
+- **Denoise on fills** (`72a4ec89`): the 2511 fill templates bind `denoise`, the fill page has
+  the field (2511 only). On the 40-step template 0.9 keeps the old sheen with the new colour,
+  0.8 barely changes; the 8-step tier hardly moves below 1.
+- **The LoRA list live** (`b81db474`, `loras-live.ps1`): in the release app the folded panel
+  never loaded the list; it now loads on `ui.set` and before a Generate.
+- **Measured and not shipped:** the seam tone match on Generative Fill (the native 2.1 fill
+  already meets the picture at its edge: a no-op on four of six fills, invisible on two); a
+  wider removal request (`removeMargin` 0.5: the 2.1 edit keeps the dog's shadow itself);
+  naming the shadow in the prompt (`nameShadow`: +1 on the stock set, −1 on the robustness
+  set). Both parameters stay, off / at their defaults (`df01a051`).
+- **The removal default, measured the same night**: 2.1 on the worker (two judged) 16 of 20 on
+  the stock hard scenes, the shipped 2511 Best of two 12 of 20 (16 two nights ago: its random
+  seeds swing it by four). On this set 2.1 is ahead and needs no ComfyUI; the default is the
+  owner's call.
+- Skipped without the owner: LaMa (a download), 2.1 Turbo (a download). Open: the dog's long
+  shadow, the cup's patch on 2.1, the logo's whole stroke naming the shirt, Upscale's text
+  encoder reloading per tile, `native_menu`'s order-dependent test.
+
 ## 2026-10-26 (night): the rewriter's views per model; 2.1 on the worker passes 2511
 
 - **A naming probe** (`naming-probe.ps1` + `crates/genai/examples/chat_probe.rs`): the two

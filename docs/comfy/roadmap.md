@@ -281,8 +281,13 @@ the side-by-side rewriter; learnt from AusBoss's Krea 2 clothing workflow, see
   image and removal commands, applied by the worker as side paths on the resident Qwen-Image-2.1
   and Krea 2 DiTs (plan-native-engine §9); the installed set (AusBoss's Consistency, Outpaint,
   Restore and Outfit Swap, AnyPaint, Viggle Turbo, the MIT BFS swaps) in `models.md`.
-  Open: the picker rows for them, a parity run against ComfyUI, the Krea 2 reference path
-  AnyPaint needs.
+  ✅ 2026-10-27: the Generate panel's LoRAs rows (`generate.loras`), the ComfyUI route applies
+  `loras` too, parity through the app measured (edits at the no-LoRA agreement). Open: the
+  Krea 2 reference path AnyPaint needs.
+- ✅ 2026-10-27 **Generative Upscale** (`generate.upscale`): bicubic, then the edit model per
+  tile with AusBoss's restore recipe; SeedVR2 as a non-redrawing "Enlarge 2×" still open.
+- ✅ 2026-10-27 **Remove with its shadow** on the 2.1 route (the change band) and the worker's
+  chat key/value cache.
 - Taken from AusBoss's catalogue, in order (`research/notes/ausboss-catalogue-2026-10.md` §4):
   the 2.1 route for removals (measuring), realign to source, the differential composite
   ("remove with its shadow"), remove to its own layer, the rewriter on the resident encoder,

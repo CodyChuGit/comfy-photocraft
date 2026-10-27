@@ -308,17 +308,200 @@ Then do the following:
 
 ### Morning report
 
-_(written at the end)_
+**What changed for you.**
+1. Removals on Qwen-Image-2.1, with no ComfyUI, now beat the shipped 2511 route on the hard
+   scenes the same night: **16 of 20 against 12**. They also take the shadows the model
+   removes, and the worker names objects 2–3× faster.
+2. New in the app:
+   - **Edit › Generative Upscale**
+   - **LoRA rows** in the Generate panel
+   - a **Denoise** field on 2511 fills
+3. LoRAs now also work on the ComfyUI route, and both routes agree on edits.
+4. A worker bug is fixed: a request without LoRAs after one with them used to fail.
+5. Measured and dropped: the fill tone match, a Krea 2 noise-mask fill, a wider removal
+   crop. `nameShadow` ships off by default.
+
+**Scores** (clean removals; stock = the ten hard scenes, half and whole strokes; my count from
+the sheets):
+
+| Route | Stock before | Stock now | Robustness (28) |
+|---|---|---|---|
+| 2.1 edit on the worker, two judged | 15 | **16** | 27 |
+| 2511 shipped, Best of two (same night) | 16 (two nights ago) | **12** | |
 
 | Task | Status | Commit(s) | Result |
 |---|---|---|---|
-| Q1 mask naming | | | |
-| Q2 shadow composite | | | |
-| Q3 chat KV cache | | | |
-| Q4 LoRA parity | | | |
-| Q5 LoRA picker rows | | | |
-| Q6 Generative Upscale | | | |
-| Q7 LaMa tier | | | |
-| Q8 extras | | | |
+| Q1 mask naming | done | `47dc76ed` | the wearer's candidates: the mask's whole stroke clean |
+| Q2 shadow composite | done | `0005d577` | the change band; 16/20, no regression; the dog's long shadow still stays |
+| Q3 chat KV cache | done (3× met with a picture, 2.5× text-only) | gn `2f3cd2a` | rewrite 5.6 → 0.95 s; naming 2–3× faster |
+| Q4 LoRA parity | done, bug fixed | `6e6e1d6a`, gn `53256a7` | edits at the no-LoRA agreement (38–45 dB) |
+| Q5 LoRA picker rows | done, live-checked | `6e6e1d6a`, `b81db474` | `generate.loras`, rows on the native route |
+| Q6 Generative Upscale | done | `9994874a` | 6 tiles in 89 s; sharper than bicubic, no seams |
+| Q7 LaMa tier | skipped (download not approved) | | files and plan in the log |
+| Q8 extras | partly | `df01a051`, `72a4ec89`, `92704ed7` | denoise shipped; tone match, `nameShadow`, Krea 2 fill measured |
+
+**Commits.**
+
+PhotoshopEX (local, not pushed):
+- `47dc76ed` the wearer's candidates
+- `0005d577` the change band
+- `6e6e1d6a` LoRA rows, plus LoRAs on ComfyUI
+- `9994874a` Generative Upscale
+- `df01a051` `removeMargin` and `nameShadow` (opt-in)
+- `72a4ec89` fill denoise
+- `b81db474` the LoRA list loads when the panel is folded
+- `92704ed7` the Krea 2 fill record
+
+genai-native (local):
+- `2f3cd2a` the chat KV cache
+- `53256a7` binds the CUDA context per client thread
+
+**What failed and why.**
+- The dog's long shadow: the model removes only what lies inside its request, and with a
+  wider request it keeps the shadow itself.
+- The cup's dark patch on 2.1: the model continues the table's own shade.
+- The logo's whole stroke: the rewriter names the shirt.
+- Krea 2 noise-mask fill: a text-to-image model paints a separate picture into the box.
+- Upscale spends about 5 s a tile reloading the text encoder, because the card's other
+  tenants (5.6 GB: `sd-server` and Python processes) leave no room to keep it.
+- `native_menu::tests::opening_a_document_changes_state_not_structure` fails when only the
+  menu tests run together (order-dependent). It passes alone and in the full suite, with or
+  without tonight's changes.
+
+**Decisions waiting for you.**
+1. **Make 2.1 on the worker the removal default under Auto.** I recommend yes, once your
+   research-licence stance is settled: 16 against 12 the same night, at 6–28 s a stroke with
+   no ComfyUI. Two nights ago 2511 scored 16, so run one more same-night A/B if you want more
+   certainty. 2511 would stay the permissive fallback.
+2. **Push genai-native and bump its rev in PhotoshopEX** (nine local commits, ahead of
+   `origin/main` since `f2bf496`). I recommend yes: the CUDA-context fix matters to anyone using LoRAs.
+3. **Tick the LaMa download** (Apache-2.0, about 200 MB) for Q7.
+4. **The fp8 GEMM kernel track** to move Krea 2 under Auto (a multi-day effort), and
+   **AnyPaint** for a real Krea 2 fill.
+5. **Clean the card's other GPU tenants** (`sd-server`, the SSH Python processes): they cost
+   every native timing tonight and force the text-encoder reloads.
 
 ### Notes as they happen
+
+- **01:02 setup.** Branch `photoshopex`, only `Cargo.lock` dirty, genai-native at `da60b3c`,
+  ComfyUI 0.39 up, 5.6 GB of the card held by the session-0 tenants (`sd-server`, pythons).
+  The owner launched the goal in this session (Default mode, no pre-approvals ticked: no
+  downloads tonight).
+- **01:15 Q1 done (`47dc76ed`).** The mask's whole stroke named "the man wearing the cap and
+  mask": `wearer_candidates` splits a wearer phrase into each worn thing, all of them, and the
+  wearer; the detector is asked for each and the mask that best overlaps the stroke (IoU) is
+  taken and named. Live, 2.1 two judged on the worker: the whole stroke is clean (was a smear),
+  named "mask". Bench hook `PHOTOCRAFT_DUMP_VIEWS` saves the exact picture the rewriter sees.
+- **02:20 Q2 done (`0005d577`).** `change_band`: the pixels the model changed beside the hole
+  (blurred difference > 0.08, connected to the hole's feathered edge, within 0.75 of its side)
+  join the hole for the tone match and the layer mask. Stock ten hard scenes, 2.1 two judged
+  (`-q2` against `-p21v`): **16 of 20** (15): the mask whole and the boat half (both people
+  gone) gained, the boat whole lost (the 8B named "silhouette of the two people" this time, the
+  hull stayed: the rewriter's seed, not the band). The dog's shadow: the half stroke took it
+  only up to the request's edge and cut it in a straight line, so a band that reaches the
+  request's (or the reach's) edge is now refused and the shadow stays whole (`-q2b`). Taking the
+  dog's shadow needs a request that holds it (a wider crop on 2.1 removals): owner's call, it
+  changes every removal's scale. Robustness set, band on (`-q2b`) and off (`-q2off`): 27 of 28
+  both (the logo's whole stroke names the shirt on both). Timing on this run is not
+  comparable: the card's other tenants and my test builds overlapped (some strokes 100-240 s).
+- **02:30 Q5 code done (`6e6e1d6a`), with the Q4 prerequisite.** `generate.loras {template}`
+  lists the LoRA files with their family from the tensor names (Krea 2 `blocks.N.attn.gate`,
+  Qwen-Image `transformer_blocks.N`: 32 blocks = 2.1, 60 = 2511); the Generate panel's LoRAs
+  disclosure (image, fill, edit; only when the template runs natively) with a switch and a
+  strength per file; `ui.set`/`ui.inspect` `generatePanel.loras`; kittest test; 2 strings × 20
+  languages (and "Strength" where fr, id, ru, zh-hans, zh-hant lacked it). The ComfyUI backend
+  now applies `loras` as `LoraLoaderModelOnly` nodes after the model loader
+  (`comfy::with_loras`), so a LoRA can be compared on both routes. Live `ui.inspect` not run
+  (no GUI session tonight); the panel test drives the rows through kittest.
+- **Q3 done (genai-native `2f3cd2a`).** `QwenTextEncoder::prefill` + `step` with a per-layer
+  `KvCache` (positions run on from the prompt's last M-RoPE position); `Pipeline::chat` uses
+  them. Toy-decoder test: cached rows equal the full pass (with and without a picture). Live
+  (`q3-run.ps1`, the same worker build without and with): a 28-token rewrite with the picture
+  5.56 s → 0.95 s (per token ~190 → ~21 ms), a 120-token image prompt 4.30 → 1.69 s (2.5×:
+  short prompts gain less), the removal naming 0.8-2.1 s → 0.3-0.8 s; 17 of 20 sampled answers
+  word for word the same (temperature 0.3; the cached rows round differently, three rewordings).
+  The 3× per-token bar: met with a picture (9×), not on the 120-token text-only prompt (2.5×).
+- **Q4 found a worker bug, fixed (genai-native `53256a7`).** A request without LoRAs after one
+  with them failed in 0.3 s with `CUDA_ERROR_INVALID_CONTEXT`: each client is served on its own
+  thread, clearing the adapters freed CUDA memory before the context was bound to that thread,
+  and cudarc handed the stored error to the next call. `device::bind_thread` at the start of
+  every request. Repro script `lora_clear_repro.py`.
+- **02:42 Q4 done.** Same seed, size and prompt through the app's CLI on both routes
+  (`q4_lora_parity.py`; ComfyUI applies the file through `with_loras`), PSNR native vs ComfyUI:
+
+  | Case | No LoRA | Consistency | Restore | BFS head |
+  |---|---|---|---|---|
+  | edit "make it winter" (glasses) | 40.0 | 41.0 | 41.1 | |
+  | edit "turn the cup red" | 44.1 | 44.7 | 43.7 | |
+  | edit, the restore wording (hat) | 38.2 | 38.5 | 40.3 | |
+  | text to image, portrait | 33.0 | | | 22.6 |
+
+  On edits the LoRA keeps the routes as close as without it, and moves each route by the same
+  amount (LoRA vs none: 17.8/18.1, 31.5/31.5, 27.5/27.7 dB). On text to image the BFS head
+  LoRA gives the same person, coat and framing on both routes but the window frame drifts
+  (22.6 dB): an 8B-scale text-to-image run amplifies small differences more than an edit does,
+  no module was left unmatched (the worker logs any). Verdict: at parity.
+- **02:55 Q6 done (`9994874a`).** `generate.upscale {scale, tileMegapixels, prompt?, loras?,
+  restoreStrength}` (Edit › Generative Upscale): bicubic enlarge (`image.imageSize`), then the
+  edit model per tile with AusBoss's restore wording, 128-px shared strips faded together, each
+  tile realigned onto its source and matched to its colours (mean and spread per channel, in
+  RGB: simpler than the Lab the brief named, and enough on the test), the Restore LoRA at 0.5 on
+  the native 2.1 route when installed. Fake-server test (tile count, the enlarge, one layer).
+  Live (`q6-run.ps1`): `st-hat.jpg` halved to 960×686 and enlarged back: 6 tiles, 89 s on the
+  worker (about 5 s a tile is the text encoder reloading: the card's tenants leave no room to
+  keep it beside the DiT); at 200 % crisper than bicubic on the frame's texture, the hair and
+  the face, identity kept, no seam visible; PSNR against the original 27.0 dB (bicubic 27.5,
+  PSNR favours blur).
+- **03:05 Q8a measured, not shipped: the seam tone match on Generative Fill** (`toneMatch`,
+  `q8_fill_tone.py`, six fills on stock pictures, 2.1 on the worker, same seed off and on):
+  bit-identical on four (the native 2.1 fill already meets the picture at its edge, so the
+  membrane is zero), a small change inside the selection on two with no seam visible either
+  way at 200 %. No measured benefit, so the code was taken out again.
+- **03:16 two measurements for the owner** (`q9-run.ps1`):
+  - A wider removal request (`removeMargin` 0.5, new parameter, default 0.25 unchanged) does
+    not take the dog's shadow: with more context the model keeps the shadow itself, so the
+    band has nothing to take. The lever is the prompt (next item), not the crop.
+  - The shipped 2511 route (Best of two through ComfyUI) rerun tonight on the same ten scenes
+    (`-auto7`): **12 of 20** clean (half 6: glasses, tattoo, cup, dog, bicycle, umbrella; whole
+    6: glasses, tattoo, dog, bicycle, umbrella, motorbike; it painted a new man's face on the
+    hat both times and on the mask's whole stroke, left the boat). 2.1 on the worker the same
+    night: 16 of 20. Two nights ago 2511 scored 16: its random seeds swing it by four.
+- **03:31 `nameShadow` measured, left opt-in (`df01a051`).** The removal prompt asks for "the
+  golden retriever and its shadow" on the 2.1 route: stock 17 of 20 (the boat's whole stroke now
+  goes with its hull), robustness set 26 of 28 (the poster's four tape strips stayed): no net
+  gain, default off. The dog: the shadow's part inside the request goes, the rest stays (no
+  hard cut). `removeMargin` committed with it (default unchanged).
+- **03:55 Q8 denoise (`72a4ec89`).** The three 2511 fill templates bind their KSampler's
+  `denoise` (1 unless asked); `generate.fill` takes `denoise`; the fill page shows a Denoise
+  field when the template takes it (never for the 2.1 fill). Live, st-hat's top hat asked to be
+  red: on the 40-step template 0.9 keeps the old sheen with the new colour, 0.8 barely changes;
+  on the 8-step tier anything under 1 hardly moves. The hint says "about 0.9". 2 strings × 20.
+  The LoRA strength field now shows two decimals (it would have rounded to whole numbers).
+- **04:15 Q5 live (`b81db474`).** `loras-live.ps1` drives the release app (its own config
+  folder): the Generate panel sat folded in the dock, so the LoRA list never loaded and a run
+  from the compact form would have dropped the LoRAs switched on. Now the list also loads on
+  `ui.set` and before a Generate: live, the eight 2.1 files listed (Krea 2's and 2511's left
+  out), `native` true, the request carrying Restore at 0.5.
+- **Workspace gate at 02:55** (before the Upscale, Denoise and LoRA-list commits): 5 failures,
+  all GPU-driver tests (`photocraft-gpu` timing, `full_res_preview` ×3,
+  `pattern_preview_canvas`), within this PC's baseline of 9. The final gate reruns at the end.
+- **04:10 Q8 Krea 2 fill measured, withdrawn (`92704ed7`).** A `krea2-turbo/fill` template
+  (the official Krea 2 t2i graph with the picture encoded and a noise mask, nodes checked
+  against the local `/object_info`) paints a separate photo into the selection's box at
+  denoise 1, 0.8 and 0.65 on all six fills (a lawn box, a window with a vase, a day sky in a
+  night street). Not shipped; the JSON is kept beside `q12_krea_fill.py`. The reference pair
+  proper and AnyPaint (plan §9) remain the way to a Krea 2 fill.
+- **04:16 final gate** (after every code commit): `cargo test --workspace --no-fail-fast` the
+  same 5 GPU-driver failures as at 02:55 (baseline 9); clippy on the touched crates at the
+  existing warnings; `xtask wasm`, `layers`, `scorecard --check` pass. The app
+  (`target\release\photocraft.exe`, 03:59) and the CLI (04:21) are rebuilt from the final tree.
+- **Q7 skipped (not pre-approved).** What it needs: an ONNX export of big-lama (Apache-2.0,
+  advimman/lama; the community export `Carve/LaMa-ONNX` on Hugging Face, `lama_fp32.onnx`, about
+  200 MB, a fixed 512×512 image + mask input; verify the repo and licence on the page before
+  downloading) placed at `<models>/lama/lama_fp32.onnx`. Then: a `heal/lama` engine in
+  `gn-perception` beside SAM 3.1 (same `ort` runtime, crop the hole's box grown 2× to 512², run,
+  paste back through the hole's mask), `integrations.healEngine` (auto | lama | diffusion) read
+  by Spot Healing and the Remove tool for holes under ~96 px, and a dust/wire stroke set.
+- `native_menu::tests::opening_a_document_changes_state_not_structure` fails when the `menu`
+  tests run as a batch, with or without tonight's menu line, and passes alone and in the full
+  suite: an order-dependent flake, left for the owner.

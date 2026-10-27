@@ -814,6 +814,42 @@ removal's adapter and plain fill share the 20 GB model and no longer purge betwe
 8 % off a stroke here and more without contention (the purge is the reload of that model);
 `never` buys 2 % more at the risk the purge was made for. Re-measure on a clean card.
 
+**The overnight run of 2026-10-27** (`docs/comfy/goals/overnight-2026-10-27.md`; scripts
+`q1-run.ps1` … `q11_denoise.py`; clean removals of 20 on the stock set's ten hard scenes, half
+and whole strokes, my count; the robustness set's 28 as the no-regression check; the card's
+session-0 tenants held 5.6 GB, so no timing here is a clean-card number):
+
+| Route | Stock (of 20) | Robustness (of 28) | Notes |
+|---|---|---|---|
+| 2.1 edit on the worker, two judged, the night before (`-p21v`) | 15 | | the mask's whole stroke named the wearer |
+| + the wearer's candidates and the change band (`-q2`) | **16** | 27 (`-q2b`) | the mask clean; the boat's half stroke went with both people |
+| + `nameShadow` (`-q2s`) | 17 | 26 | the boat's whole stroke with its hull; the poster's tape stayed: no net gain, off |
+| `shadow` off (`-q2off`) | | 27 | the band changes nothing on the robustness set |
+| 2511 shipped, Best of two through ComfyUI, the same night (`-auto7`) | 12 | | a new man's face on the hat (both strokes) and on the mask; the boat left; 16 two nights ago |
+
+The dog's long shadow stays on every route: the band takes only what the model removed inside
+its request and is refused where it reaches the request's edge; `removeMargin` 0.5 gave the
+model more context and it kept the shadow itself. The cup's dark patch stays on 2.1 (fainter
+with `nameShadow`). The chat cache (genai-native `2f3cd2a`): the removal naming 0.8–2.1 s →
+0.3–0.8 s a question, 17 of 20 sampled names word for word the same.
+
+**LoRA parity through the app** (`q4_lora_parity.py`, the same seed, size and prompt on both
+routes; ComfyUI applies the file with `LoraLoaderModelOnly` after the model loader), PSNR
+native vs ComfyUI: edit "make it winter" 40.0 dB without a LoRA, 41.0 with Consistency, 41.1
+with Restore; "turn the cup red" 44.1 / 44.7 / 43.7; the restore wording 38.2 / 38.5 / 40.3;
+text to image 33.0 without, 22.6 with the BFS head LoRA (the same person and framing; the
+window frame drifts). Each LoRA moves both routes by the same amount (17.8/18.1, 31.5/31.5,
+27.5/27.7 dB against no LoRA).
+
+**Generative Upscale** (`q6_upscale.py`): st-hat halved to 960×686 and enlarged back 2×, six
+1-MP tiles on the worker in 89 s (about 5 s a tile is the text encoder reloading beside the
+tenants); crisper than bicubic at 200 % on the frame, hair and face, no seams; PSNR against
+the original 27.0 dB (bicubic 27.5: PSNR rewards the blur).
+
+**A fill's denoise** (`q11_denoise.py`, st-hat's top hat asked to be red): the 2511 40-step
+fill at 1 a new red hat, 0.9 red with the old hat's sheen, 0.8 the old hat with a red fleck;
+the 8-step tier at 0.75 and 0.6 the old hat with a red fleck.
+
 ## 6. Where the time goes, and what is left
 
 - A 2511 fill is sampling-bound: ~1.3 s per Lightning step at a 512-px request, ~2 s at 1 MP
