@@ -472,6 +472,10 @@ pub fn request(app: &PhotocraftApp) -> Result<(&'static str, Value), String> {
 
 /// Generate: run the command for the current state (a background job in the desktop app).
 pub fn generate(app: &mut PhotocraftApp) -> Result<Value, String> {
+    // The LoRA list for this template, also when the panel ran in its compact form (it loads
+    // as the rows draw).
+    let template = effective_template(app, &app.ui.generate.mode.clone());
+    refresh_loras(app, &template);
     let (cmd, q) = request(app).inspect_err(|e| {
         app.ui.status = e.clone();
         app.ui.status_error = true;
@@ -1301,6 +1305,8 @@ pub fn set(app: &mut PhotocraftApp, p: &Value) -> Result<(), String> {
         app.ui.generative_bar.mode = next.mode.clone();
     }
     app.ui.generate = next;
+    let template = effective_template(app, &app.ui.generate.mode.clone());
+    refresh_loras(app, &template);
     Ok(())
 }
 
