@@ -4592,6 +4592,22 @@ fn always(_: &Session) -> std::result::Result<(), String> {
 /// job (a second or two on the 5090 once the 4B encoder is loaded), for the task bar's Enhance
 /// button, the dialogs and scripts. The picture the rewriter looks at is the composite at the
 /// models' working size; for a fill, the selection's place is said in words.
+/// The backend `generate.enhancePrompt` asks: under `auto` with the native folders set, the
+/// worker when it serves the enhancer (its Qwen-Image-2.1 encoder answers as Qwen3-VL), so the
+/// command needs no ComfyUI (the Rust rebuild's R0 inventory found it always went there);
+/// otherwise the preferences' backend.
+fn enhancer_backend(s: &Session) -> Result<Arc<dyn GenerativeBackend>> {
+    #[cfg(not(target_arch = "wasm32"))]
+    if engine_mode(s) == "auto"
+        && s.prefs().integrations.native_configured()
+        && let Ok(b) = native_backend(s)
+        && b.model_files("").is_ok_and(|m| m.iter().any(|t| t == ENHANCE_EDIT_TEMPLATE))
+    {
+        return Ok(b);
+    }
+    backend(s)
+}
+
 fn run_enhance(s: &mut Session, p: &Value) -> Result<Value> {
     let prompt = opt_str(ENHANCE, p, "prompt", MAX_PROMPT_CHARS)?
         .map(str::trim)
@@ -4606,7 +4622,7 @@ fn run_enhance(s: &mut Session, p: &Value) -> Result<Value> {
     };
     let use_image = opt_bool(ENHANCE, p, "useImage", true)?;
     let seed = parse_seed(ENHANCE, p)?;
-    let backend = backend(s)?;
+    let backend = enhancer_backend(s)?;
     let (image, place) = match (kind, use_image, s.active()) {
         (EnhanceKind::Image, _, _) | (_, false, _) | (_, _, None) => (None, None),
         (_, true, Some(d)) => {

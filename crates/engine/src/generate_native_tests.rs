@@ -248,6 +248,8 @@ fn auto_runs_qwen_image_2_1_on_the_worker_instead_of_2511() {
     // An image from references: 2.1's image-ref template on the worker, not 2511's on ComfyUI.
     let i = s.execute("generate.image", json!({"prompt": "the sweater on a mannequin", "width": 128, "height": 128, "target": "document", "seed": 6, "enhance": false, "references": [{"layer": reference.0}]})).unwrap();
     assert_eq!(i["template"].as_str(), Some("qwen-2.1/image-ref"), "{i}");
+    // The standalone rewriter asks the worker, which serves the enhancer, not ComfyUI.
+    s.execute("generate.enhancePrompt", json!({"prompt": "a fox", "task": "image"})).unwrap();
     s.edit_prefs(|p| p.integrations.enhance_prompts = true);
     let m = s.execute("generate.models", json!({"probe": false})).unwrap();
     assert_eq!(m["autoFill"].as_str(), Some("qwen-2.1/fill"), "fills stay on the fill template unless fillAsEdit is asked: {m}");
