@@ -94,7 +94,18 @@ Qwen-Image-2.1 snapshot (31 GB, ungated, research licence) is at `_eval\weights\
 then `cargo build --release -p photocraft-cli --features native-diffusion` in the PhotoshopEX
 checkout (and `-p photocraft`). Without the feature nothing CUDA is built and the worker serves
 SAM 3.1 only. The native model root on this PC, `_eval\native-models`, holds `qwen-image-2.1`
-and `.qir-cache` as junctions to the snapshot and to `_eval\qir-cache`.
+and `.qir-cache` as junctions to the snapshot and to `_eval\qir-cache`, and `krea2-turbo` as a
+junction to `_eval\weights\krea2-turbo-comfy` (since 2026-10-27: hard links to ComfyUI's
+`krea2_turbo_fp8_scaled` and `qwen3vl_4b_fp8_scaled`, the Wan VAE and tokenizer from the older
+bf16 folder `_eval\weights\krea2-turbo`, which still loads with ConvRot).
+
+**The runtime folder of a packaged build** (plan §10): `packaging/windows/runtime.ps1 -Cuda
+<toolkit bin\x64> -Ort <onnxruntime lib> -Cudnn <cuDNN 9 bin>` copies the DLLs the worker loads
+(on this PC the cuDNN DLLs come from ComfyUI's torch wheel) and writes `THIRD_PARTY.txt`; the
+test copy is `_eval\runtime-test` (1.33 GB). A `native-diffusion` build delay-loads cuBLAS,
+cuBLASLt and cuRAND, so the editor starts without them; the worker needs that folder (or the
+toolkit) on its `PATH`, which the app arranges from Integrations › Runtime folders, or from a
+`runtime` folder beside the exe when that preference is empty.
 
 ### ONNX Runtime and the SAM 3.1 export (`gn-perception`)
 

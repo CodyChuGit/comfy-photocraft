@@ -4,6 +4,46 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-27 (day): Krea 2 native under `auto`; plan Phase 5 started
+
+- **Krea 2 from ComfyUI's own fp8 files** (genai-native `6354b13`, `qir::fp8`): the worker
+  reads `krea2_turbo_fp8_scaled` and `qwen3vl_4b_fp8_scaled` as they are and runs ComfyUI's
+  recipe, read from `comfy/ops.py` and `comfy_kitchen` (the five fp8 linears of a block through
+  cuBLASLt's FP8 GEMM with the activation cast at scale 1; the three the file marks
+  `full_precision_matrix_mult` dequantized to bf16; the encoder in full precision, since ComfyUI
+  only takes fp8 matmuls there to generate text). Measured on the way: the encoder on fp8
+  matmuls 12 of 28; every DiT layer fp8 6 of 28; SageAttention2 costs three to four cases on
+  this 8-step Turbo against exact attention.
+- **Exact attention and fused small ops** (`qir::flash`, `qir::krea2_fused`): an FA2-style bf16
+  kernel of our own (PV in fp16, strided BSHD inputs, grouped KV heads), and Krea 2's norms,
+  modulation, RoPE, SwiGLU and gates in one pass each. Sampling 4.54 → 3.20 s (1024², 8 steps);
+  `QIR_PROFILE=1` showed the ≈ 0.17 s a step candle's op chains took.
+- **Result**: 19 of 28 at the gate against the app's ComfyUI route (20 against its bf16 route;
+  ComfyUI's own two routes agree on 20), **4.0 s a picture through the app** against ComfyUI's
+  4.0–4.7, LoRAs still applied (Anygles: the fox reposed). `krea2` joins
+  `NATIVE_AUTO_FAMILIES`; the style reference stays on ComfyUI. `benchmarks.md` §8 has every
+  variant.
+- **Plan Phase 5** (packaging without Python): a `native-diffusion` build delay-loads cuBLAS,
+  cuBLASLt and cuRAND (the editor and CLI start with no CUDA on `PATH`, checked with `dumpbin`
+  and a stripped `PATH`); the worker checks for them before serving the diffusion models
+  (`missing_cuda_libraries`, a sentence in its log); `packaging/windows/runtime.ps1` assembles
+  the runtime folder (1.33 GB, over the 1 GB target: cuDNN is 542 MB of it) and the Krea 2 suite
+  ran from that folder alone; the app takes a `runtime` folder next to the exe when the
+  preference is empty (`Integrations::runtime_folders`); `package.ps1 -Native` ships it in the
+  portable zip (not run end to end: WiX and signing are not set up on this PC).
+- **A regression found by clippy** (`1a2a2b46`): the 0.11.1 merge had dropped the desktop app's
+  `set_generations_dir`, so since 2026-10-21 the GUI's Generations library (Window ›
+  Generations, the Variations strip, Recreate) was in memory only, not kept across restarts.
+  Attached again; the workspace is clippy-clean (`--all-targets`).
+- Commits: genai-native `6354b13`; PhotoshopEX `88127c3f` (packaging), `32685bc9` (Krea 2 under
+  `auto`), `1a2a2b46` (the Generations fix, clippy). Gate: the 5 known GPU-driver failures,
+  wasm, layers, parity and scorecard OK.
+- **This PC**: `_eval\native-models\krea2-turbo` now points at `_eval\weights\krea2-turbo-comfy`
+  (ComfyUI's files, hard-linked). The gn-weights test `the_local_comfyui_models_are_all_identified`
+  fails on the Q8_0 GGUF of Qwen3-VL-4B in ComfyUI's folder (machine-dependent, not this work).
+- Open: Krea 2's style reference and NVFP4 file, the rest of Phase 5 (models-folder first run,
+  GPU detection sentence, engine page, clean-profile install), cuDNN's share of the runtime.
+
 ## 2026-10-27 (overnight goal): wearers, shadows, the chat cache, LoRAs, Generative Upscale
 
 An unattended run of `docs/comfy/goals/overnight-2026-10-27.md` (its progress log has the

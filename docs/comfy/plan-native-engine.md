@@ -654,6 +654,20 @@ the fp8 GEMM (§11) to keep both speed and precision, the style reference (6 cas
 NVFP4 file (dequantised on load would work through the same converter path; the NVFP4 GEMM is
 §11), the definition's ≤ 600-line gate is met but the blocks are not yet in `gn-blocks` (§7.1).
 
+**Status (2026-10-27): text to image under `auto`, faster than ComfyUI at its own agreement.**
+The worker reads ComfyUI's `fp8_scaled` files as they are (`qir::fp8`, `genai-native`
+`6354b13`): the five fp8 linears of a block through cuBLASLt's FP8 GEMM with ComfyUI's recipe,
+the three the file marks `full_precision_matrix_mult` dequantized to bf16, the encoder's layers
+in full precision as ComfyUI encodes; exact attention through our own flash kernel (§11) and
+Krea 2's small ops fused. 19 of 28 at the gate against the ComfyUI route (20 against its bf16
+route; ComfyUI's two routes agree on 20), 3.2 s of sampling and 4.0 s a picture through the
+app against 4.0–4.7 (`benchmarks.md` §8). `krea2` is in PhotoshopEX's `NATIVE_AUTO_FAMILIES`.
+The model folder is `<models>/krea2-turbo/`: `transformer/` = ComfyUI's
+`krea2_turbo_fp8_scaled.safetensors`, `text_encoder/` = `qwen3vl_4b_fp8_scaled.safetensors`,
+`vae/` = `wan_2.1_vae.safetensors`, `tokenizer/tokenizer.json` (Qwen3-VL's); the bf16 files of
+`convert-fp8` still load (ConvRot, as before). Open: the style reference (6 cases), the NVFP4
+file, AnyPaint's reference path.
+
 **LoRA loading (2026-10-26): done as a runtime side path**, in `qir::lora` (`genai-native`).
 For every linear of both DiTs, `y += s · B (A x)` with `A (r, in)`, `B (out, r)` in the model's
 dtype and `s = strength · alpha / r`; the base weights stay as loaded, INT8 ConvRot included
@@ -714,6 +728,22 @@ models folder, and uses, with no Python, no ComfyUI, no console.
   VM with GPU passthrough is not available, so: a fresh Windows user profile with the models
   folder copied in), and `walkthrough-live.ps1` passes with `integrations.engine = native`.
 
+**Status (2026-10-27): started.** ✅ The editor starts on a PC without CUDA: a
+`native-diffusion` build delay-loads `cublas64_13`, `cublasLt64_13` and `curand64_10` (the
+apps' `build.rs`; `dumpbin` shows no load-time CUDA import, and `photocraft-cli --version` runs
+with no CUDA on `PATH`). ✅ The worker checks its runtime before serving the diffusion models
+(`native::missing_cuda_libraries`: a sentence in its log, and the editor falls back to ComfyUI
+under `auto`, instead of a fault on the first delay-loaded call). ✅ The runtime folder:
+`packaging/windows/runtime.ps1` assembles it from a CUDA toolkit, an ONNX Runtime GPU build and
+cuDNN 9 (no downloads) with `THIRD_PARTY.txt`; **1.33 GB** (CUDA 581 MB, of which cuBLASLt
+493; ONNX Runtime 205; cuDNN 542), over the 1 GB target (cuDNN is ONNX Runtime's, for SAM; our
+own conv path would drop it). Exercised: Krea 2's 28 cases through the CLI and worker with only
+that folder and no toolkit on `PATH`, 19 of 28 at 4.0 s a picture. ✅ The app uses a `runtime`
+folder next to the exe when Integrations › Runtime folders is empty
+(`Integrations::runtime_folders`); `package.ps1 -Native` builds with the engine and ships the
+folder in the portable zip. ⬜ The models-folder first run and "Get models" page, GPU detection
+with a sentence for non-NVIDIA cards, the engine page, the clean-profile install, the MSI.
+
 ---
 
 ## 11. Phase 6: the kernel track (from week 4, ongoing)
@@ -728,6 +758,14 @@ parity check; each is written once in `gn-kernels` and offered upstream where it
 | 3 | NVFP4 GEMM (CUTLASS block-scaled FP4, the format Nunchaku/ModelOpt files use) | the +18 % we already see on Krea 2 through ComfyUI, without dequantizing | Krea 2 NVFP4 native ≥ ComfyUI NVFP4 |
 | 4 | CUDA graphs for the sampling loop (fixed shapes per size bucket) | removes launch overhead at few-step Turbo schedules | ≥ 10 % at 4–8 steps |
 | 5 | Fused QKV + RoPE, fused AdaLN modulation | long tail | measured |
+
+**Status (2026-10-27).** FP8 (row 2): done through cuBLASLt rather than CUTLASS (`qir::fp8`):
+313–568 TFLOPS at Krea 2's shapes against 186–220 for bf16, per-tensor scales as ComfyUI's
+files carry them. Attention: an exact bf16 flash kernel of our own (`qir::flash`, FA2's
+algorithm, PV in fp16, ≈ 120 TFLOPS) became Krea 2's default because SageAttention2 cost three
+to four cases of agreement on an 8-step Turbo; row 1's SageAttention stays for Qwen-Image-2.1.
+Row 5 for Krea 2 (`qir::krea2_fused`: modulated RMSNorm, head norm + RoPE, SwiGLU, gates): 4.54
+→ 3.20 s of sampling. Rows 3 and 4 open.
 
 Upstream policy: kernels that are general (FP8/NVFP4 GEMM, SageAttention sm120) are offered to
 ggml's CUDA backend (so sd.cpp and our rented lane speed up too) and to candle; we keep our own

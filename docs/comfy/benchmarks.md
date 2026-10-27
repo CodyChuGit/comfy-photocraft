@@ -1082,6 +1082,42 @@ Qwen-Image-2.1 and back costs the loads (18 s, 23 s). Routing: Krea 2 stays on C
 `auto` (neither faster nor at the INT8 precision ComfyUI's own two routes reach); `native`
 serves it.
 
+**Krea 2 on ComfyUI's own fp8 recipe (2026-10-27, `genai-native` `6354b13`).** ComfyUI's
+`krea2_turbo_fp8_scaled` carries `_quantization_metadata`: five of a block's eight linears
+(`wq wk wv`, the SwiGLU's `gate up`) run as fp8 matmuls under `--fast fp8_matrix_mult` (the
+activation clamped and cast to e4m3 with scale 1, `torch._scaled_mm`, fp32 accumulation), the
+other three (`attn.gate`, `wo`, `mlp.down`) are marked `full_precision_matrix_mult` and
+dequantized to bf16. Its `qwen3vl_4b_fp8_scaled` encoder marks every layer fp8 (`comfy_quant`
+records), but ComfyUI only forces fp8 matmuls there to generate text; encoding a prompt runs
+them in full precision. `qir::fp8` reproduces this on cuBLASLt from the files as they are (the
+DiT 13 GB resident, the encoder 4.4 GB). Each row is one process per picture
+(`gn-bench --engine qir`), 28 cases, against the app's ComfyUI route; warm times from
+`generate-krea2 --repeat`:
+
+| Krea 2 Turbo, native, ComfyUI's fp8 files | Sampling, warm (8 steps, 1024²) | vs ComfyUI fp8 | vs ComfyUI bf16 |
+|---|---:|---:|---:|
+| fp8 DiT, bf16-converted encoder, SageAttention2 | 4.03 s | 16 | — |
+| the same, exact attention (the plain f32 path) | not timed warm (9–15 s a picture, one process each) | 19 | — |
+| fp8 DiT, the encoder's fp8 matmuls too, exact | — | 12 | — |
+| fp8 DiT, fp8 encoder file in full precision, exact (plain f32) | not timed warm (≈ 9 s a picture, one process each) | **21** | — |
+| the same, SageAttention2 with fp32 PV accumulation | ≈ 4 s | 17 | — |
+| the same, our flash kernel (bf16 P·V), candle's small ops | 4.74 s | 17 | 18 |
+| every DiT linear an fp8 matmul (the file's marks ignored), flash | 3.91 s | 6 | 6 |
+| **flash (fp16 P·V) + Krea 2's small ops fused** (the shipped route) | **3.20 s** | **19** | **20** |
+| … through PhotoshopEX's CLI and worker, the assembled runtime folder only (`runs/2026-10-27-app-native-krea2-fused-t2i`) | 3.2 s; **4.0 s a picture wall** | **19** | — |
+
+Reading: the precision ComfyUI's two routes reach with each other is 20 of 28; the variants
+here span 16–21 and a difference of two cases is within what one rounding change moves on an
+8-step Turbo (the misses are the same street, vehicle, food and architecture scenes every
+time). What separates the rows clearly: the file's full-precision marks matter (6 of 28
+without them) and the encoder must not take fp8 matmuls (12). The GEMMs alone
+(`qwen-image-rs fp8-bench`, M = 4160): fp8 313–568 TFLOPS, bf16 186–220, the dequantize before
+a bf16 matmul +6 %; summed over a step, the linears are ≈ 0.32 s, attention 0.1 s (our flash
+kernel at ≈ 120 TFLOPS), and before fusion another ≈ 0.17 s went to candle's chains of small
+ops (f32 copies for each norm, the modulation, RoPE and SwiGLU passes). Fused, a step is
+0.40 s against ComfyUI's ≈ 0.41–0.45. **Routing: Krea 2 text to image goes native under
+`auto`** (faster at parity); its style reference stays on ComfyUI (not ported).
+
 Parity yardsticks and thresholds: `genai-native/docs/PARITY.md`. The SAM suite compares
 instance bounds until an engine returns masks (Phase 1). The gates these numbers set for later
 rows: sd.cpp within 1.3× of a row keeps that model on the Python-free lane without further work;

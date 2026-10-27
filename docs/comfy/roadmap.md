@@ -244,8 +244,11 @@ ArtCraft Omni API) with the local server as the default and a fallback order.
   fill, expand, matte and transparent output (2026-10-20) at parity and under `auto`; Krea 2
   Turbo text to image ported the same night (served under `native`, at the model's own level of
   agreement, 4.3–4.85 s a picture resident) but kept on ComfyUI under `auto` until the fp8 GEMM
-  lands; ⬜ Krea 2's style reference, Qwen-Image-Edit-2511 and the layered model still go to
-  ComfyUI.
+  lands; ✅ 2026-10-27 **Krea 2 text to image under `auto`**: ComfyUI's fp8 files on its own
+  fp8 recipe, exact flash attention, fused small ops (19 of 28 at the gate, ComfyUI's two routes
+  agree on 20; 4.0 s a picture against 4.0–4.7); ✅ plan Phase 5 started (the CUDA libraries
+  delay-loaded, the runtime folder script, `package.ps1 -Native`); ⬜ Krea 2's style reference,
+  Qwen-Image-Edit-2511 and the layered model still go to ComfyUI.
 
 **Phase 4 status after the PhotoshopEX build (2026-10-12):** ✅ capability flags the UI reads
 (kept in the templates' metadata rather than a separate `models.toml`), ✅ LoRA and style
