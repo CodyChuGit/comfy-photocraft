@@ -251,7 +251,9 @@ ArtCraft Omni API) with the local server as the default and a fallback order.
   the build has no kernels for, or no NVIDIA driver, is refused with a sentence and `auto` stays
   on ComfyUI) and the engine page (the native worker's state, card, memory and loaded models in
   the status-bar dot and Preferences › AI Integrations; Start / Stop / Purge models / Show log);
-  ⬜ the models-folder first run, the clean-profile install; ⬜ Krea 2's style reference,
+  ⬜ the models-folder first run, the clean-profile install; ✅ 2026-10-27 the owner retires
+  Qwen-Image-Edit-2511 as the default: with the research opt-in and the native worker, `auto`
+  runs Qwen-Image-2.1 for fill, the removals, expand and edit (no ComfyUI for them); ⬜ Krea 2's style reference,
   Qwen-Image-Edit-2511 and the layered model still go to ComfyUI.
 
 **Phase 4 status after the PhotoshopEX build (2026-10-12):** ✅ capability flags the UI reads

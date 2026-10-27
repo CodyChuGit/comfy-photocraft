@@ -213,6 +213,15 @@ Sources: [FLUX.2 / Z-Image on AWS (hands-on)](https://builder.aws.com/content/36
 
 ## 3. Feature → model mapping
 
+**2026-10-27, the owner's choice:** with research-only models allowed and the native worker
+running Qwen-Image-2.1, `auto` runs 2.1 for Generative Fill (`qwen-2.1/fill`), the removals
+(Content-Aware Fill, Remove, Spot Healing: `qwen-2.1/edit` on the crop), Generative Expand
+(`qwen-2.1/expand`) and Generative Edit (`qwen-2.1/edit`), and Qwen-Image-Edit-2511 is not
+used there (`generate_cmds::native21_auto`; numbers in `benchmarks.md`). The "Default
+(permissive build)" column below is still what a build without the opt-in runs; 2511 stays the
+template for a fill from a reference, Generative Angles and an image from references, which 2.1
+does not take yet.
+
 | Feature (command) | Default (permissive build) | Best quality (user opts in) | Workflow shape |
 |---|---|---|---|
 | Generative Fill (`generate.fill`) | Qwen-Image-Edit-2511, `auto` = the Lightning 8-step tier when its LoRA is installed, else 40 steps | Qwen-Image-2.1 | composite crop (selection bounds + context margin, sent at ≤ 1 MP) + mask → edit model with inpaint conditioning → resampled back (Lanczos) under the selection's full-resolution mask |

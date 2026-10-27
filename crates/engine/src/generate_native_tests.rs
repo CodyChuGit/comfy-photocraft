@@ -193,3 +193,38 @@ fn the_engine_status_shows_the_native_worker_and_purge_unloads_it() {
     let st = s.execute("generate.engine.stop", json!({"engine": "native"})).unwrap();
     assert_eq!(st["native"]["state"], "stopped", "{st}");
 }
+
+/// Under `auto` with research-only models allowed and the native worker configured, fill,
+/// expand, edit and the removals run Qwen-Image-2.1 on the worker, never the 2511 order (the
+/// owner's choice, 2026-10-27); without the opt-in the 2511 order stands.
+#[test]
+fn auto_runs_qwen_image_2_1_on_the_worker_instead_of_2511() {
+    let _turn = WORKER_SLOT.lock().unwrap_or_else(|e| e.into_inner());
+    let served = vec!["qwen-2.1/fill".into(), "qwen-2.1/edit".into(), "qwen-2.1/expand".into(), "enhance/edit".into(), "enhance/image".into(), "sam3.1/segment".into()];
+    let (port, token) = photocraft_genai::native::serve_fake(served, 1).unwrap();
+    set_native_backend(Arc::new(photocraft_genai::native::NativeBackend::attached(port, &token).unwrap()));
+    let comfy = photocraft_genai::fake::FakeComfy::start().unwrap();
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 128, "height": 64})).unwrap();
+    s.execute("layer.new.layer", json!({})).unwrap();
+    s.edit_prefs(|p| {
+        p.integrations.engine = "auto".into();
+        p.integrations.runtime_path = "runtime".into();
+        p.integrations.models_path = "models".into();
+        p.integrations.comfy_server = comfy.url.clone();
+    });
+    let m = s.execute("generate.models", json!({"probe": false})).unwrap();
+    assert!(m["autoEdit"].is_null() && m["autoRemove"].is_null(), "no opt-in: the server's order, unknown offline: {m}");
+    s.edit_prefs(|p| p.integrations.allow_research_models = true);
+    let m = s.execute("generate.models", json!({"probe": false})).unwrap();
+    let picks = (m["autoFill"].as_str(), m["autoExpand"].as_str(), m["autoEdit"].as_str(), m["autoRemove"].as_str());
+    assert_eq!(picks, (Some("qwen-2.1/fill"), Some("qwen-2.1/expand"), Some("qwen-2.1/edit"), Some("qwen-2.1/edit")), "{m}");
+    let e = s.execute("generate.edit", json!({"prompt": "make it winter", "seed": 3, "enhance": false})).unwrap();
+    assert_eq!(e["template"].as_str(), Some("qwen-2.1/edit"), "{e}");
+    s.execute("select.rect", json!({"x": 10, "y": 10, "width": 40, "height": 30})).unwrap();
+    let f = s.execute("generate.fill", json!({"prompt": "a red balloon", "seed": 4, "enhance": false})).unwrap();
+    assert_eq!(f["template"].as_str(), Some("qwen-2.1/fill"), "{f}");
+    let r = s.execute("edit.contentAwareFill", json!({"generative": true, "variations": 2})).unwrap();
+    assert_eq!(r["template"].as_str(), Some("qwen-2.1/edit"), "{r}");
+    assert!(comfy.state().prompts.is_empty(), "nothing went to ComfyUI");
+}

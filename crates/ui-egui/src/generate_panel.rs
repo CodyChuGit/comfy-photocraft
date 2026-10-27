@@ -325,12 +325,12 @@ pub fn default_template(app: &PhotocraftApp, mode: &str) -> String {
         "fill" => {
             let t = prefs.default_fill_template.trim();
             let q = g::quality(&app.session);
-            let t = if t.is_empty() || t == g::AUTO_TEMPLATE { g::likely_auto("generate.fill", q).to_string() } else { t.to_string() };
+            let t = if t.is_empty() || t == g::AUTO_TEMPLATE { g::likely_auto_in(&app.session, "generate.fill", q).to_string() } else { t.to_string() };
             // References and a default that takes none: the fill-from-reference template.
             let takes_refs = info(app, &t).is_some_and(|m| m.refs_max > 0);
             if !app.ui.generate.references.is_empty() && !takes_refs { g::fill_ref_template(q).to_string() } else { t }
         }
-        m => g::likely_auto(command_of(m), g::quality(&app.session)).to_string(),
+        m => g::likely_auto_in(&app.session, command_of(m), g::quality(&app.session)).to_string(),
     }
 }
 

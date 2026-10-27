@@ -507,6 +507,28 @@ pub fn angle_prompt(rotation: u32, tilt: i32, zoom: u32) -> Option<String> {
     let z = ANGLE_ZOOMS.iter().find(|(d, _)| *d == zoom)?.1;
     Some(format!("<sks> {r} {t} {z}"))
 }
+/// The Qwen-Image-2.1 template that `auto` runs for `command` (a removal when `removal`) instead
+/// of the Qwen-Image-Edit-2511 order, when research-only models are allowed and the native
+/// worker runs the family: the owner's choice of 2026-10-27, on the removal numbers of
+/// `benchmarks.md` (2.1 as an edit 15 of 20 hard strokes clean at 6–28 s, 2511 16 at 33–58 s
+/// through ComfyUI). A removal is an edit by instruction on the crop, as measured; a prompted
+/// fill is the 2.1 fill (the mask in view); an expand the in-context 2.1 expand. Without the
+/// opt-in or the worker, the 2511 orders stand (the permissive default).
+pub(crate) fn native21_auto(s: &Session, command: &str, removal: bool) -> Option<&'static str> {
+    let t = match command {
+        FILL if removal => "qwen-2.1/edit",
+        FILL => "qwen-2.1/fill",
+        EXPAND => "qwen-2.1/expand",
+        EDIT => "qwen-2.1/edit",
+        _ => return None,
+    };
+    (s.prefs().integrations.allow_research_models && loras::runs_native(s, t)).then_some(t)
+}
+
+/// The crop a removal on Qwen-Image-2.1 goes out at when `maxPixels` is left at the default:
+/// 0.75 MP, the size the 2.1 removal runs were measured at (1 MP is 2511's).
+const NATIVE21_REMOVAL_PIXELS: u64 = 786_432;
+
 pub(crate) const DEFAULT_EDIT_TEMPLATE: &str = "qwen-edit-2511/edit";
 /// What `auto` tries for an edit, fastest permissive tier first.
 pub(crate) const AUTO_EDIT_ORDER: &[&str] = &["qwen-edit-2511/edit-lightning-8", DEFAULT_EDIT_TEMPLATE];
@@ -1468,8 +1490,19 @@ pub(crate) fn generative_remove(
         let i = &s.prefs().integrations;
         (template_or(&i.default_fill_template, AUTO_TEMPLATE), i.default_edit_model.clone())
     };
-    let auto = default_template == AUTO_TEMPLATE;
-    let base = if auto { DEFAULT_FILL_TEMPLATE.to_string() } else { default_template };
+    let mut auto = default_template == AUTO_TEMPLATE;
+    let mut tuning = tuning;
+    let base = match (auto, native21_auto(s, FILL, true)) {
+        (true, Some(t)) => {
+            auto = false;
+            if tuning.max_pixels == MAX_FILL_REQUEST_PIXELS {
+                tuning.max_pixels = NATIVE21_REMOVAL_PIXELS;
+            }
+            t.to_string()
+        }
+        (true, None) => DEFAULT_FILL_TEMPLATE.to_string(),
+        (false, _) => default_template,
+    };
     // An edit template as the fill template: the removal runs as a whole-crop instruction
     // ("Remove the glasses") with no noise mask, which is what an edit model was trained for,
     // and the layer mask confines the visible change to the hole.
@@ -1672,6 +1705,10 @@ fn plan_fill(s: &Session, p: &Value) -> Result<FillPlan> {
     let ref_specs = crate::generate_refs::specs(FILL, p)?;
     let named = p.get("template").is_some_and(|v| !v.is_null()) && !auto;
     let mut base = if auto { DEFAULT_FILL_TEMPLATE.to_string() } else { requested.clone() };
+    if auto && ref_specs.is_empty() && let Some(t) = native21_auto(s, FILL, false) {
+        base = t.to_string();
+        auto = false;
+    }
     if !named && !ref_specs.is_empty() && template::find(&base).is_ok_and(|t| t.meta.references.max == 0) {
         base = fill_ref_template(quality(s)).to_string();
         auto = false;
@@ -3391,10 +3428,14 @@ fn plan_expand(s: &Session, p: &Value) -> Result<(FillPlan, Pads, (u32, u32))> {
     // Expand has its own templates (task `expand`); the fill preference does not apply, so
     // without a `template` param it is `auto`.
     let default_model = s.prefs().integrations.default_edit_model.clone();
-    let requested = opt_str(EXPAND, &q, "template", 200)?.map(str::to_string).unwrap_or_else(|| AUTO_TEMPLATE.to_string());
-    let auto = requested == AUTO_TEMPLATE;
+    let mut requested = opt_str(EXPAND, &q, "template", 200)?.map(str::to_string).unwrap_or_else(|| AUTO_TEMPLATE.to_string());
+    let mut auto = requested == AUTO_TEMPLATE;
     if auto && let Some(o) = q.as_object_mut() {
         o.remove("template");
+    }
+    if auto && let Some(t) = native21_auto(s, EXPAND, false) {
+        requested = t.to_string();
+        auto = false;
     }
     let Common { template, prompt, negative, seed, steps, guidance, models, name } =
         plan_common(s, EXPAND, &q, if auto { DEFAULT_EXPAND_TEMPLATE } else { &requested }, Task::Expand, &default_model)?;
@@ -3643,11 +3684,15 @@ fn edit_enabled(s: &Session) -> std::result::Result<(), String> {
 /// a layer over the canvas, masked to the selection when there is one.
 fn plan_edit(s: &Session, p: &Value) -> Result<FillPlan> {
     let default_model = s.prefs().integrations.default_edit_model.clone();
-    let requested = opt_str(EDIT, p, "template", 200)?.map(str::to_string).unwrap_or_else(|| AUTO_TEMPLATE.to_string());
-    let auto = requested == AUTO_TEMPLATE;
+    let mut requested = opt_str(EDIT, p, "template", 200)?.map(str::to_string).unwrap_or_else(|| AUTO_TEMPLATE.to_string());
+    let mut auto = requested == AUTO_TEMPLATE;
     let mut q = p.clone();
     if auto && let Some(o) = q.as_object_mut() {
         o.remove("template");
+    }
+    if auto && let Some(t) = native21_auto(s, EDIT, false) {
+        requested = t.to_string();
+        auto = false;
     }
     let Common { template, prompt, negative, seed, steps, guidance, models, name } =
         plan_common(s, EDIT, &q, if auto { DEFAULT_EDIT_TEMPLATE } else { &requested }, Task::Edit, &default_model)?;
@@ -4162,6 +4207,12 @@ pub fn likely_auto(command: &str, quality: &str) -> &'static str {
     auto_order(command, quality).first().copied().unwrap_or(DEFAULT_FILL_TEMPLATE)
 }
 
+/// [`likely_auto`] in this session: the Qwen-Image-2.1 template where `auto` runs it on the
+/// native worker ([`native21_auto`]), else the first of the server's order.
+pub fn likely_auto_in(s: &Session, command: &str, quality: &str) -> &'static str {
+    native21_auto(s, command, false).unwrap_or_else(|| likely_auto(command, quality))
+}
+
 /// Seconds a run of `template` for a `width × height` area with `count` variations and
 /// `references` reference images is expected to take on a warm server (the template's
 /// `estimatedSeconds`; a fill, expand or edit counts at the size it is sent at, see
@@ -4200,19 +4251,39 @@ fn run_models(s: &mut Session, p: &Value) -> Result<Value> {
     let q = quality(s);
     if probe && opt_bool(MODELS, p, "async", false)? {
         let backend = backend(s)?;
+        let picks = native21_picks(s);
         return crate::jobs::run(
             s,
             "Checking generative models",
             false,
             move |ctx| {
                 ctx.progress(0.2, "Asking the server");
-                Ok(models_json(Some(backend.as_ref()), allow_research, q, eta_for))
+                let mut v = models_json(Some(backend.as_ref()), allow_research, q, eta_for);
+                apply_picks(&mut v, &picks);
+                Ok(v)
             },
             move |_, v| Ok(v),
         );
     }
     let backend = if probe { backend(s).ok() } else { None };
-    Ok(models_json(backend.as_deref(), allow_research, q, eta_for))
+    let mut v = models_json(backend.as_deref(), allow_research, q, eta_for);
+    apply_picks(&mut v, &native21_picks(s));
+    Ok(v)
+}
+
+/// `generate.models`' `autoFill`, `autoExpand`, `autoEdit` and `autoRemove` where `auto` runs
+/// Qwen-Image-2.1 on the native worker instead of the server's order ([`native21_auto`]).
+fn native21_picks(s: &Session) -> Vec<(&'static str, &'static str)> {
+    [("autoFill", FILL, false), ("autoExpand", EXPAND, false), ("autoEdit", EDIT, false), ("autoRemove", FILL, true)]
+        .into_iter()
+        .filter_map(|(key, command, removal)| native21_auto(s, command, removal).map(|t| (key, t)))
+        .collect()
+}
+
+fn apply_picks(v: &mut Value, picks: &[(&str, &str)]) {
+    for (key, t) in picks {
+        v[*key] = json!(t);
+    }
 }
 
 /// `generate.models`' answer: every template with its model slots, capabilities and estimate
@@ -4271,6 +4342,7 @@ fn models_json(backend: Option<&dyn GenerativeBackend>, allow_research: bool, q:
         "autoFill": auto(auto_order(FILL, q), DEFAULT_FILL_TEMPLATE),
         "autoExpand": auto(auto_order(EXPAND, q), DEFAULT_EXPAND_TEMPLATE),
         "autoEdit": auto(auto_order(EDIT, q), DEFAULT_EDIT_TEMPLATE),
+        "autoRemove": auto(auto_order(FILL, q), DEFAULT_FILL_TEMPLATE),
         "autoMatte": auto_matte,
     })
 }
@@ -4336,18 +4408,20 @@ fn run_similar(s: &mut Session, p: &Value) -> Result<Value> {
     // An expand layer's area is regenerated as a fill (its canvas is already there); edits and
     // fills run as what they were.
     let q = quality(s);
-    let (command, auto, auto_order, template_id) = match info.command.as_str() {
-        c if c == EDIT => (EDIT, false, auto_order(EDIT, q), info.template.clone()),
-        c if c == FILL => (FILL, false, auto_order(FILL, q), info.template.clone()),
+    let (command, auto, auto_order, template_id) = match (info.command.as_str(), native21_auto(s, FILL, false)) {
+        (c, _) if c == EDIT => (EDIT, false, auto_order(EDIT, q), info.template.clone()),
+        (c, _) if c == FILL => (FILL, false, auto_order(FILL, q), info.template.clone()),
+        (_, Some(t)) => (FILL, false, auto_order(FILL, q), t.to_string()),
         _ => (FILL, true, auto_order(FILL, q), DEFAULT_FILL_TEMPLATE.to_string()),
     };
     let refs = crate::generate_refs::Refs { images: crate::generate_refs::resolve(s, &info.references)?, specs: info.references.clone() };
-    let backend = backend(s)?;
+    // The engine that serves the template (the native worker under `auto` for 2.1 and SAM).
+    let (backend, server) = backend_for(s, &template_id)?;
     let purge = purge_mode(s);
     let job = FillJob {
-        thinker: thinker_for(s, &backend, &server_key(s)),
+        thinker: thinker_for(s, &backend, &server),
         backend,
-        server: server_key(s),
+        server,
         command,
         template_id,
         auto,
@@ -4619,7 +4693,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "List Generative Models",
             menu: &[],
             shortcut: None,
-            params: r#"{"probe":bool=true,"width":{int?},"height":{int?},"count":int=1,"references":int=0} → {"server","device","blackwell","templates":[{"id","name","family","task","license","allowed","defaults","models":[{"placeholder","folder","file","installed","nvfp4"?,"nvfp4Installed"?}],"creator","description","badges","references":{"max","min","placeholders","nodes"},"sizes":{"aspects","min","max","step"},"counts":{"max","default"},"estimatedSeconds":{"base","perMegapixel","perReference"},"pages","eta"}],"autoFill","autoExpand","autoEdit","autoMatte"} (the capabilities drive the Generate panel: pages = where a template is offered (image, fill, edit, expand, matte, split, select, enhance), references = how many reference images it takes, sizes = an image template's aspects and side limits; with width and height every template reports eta = (base + perMegapixel × megapixels + perReference × extra references) × count seconds on a warm server, fills and edits at the size they are sent at (a reference-driven text to image's first reference is in base); probe false = list the templates without contacting the server: no server status, installed unknown; nvfp4 = the slot's NVFP4 alternative, which Preferences › AI Integrations › Model precision "auto" loads instead of file on a Blackwell GPU (blackwell true) when the server has it)"#,
+            params: r#"{"probe":bool=true,"width":{int?},"height":{int?},"count":int=1,"references":int=0} → {"server","device","blackwell","templates":[{"id","name","family","task","license","allowed","defaults","models":[{"placeholder","folder","file","installed","nvfp4"?,"nvfp4Installed"?}],"creator","description","badges","references":{"max","min","placeholders","nodes"},"sizes":{"aspects","min","max","step"},"counts":{"max","default"},"estimatedSeconds":{"base","perMegapixel","perReference"},"pages","eta"}],"autoFill","autoExpand","autoEdit","autoRemove","autoMatte"} (autoFill / autoExpand / autoEdit / autoRemove = the template `auto` runs for Generative Fill, Expand, Edit and the removals (Content-Aware Fill, Remove, Spot Healing): Qwen-Image-2.1 on the native worker when research-only models are allowed and the worker runs that family, else the server's Qwen-Image-Edit-2511 order; the capabilities drive the Generate panel: pages = where a template is offered (image, fill, edit, expand, matte, split, select, enhance), references = how many reference images it takes, sizes = an image template's aspects and side limits; with width and height every template reports eta = (base + perMegapixel × megapixels + perReference × extra references) × count seconds on a warm server, fills and edits at the size they are sent at (a reference-driven text to image's first reference is in base); probe false = list the templates without contacting the server: no server status, installed unknown; nvfp4 = the slot's NVFP4 alternative, which Preferences › AI Integrations › Model precision "auto" loads instead of file on a Blackwell GPU (blackwell true) when the server has it)"#,
             enabled: always,
             run: run_models,
             journal: false,

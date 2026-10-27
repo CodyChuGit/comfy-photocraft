@@ -717,6 +717,28 @@ face pixels flip the 8B to the man; the probe's near-identical crop says "mask" 
 the cup (2.1 continues the table's shade into a dark patch), the half strokes on the boat and
 the motorcycle. The dog's cast shadow stays on every route.
 
+**2511 retired as the default where 2.1 runs natively** (2026-10-27, the owner: "it's an older
+model, and it's way slower"). On the numbers above (2.1 as an edit 15 of 20 at 6–28 s, 2511 16
+at 33–58 s through ComfyUI) `auto` now runs Qwen-Image-2.1 on the native worker for removals
+(`qwen-2.1/edit`, the crop at 0.75 MP as measured), prompted fills (`qwen-2.1/fill`), expands
+and edits, whenever research-only models are allowed and the worker runs the family
+(`generate_cmds::native21_auto`); without the opt-in the 2511 orders stay the permissive
+default. Prompted fills had not been compared before; the fill suite's 8 cases through the
+app (`runs/2026-10-27-app-fill-qwen-21fill` against `references/2026-10-18-comfy-fill`, sheet
+`fill-2511-vs-21.png` in the session scratchpad):
+
+| Case | 2511 (ComfyUI) | 2.1 fill (native) |
+|---|---|---|
+| fox, knitted red hat, seeds 7 and 11 | a hat both times | a hat both times (a bobble beanie) |
+| sky, a small white cloud | a cloud | a smaller, fainter cloud |
+| compass, background continued | a purple fringe left | clean |
+| stormy sea, a rowing boat | a boat on the rocks | **no boat** |
+| buoy, seagull (transparent fixtures) | a noise square around the object | a clean square of water / sky around it |
+| earring (the fixture is a dish, not a portrait) | nothing | nothing |
+
+At 1.6–5.8 s a case on the worker. The removal weak spots stay as listed: an object over a face
+(the mask's whole stroke) and the cup's dark patch.
+
 **The removal adapter** (2026-10-22; `lora-run.ps1`). prithivMLmods' Object Remover v2, an
 Apache-2.0 LoRA on 2511 trained to delete what is painted red (`models.md`), as the
 `qwen-edit-2511/remove-lightning-8` template: the Lightning graph with the adapter loaded

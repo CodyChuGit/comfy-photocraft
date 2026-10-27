@@ -4,6 +4,25 @@ Newest entry first. Terse: what landed, numbers, what is still open. Upstream ke
 the gitignored `log/devlog.md`; this one is tracked so the next session (any machine, any agent)
 can pick up.
 
+## 2026-10-27 (night): Qwen-Image-2.1 replaces 2511 under `auto`
+
+- **The owner's decision**: 2511 is "an older model, and way slower"; not used where 2.1 runs.
+  `generate_cmds::native21_auto`: with Allow Research-Only Models on and the native worker
+  running the family, `auto` runs `qwen-2.1/edit` for the removals (Content-Aware Fill, Remove,
+  Spot Healing; the crop at 0.75 MP as measured), `qwen-2.1/fill` for prompted Generative Fill,
+  `qwen-2.1/expand`, `qwen-2.1/edit` for Generative Edit; Generate Similar of an expand too, and
+  it now runs on the engine that serves its template (it used the ComfyUI route even for a
+  native template). Without the opt-in the 2511 orders stay the permissive default, so the
+  licence rule holds. `generate.models` reports `autoRemove` beside `autoFill` / `autoExpand` /
+  `autoEdit`, and the Generate panel's Auto row names the 2.1 template.
+- Still on 2511 (2.1 does not take them yet): a fill from a reference, Generative Angles, an
+  image from references.
+- **Evidence**: the removal numbers of 2026-10-26 (2.1 15 of 20 hard strokes at 6–28 s, 2511 16
+  at 33–58 s); a `-p22` interim run had never been written up (superseded by `-p21v`). Prompted
+  fills compared for the first time (`benchmarks.md`): level with 2511 on the hats, the cloud,
+  the compass (cleaner); 2.1 missed the stormy sea's rowing boat; 1.6–5.8 s a case.
+- Gate: engine 1930 and UI 3227 tests, clippy, wasm OK.
+
 ## 2026-10-27 (evening): GPU detection and the engine page (plan Phase 5)
 
 - **GPU detection** (genai-native `182e897`): `qir::device::probe` asks the driver about the
